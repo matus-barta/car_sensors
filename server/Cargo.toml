@@ -1,0 +1,30 @@
+[package]
+name = "car_sensors_server"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+serde_repr = "0.1"
+axum = { version = "0.8", features = ["multipart", "macros"] }
+serde = { version = "1.0", features = ["derive"] }
+tokio = { version = "1.0", features = ["full"] }
+tower = { version = "0.5", features = ["util"] }
+tower-http = { version = "0.6", features = [
+    "fs",
+    "trace",
+    "decompression-gzip",
+    "limit",
+    "cors",
+] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+sqlx = { version = "0.9", features = [
+    "runtime-tokio",
+    "postgres",
+    "derive",
+    "chrono",
+] }
+rustls = "0.23"
+serde_json = "1.0"
+thiserror = "2.0"
+dotenvy = "0.15"
