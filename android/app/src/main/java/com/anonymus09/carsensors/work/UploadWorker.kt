@@ -103,6 +103,10 @@ class UploadWorker(
                 put("magnetAccuracy", item.magnetAccuracy)
                 put("magnetAccuracyLabel", item.magnetAccuracyLabel)
 
+                put("pressureHpa", item.pressureHpa)
+                put("pressureAccuracy", item.pressureAccuracy)
+                put("pressureAccuracyLabel", item.pressureAccuracyLabel)
+
                 put("headingDeg", item.headingDeg)
             }
             array.put(obj)

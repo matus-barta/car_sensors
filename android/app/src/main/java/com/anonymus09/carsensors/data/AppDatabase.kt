@@ -9,7 +9,7 @@ import java.io.File
 
 @Database(
     entities = [TelemetrySampleEntity::class],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -42,6 +42,5 @@ abstract class AppDatabase : RoomDatabase() {
         fun getDatabaseDir(context: Context): File? {
             return getDatabaseFile(context).parentFile
         }
-
     }
 }

@@ -1,29 +1,42 @@
 use axum::{
-    extract::Json,
-    http::{HeaderMap, StatusCode},
+    Extension,
+    extract::{Json, State, rejection::JsonRejection},
+    http::StatusCode,
     response::IntoResponse,
 };
 
-use crate::models::telemetry_sample::TelemetrySample;
+use crate::{
+    AppState,
+    helpers::{device_auth::KnownDeviceId, pg::insert_telemetry_batch},
+    models::telemetry_sample::TelemetrySample,
+};
 
 pub async fn upload(
-    headers: HeaderMap,
-    Json(samples): Json<Vec<TelemetrySample>>,
+    State(state): State<AppState>,
+    Extension(known_device): Extension<KnownDeviceId>,
+    result: Result<Json<Vec<TelemetrySample>>, JsonRejection>,
 ) -> impl IntoResponse {
-    if let Some(device_id) = headers.get("X-Device-ID") {
-        println!("Device ID: {}", device_id.to_str().unwrap_or(""));
+    let device_id = known_device.0;
+    println!("Validated device: {}", &device_id);
+
+    match result {
+        Ok(Json(samples)) => {
+            println!("Received {} samples", samples.len());
+
+            match insert_telemetry_batch(&state.db_pool, Some(&device_id), &samples).await {
+                Ok(rows) => {
+                    println!("Inserted {} rows", rows);
+                    StatusCode::OK
+                }
+                Err(err) => {
+                    eprintln!("DB insert error: {:?}", err);
+                    StatusCode::INTERNAL_SERVER_ERROR
+                }
+            }
+        }
+        Err(err) => {
+            eprintln!("JSON ERROR: {:?}", err);
+            StatusCode::BAD_REQUEST
+        }
     }
-
-    if samples.is_empty() {
-        return StatusCode::BAD_REQUEST;
-    }
-
-    println!("Received {} samples", samples.len());
-
-    // Debug example
-    if let Some(first) = samples.first() {
-        println!("First sample: {:?}", first);
-    }
-
-    StatusCode::OK
 }

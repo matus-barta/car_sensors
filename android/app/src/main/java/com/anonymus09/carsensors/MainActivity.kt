@@ -47,6 +47,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import com.anonymus09.carsensors.data.AppDatabase
@@ -106,10 +107,18 @@ class MainActivity : ComponentActivity() {
         TelemetryForegroundService.setAutoStartOnBoot(this, true)
         TelemetryForegroundService.setStopWhenUnplugged(this, true)
 
+        val db = AppDatabase.getInstance(applicationContext)
+        val dao = db.telemetryDao()
+
+        val viewModel: MainViewModel = ViewModelProvider(
+            this,
+            MainViewModelFactory(dao)
+        )[MainViewModel::class.java]
+
         setContent {
             CarSensorsTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    CarSensorsScreen()
+                    CarSensorsScreen(viewModel = viewModel)
                 }
             }
         }
@@ -133,8 +142,11 @@ class MainActivity : ComponentActivity() {
     }
 
     @Composable
-    private fun CarSensorsScreen() {
+    private fun CarSensorsScreen(viewModel: MainViewModel) {
+        val pendingCount by viewModel.pendingCount.collectAsState()
         SetSystemBarIcons(activity = this@MainActivity)
+
+        val lastUploadTime by viewModel.lastUploadTime.collectAsState()
 
         var autoStartOnBoot by remember {
             mutableStateOf(
@@ -450,7 +462,7 @@ class MainActivity : ComponentActivity() {
                 style = MaterialTheme.typography.bodyMedium
             )
 
-            val lastUploadText = dbInfo.lastUploadTime?.let {
+            val lastUploadText = lastUploadTime?.let {
                 SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date(it))
             } ?: "Never"
 
@@ -482,7 +494,7 @@ class MainActivity : ComponentActivity() {
             )
 
             Text(
-                text = dbInfo.pendingUpload.toString(),
+                text = pendingCount.toString(),
                 style = MaterialTheme.typography.bodyMedium
             )
 

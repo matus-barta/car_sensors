@@ -1,6 +1,8 @@
 use axum::{Router, extract::DefaultBodyLimit};
+use redis::aio::MultiplexedConnection;
 use sqlx::{Pool, Postgres};
 use std::env;
+use std::sync::Arc;
 use tower_http::cors::CorsLayer;
 use tower_http::decompression::RequestDecompressionLayer;
 use tower_http::limit::RequestBodyLimitLayer;
@@ -29,14 +31,18 @@ async fn main() {
 
     let server_ip_port = env::var("SERVER_IP_PORT").unwrap_or("0.0.0.0:3000".into());
     let db_url = env::var("DATABASE_URL").expect("Missing DATABASE_URL env var");
+    let redis_url = env::var("REDIS_URL").expect("Missing Redis URL env var");
 
     let app_state = AppState {
         db_pool: helpers::pg::init_pg(db_url).await,
+        redis: Arc::new(tokio::sync::Mutex::new(
+            helpers::redis::init_redis(redis_url).await,
+        )),
     };
 
     // build our application with a route
     let app = Router::new()
-        .merge(routes::router())
+        .merge(routes::router(app_state.clone()))
         .layer(RequestDecompressionLayer::new())
         .layer(TraceLayer::new_for_http())
         .layer(DefaultBodyLimit::disable())
@@ -67,4 +73,5 @@ async fn main() {
 struct AppState {
     // that holds some api specific state
     db_pool: Pool<Postgres>,
+    redis: Arc<tokio::sync::Mutex<MultiplexedConnection>>,
 }

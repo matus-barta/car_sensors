@@ -23,8 +23,16 @@ sqlx = { version = "0.9", features = [
     "postgres",
     "derive",
     "chrono",
+    "macros",
 ] }
 rustls = "0.23"
 serde_json = "1.0"
 thiserror = "2.0"
 dotenvy = "0.15"
+redis = { version = "1.0", features = [
+    "tokio-comp",
+    "tokio-rustls-comp",
+    "tls-rustls-insecure",
+    "connection-manager",
+    "aio",
+] }

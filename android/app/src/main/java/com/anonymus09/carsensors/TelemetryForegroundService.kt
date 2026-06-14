@@ -213,6 +213,15 @@ class TelemetryForegroundService : Service(), SensorEventListener {
     @Volatile
     private var currentPowerSource: String = "UNKNOWN"
 
+    // Latest pressure data
+    private var pressureSensor: Sensor? = null
+
+    @Volatile
+    private var pressureHpa: Float? = null
+
+    @Volatile
+    private var pressureAccuracy: Int = SensorManager.SENSOR_STATUS_UNRELIABLE
+
     private val locationListener = object : LocationListener {
         override fun onLocationChanged(location: Location) {
             latestLocation = location
@@ -321,6 +330,8 @@ class TelemetryForegroundService : Service(), SensorEventListener {
         gyroscope = sensorManager.getDefaultSensor(Sensor.TYPE_GYROSCOPE)
         magnetometer = sensorManager.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD)
 
+        pressureSensor = sensorManager.getDefaultSensor(Sensor.TYPE_PRESSURE)
+
         workerThread = HandlerThread(SENSOR_THREAD_NAME).apply { start() }
         workerHandler = Handler(workerThread!!.looper)
 
@@ -417,6 +428,17 @@ class TelemetryForegroundService : Service(), SensorEventListener {
                 this, it, SENSOR_SAMPLING_US, SENSOR_SAMPLING_US * 5, workerHandler
             )
         }
+
+        pressureSensor?.let {
+            sensorManager.registerListener(
+                this,
+                it,
+                SENSOR_SAMPLING_US,
+                SENSOR_SAMPLING_US * 5,
+                workerHandler
+            )
+        }
+
     }
 
     private fun requestLocationUpdates() {
@@ -482,6 +504,11 @@ class TelemetryForegroundService : Service(), SensorEventListener {
                 magnetValues = event.values.clone()
                 recomputeHeading()
             }
+
+            Sensor.TYPE_PRESSURE -> {
+                pressureHpa = event.values.firstOrNull()
+            }
+
         }
     }
 
@@ -492,6 +519,7 @@ class TelemetryForegroundService : Service(), SensorEventListener {
             Sensor.TYPE_ACCELEROMETER -> accelAccuracy = accuracy
             Sensor.TYPE_GYROSCOPE -> gyroAccuracy = accuracy
             Sensor.TYPE_MAGNETIC_FIELD -> magnetAccuracy = accuracy
+            Sensor.TYPE_PRESSURE -> pressureAccuracy = accuracy
         }
 
         writeAccuracyChangeEvent(sensor, accuracy)
@@ -560,6 +588,10 @@ class TelemetryForegroundService : Service(), SensorEventListener {
             magnetAccuracy = magnetAccuracy,
             magnetAccuracyLabel = accuracyToLabel(magnetAccuracy),
 
+            pressureHpa = pressureHpa,
+            pressureAccuracy = pressureAccuracy,
+            pressureAccuracyLabel = accuracyToLabel(pressureAccuracy),
+
             headingDeg = heading
         )
 
@@ -590,6 +622,12 @@ class TelemetryForegroundService : Service(), SensorEventListener {
             put("sensorName", sensor.name)
             put("accuracy", accuracy)
             put("accuracyLabel", accuracyToLabel(accuracy))
+            if (sensor.type == Sensor.TYPE_PRESSURE) {
+                pressureHpa?.let {
+                    put("currentPressureHpa", it)
+                }
+            }
+
         }
 
         val sample = TelemetrySampleEntity(
@@ -626,6 +664,10 @@ class TelemetryForegroundService : Service(), SensorEventListener {
             magZ = null,
             magnetAccuracy = null,
             magnetAccuracyLabel = null,
+
+            pressureHpa = null,
+            pressureAccuracy = null,
+            pressureAccuracyLabel = null,
 
             headingDeg = null
         )
@@ -675,6 +717,10 @@ class TelemetryForegroundService : Service(), SensorEventListener {
             magZ = null,
             magnetAccuracy = null,
             magnetAccuracyLabel = null,
+
+            pressureHpa = null,
+            pressureAccuracy = null,
+            pressureAccuracyLabel = null,
 
             headingDeg = null
         )

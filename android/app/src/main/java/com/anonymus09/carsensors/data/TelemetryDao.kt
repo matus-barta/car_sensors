@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface TelemetryDao {
@@ -84,4 +85,14 @@ interface TelemetryDao {
     )
     suspend fun getMaxUploadAttempts(): Int?
 
+    @Query("""SELECT COUNT(*) FROM telemetry_samples WHERE uploaded = 0""")
+    fun getPendingCountFlow(): Flow<Int>
+
+    @Query("""
+    SELECT MAX(uploadedAt) FROM telemetry_samples
+    WHERE uploaded = 1
+""")
+    fun getLastUploadTimeFlow(): Flow<Long?>
+
 }
+
