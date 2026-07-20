@@ -6,8 +6,9 @@ use axum::{
 };
 
 use crate::{
-    AppState, db::telemetry_sample::insert_telemetry_batch, helpers::device_auth::KnownDeviceId,
-    models::telemetry_sample::TelemetrySample,
+    AppState,
+    db::telemetry_sample::insert_telemetry_batch,
+    models::{device_auth::KnownDeviceId, telemetry_sample::TelemetrySample},
 };
 
 pub async fn upload(

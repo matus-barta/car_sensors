@@ -10,7 +10,7 @@ use axum::{
 use shared::redis::*;
 use sqlx::{Pool, Postgres};
 
-use crate::{AppState, helpers::device_auth::KnownDeviceId};
+use crate::{AppState, models::device_auth::KnownDeviceId};
 
 const KNOWN_DEVICE_CACHE_TTL_SECS: u32 = 300; // 5 minutes
 const UNKNOWN_DEVICE_CACHE_TTL_SECS: u32 = 60; // 1 minute
