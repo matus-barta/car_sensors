@@ -8,6 +8,10 @@ use tower_http::decompression::RequestDecompressionLayer;
 use tower_http::limit::RequestBodyLimitLayer;
 use tower_http::trace::TraceLayer;
 
+use shared::pg::init_pg;
+use shared::redis::init_redis;
+
+mod db;
 mod helpers;
 mod models;
 mod routes;
@@ -34,10 +38,8 @@ async fn main() {
     let redis_url = env::var("REDIS_URL").expect("Missing Redis URL env var");
 
     let app_state = AppState {
-        db_pool: helpers::pg::init_pg(db_url).await,
-        redis: Arc::new(tokio::sync::Mutex::new(
-            helpers::redis::init_redis(redis_url).await,
-        )),
+        db_pool: init_pg(db_url).await,
+        redis: Arc::new(tokio::sync::Mutex::new(init_redis(redis_url).await)),
     };
 
     // build our application with a route

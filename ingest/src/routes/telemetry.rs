@@ -6,8 +6,7 @@ use axum::{
 };
 
 use crate::{
-    AppState,
-    helpers::{device_auth::KnownDeviceId, pg::insert_telemetry_batch},
+    AppState, db::telemetry_sample::insert_telemetry_batch, helpers::device_auth::KnownDeviceId,
     models::telemetry_sample::TelemetrySample,
 };
 

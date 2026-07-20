@@ -7,15 +7,10 @@ use axum::{
     middleware::Next,
     response::Response,
 };
+use shared::redis::*;
 use sqlx::{Pool, Postgres};
 
-use crate::{
-    AppState,
-    helpers::{
-        device_auth::KnownDeviceId,
-        redis::{get_key, set_key_w_ttl},
-    },
-};
+use crate::{AppState, helpers::device_auth::KnownDeviceId};
 
 const KNOWN_DEVICE_CACHE_TTL_SECS: u32 = 300; // 5 minutes
 const UNKNOWN_DEVICE_CACHE_TTL_SECS: u32 = 60; // 1 minute
