@@ -1,4 +1,4 @@
-use sqlx::{Pool, Postgres, QueryBuilder};
+use shared::sqlx::{Pool, Postgres, QueryBuilder};
 
 use crate::models::telemetry_sample::TelemetrySample;
 
@@ -6,7 +6,7 @@ pub async fn insert_telemetry_batch(
     db_pool: &Pool<Postgres>,
     device_id: Option<&str>,
     samples: &[TelemetrySample],
-) -> Result<u64, sqlx::Error> {
+) -> Result<u64, shared::sqlx::Error> {
     if samples.is_empty() {
         return Ok(0);
     }

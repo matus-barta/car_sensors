@@ -996,14 +996,10 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "dotenvy",
- "redis",
  "rustls",
  "serde",
- "serde_json",
  "shared",
- "sqlx",
  "thiserror",
- "tokio",
  "tower",
  "tower-http",
  "tracing",
@@ -1175,25 +1171,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "num-bigint"
-version = "0.4.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c89e69e7e0f03bea5ef08013795c25018e101932225a656383bd384495ecc367"
-dependencies = [
- "num-integer",
- "num-traits",
-]
-
-[[package]]
-name = "num-integer"
-version = "0.1.46"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7969661fd2958a5cb096e56c8e1ad0444ac2bbcd0061bd28660485a44879858f"
-dependencies = [
- "num-traits",
-]
-
-[[package]]
 name = "num-traits"
 version = "0.2.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1327,13 +1304,11 @@ dependencies = [
  "futures-channel",
  "futures-util",
  "itoa",
- "num-bigint",
  "percent-encoding",
  "pin-project-lite",
  "rustls",
  "rustls-native-certs",
  "ryu",
- "sha1_smol",
  "socket2",
  "tokio",
  "tokio-rustls",
@@ -1556,12 +1531,6 @@ dependencies = [
  "cpufeatures 0.3.0",
  "digest 0.11.3",
 ]
-
-[[package]]
-name = "sha1_smol"
-version = "1.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bbfa15b3dddfee50a0fff136974b3e1bde555604ba463834a7eb7deb6417705d"
 
 [[package]]
 name = "sha2"

@@ -7,8 +7,8 @@ use axum::{
     middleware::Next,
     response::Response,
 };
-use shared::redis::*;
-use sqlx::{Pool, Postgres};
+use shared::cache::*;
+use shared::sqlx::{Error, Pool, Postgres, query, query_scalar};
 
 use crate::{AppState, models::device_auth::KnownDeviceId};
 
@@ -68,11 +68,8 @@ pub async fn require_known_device(
     Ok(next.run(request).await)
 }
 
-async fn is_known_active_device(
-    db_pool: &Pool<Postgres>,
-    device_id: &str,
-) -> Result<bool, sqlx::Error> {
-    let exists: Option<bool> = sqlx::query_scalar(
+async fn is_known_active_device(db_pool: &Pool<Postgres>, device_id: &str) -> Result<bool, Error> {
+    let exists: Option<bool> = query_scalar(
         r#"
         SELECT EXISTS (
             SELECT 1
@@ -89,8 +86,8 @@ async fn is_known_active_device(
     Ok(exists.unwrap_or(false))
 }
 
-async fn touch_known_device(db_pool: &Pool<Postgres>, device_id: &str) -> Result<(), sqlx::Error> {
-    sqlx::query(
+async fn touch_known_device(db_pool: &Pool<Postgres>, device_id: &str) -> Result<(), Error> {
+    query(
         r#"
         UPDATE known_devices
         SET last_seen_at = NOW()
@@ -104,7 +101,7 @@ async fn touch_known_device(db_pool: &Pool<Postgres>, device_id: &str) -> Result
     Ok(())
 }
 
-async fn update_last_seen_throttled(state: &AppState, device_id: &str) -> Result<(), sqlx::Error> {
+async fn update_last_seen_throttled(state: &AppState, device_id: &str) -> Result<(), Error> {
     // Always keep a fresh last_seen value in Redis
     let now_epoch = SystemTime::now()
         .duration_since(UNIX_EPOCH)

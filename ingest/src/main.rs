@@ -1,6 +1,7 @@
 use axum::{Router, extract::DefaultBodyLimit};
-use redis::aio::MultiplexedConnection;
-use sqlx::{Pool, Postgres};
+use shared::redis::aio::MultiplexedConnection;
+use shared::sqlx::{Pool, Postgres};
+use shared::tokio;
 use std::env;
 use std::sync::Arc;
 use tower_http::cors::CorsLayer;
@@ -8,8 +9,8 @@ use tower_http::decompression::RequestDecompressionLayer;
 use tower_http::limit::RequestBodyLimitLayer;
 use tower_http::trace::TraceLayer;
 
+use shared::cache::init_redis;
 use shared::pg::init_pg;
-use shared::redis::init_redis;
 
 mod db;
 mod helpers;

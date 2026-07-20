@@ -4,7 +4,8 @@ use axum::{
     http::StatusCode,
     response::IntoResponse,
 };
-use serde_json::json;
+use shared::serde_json::json;
+use shared::sqlx::query;
 
 use crate::AppState;
 
@@ -12,7 +13,7 @@ pub async fn add_device(
     State(state): State<AppState>,
     Path(device_id): Path<String>,
 ) -> impl IntoResponse {
-    let result = sqlx::query(
+    let result = query(
         r#"
         INSERT INTO known_devices (device_id)
         VALUES ($1)
