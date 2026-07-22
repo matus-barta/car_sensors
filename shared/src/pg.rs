@@ -7,5 +7,10 @@ pub async fn init_pg(db_url: String) -> sqlx::Pool<sqlx::Postgres> {
 
     tracing::info!("Connected to Postgres");
 
+    sqlx::migrate!("../db/migrations")
+        .run(&conn)
+        .await
+        .expect("Migration failed!");
+
     return conn;
 }

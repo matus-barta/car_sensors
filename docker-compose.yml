@@ -1,0 +1,65 @@
+services:
+  postgres:
+    container_name: postgres
+    image: postgres:18
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -d postgres -U postgres"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    volumes:
+      - postgres_data:/var/lib/postgresql
+
+  pgadmin:
+    depends_on:
+      postgres:
+        condition: service_healthy
+    image: dpage/pgadmin4:latest
+    container_name: pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: pgadmin@example.com
+      PGADMIN_DEFAULT_PASSWORD: pgadmin
+      PGADMIN_LISTEN_PORT: 8888
+      PGADMIN_DISABLE_POSTFIX: true
+      GUNICORN_ACCESS_LOGFILE: "/dev/null"
+    ports:
+      - "8888:8888"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+      - ./tools/pgadmin_config/servers.json:/pgadmin4/servers.json
+      - ./tools/pgadmin_config/preferences.json:/pgadmin4/preferences.json
+
+  valkey:
+    container_name: valkey
+    image: valkey/valkey:9-alpine
+    ports:
+      - 6379:6379
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep PONG"]
+      interval: 1s
+      timeout: 3s
+      retries: 5
+    volumes:
+      - ./tools/valkey_config/valkey.conf:/etc/valkey/valkey.conf
+      - valkey_data:/data
+    command: valkey-server /etc/valkey/valkey.conf
+
+  ingest:
+    container_name: ingest
+    image: ghcr.io/matus-barta/car-sensors-ingest:latest
+    ports:
+      - 3000:3000
+    environment:
+      DATABASE_URL: "postgres://postgres:postgres@localhost/carsensors"
+      REDIS_URL: "redis://localhost"
+      SERVER_IP_PORT: "0.0.0.0:3000"
+
+volumes:
+  postgres_data:
+  pgadmin_data:
+  valkey_data:
