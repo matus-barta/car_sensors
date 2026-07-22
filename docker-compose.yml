@@ -50,10 +50,17 @@ services:
     command: valkey-server /etc/valkey/valkey.conf
 
   ingest:
+    depends_on:
+      postgres:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
     container_name: ingest
     image: ghcr.io/matus-barta/car-sensors-ingest:latest
     ports:
       - 3000:3000
+    healthcheck:
+      test: ["CMD", "/usr/bin/curl", "-f", "http://localhost:3080/health"]
     environment:
       DATABASE_URL: "postgres://postgres:postgres@localhost/carsensors"
       REDIS_URL: "redis://localhost"

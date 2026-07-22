@@ -18,7 +18,11 @@ FROM builder AS final
 COPY . .
 RUN cargo build --bin ingest --release --locked
 
+FROM alpine AS tools
+RUN apk add --no-cache curl
+
 FROM gcr.io/distroless/cc-debian13
 
+COPY --from=tools /usr/bin/curl /usr/bin/curl
 COPY --from=final /build/target/release/ingest /app/ingest
 ENTRYPOINT ["/app/ingest"]
