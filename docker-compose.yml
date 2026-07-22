@@ -3,7 +3,9 @@ services:
     container_name: postgres
     image: postgres:18
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
+    networks:
+      - db
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
@@ -29,6 +31,8 @@ services:
       GUNICORN_ACCESS_LOGFILE: "/dev/null"
     ports:
       - "8888:8888"
+    networks:
+      - db
     volumes:
       - pgadmin_data:/var/lib/pgadmin
       - ./tools/pgadmin_config/servers.json:/pgadmin4/servers.json
@@ -38,7 +42,9 @@ services:
     container_name: valkey
     image: valkey/valkey:9-alpine
     ports:
-      - 6379:6379
+      - "127.0.0.1:6379:6379"
+    networks:
+      - cache
     healthcheck:
       test: ["CMD-SHELL", "redis-cli ping | grep PONG"]
       interval: 1s
@@ -59,14 +65,23 @@ services:
     image: ghcr.io/matus-barta/car-sensors-ingest:latest
     ports:
       - 3000:3000
+    networks:
+      - db
+      - cache
     healthcheck:
-      test: ["CMD", "/usr/bin/curl", "-f", "http://localhost:3080/health"]
+      test: ["CMD", "/usr/bin/curl", "-f", "http://localhost:3000/health"]
     environment:
-      DATABASE_URL: "postgres://postgres:postgres@localhost/carsensors"
-      REDIS_URL: "redis://localhost"
+      DATABASE_URL: "postgres://postgres:postgres@postgres/postgres"
+      REDIS_URL: "redis://valkey"
       SERVER_IP_PORT: "0.0.0.0:3000"
 
 volumes:
   postgres_data:
   pgadmin_data:
   valkey_data:
+
+networks:
+  db:
+    driver: bridge
+  cache:
+    driver: bridge
