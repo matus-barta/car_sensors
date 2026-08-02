@@ -73,7 +73,7 @@ services:
       - db
       - cache
     healthcheck:
-      test: ["CMD", "/usr/bin/curl", "-f", "http://localhost:3000/health"]
+      test: ["CMD", "/usr/bin/curl", "-f", "http://localhost:3000/api/health"]
     environment:
       DATABASE_URL: "postgres://postgres:postgres@postgres/postgres"
       REDIS_URL: "redis://valkey"
