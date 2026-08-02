@@ -21,5 +21,5 @@ pub fn router(app_state: AppState) -> Router<AppState> {
             require_known_device,
         ));
 
-    public_routes.merge(protected_routes)
+    Router::new().nest("/api", public_routes.merge(protected_routes))
 }
