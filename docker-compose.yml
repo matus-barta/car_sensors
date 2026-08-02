@@ -2,6 +2,7 @@ services:
   postgres:
     container_name: postgres
     image: postgres:18
+    restart: unless-stopped
     ports:
       - "127.0.0.1:5432:5432"
     networks:
@@ -23,6 +24,7 @@ services:
         condition: service_healthy
     image: dpage/pgadmin4:latest
     container_name: pgadmin
+    restart: unless-stopped
     environment:
       PGADMIN_DEFAULT_EMAIL: pgadmin@example.com
       PGADMIN_DEFAULT_PASSWORD: pgadmin
@@ -41,6 +43,7 @@ services:
   valkey:
     container_name: valkey
     image: valkey/valkey:9-alpine
+    restart: unless-stopped
     ports:
       - "127.0.0.1:6379:6379"
     networks:
@@ -63,6 +66,7 @@ services:
         condition: service_healthy
     container_name: ingest
     image: ghcr.io/matus-barta/car-sensors-ingest:latest
+    restart: unless-stopped
     ports:
       - 3000:3000
     networks:
