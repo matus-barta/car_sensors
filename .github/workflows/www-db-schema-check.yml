@@ -1,0 +1,149 @@
+name: WWW - database schema consistency
+
+on:
+  pull_request:
+    paths:
+      - "db/migrations/**"
+      - "www/**"
+      - "tools/scripts/sync-wwW-db-schema.sh"
+      - ".github/workflows/www-db-schema-check.yml"
+
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - "db/migrations/**"
+      - "www/**"
+      - "tools/scripts/sync-wWw-db-schema.sh"
+      - ".github/workflows/www-db-schema-check.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: www-db-schema-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  schema-consistency:
+    name: SQLx migrations match Drizzle schema
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: carsensors_schema_check
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d carsensors_schema_check"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 15
+
+    env:
+      DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/carsensors_schema_check
+
+      # Required if pnpm check loads the Better Auth configuration.
+      ORIGIN: http://localhost:5173
+      BETTER_AUTH_SECRET: ci-only-better-auth-secret-not-used-in-production
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust tools
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-sqlx-cli-0.9.0
+          restore-keys: |
+            ${{ runner.os }}-sqlx-cli-
+
+      - name: Install SQLx CLI
+        shell: bash
+        run: |
+          if ! command -v sqlx >/dev/null 2>&1; then
+            cargo install sqlx-cli \
+              --version 0.9.0 \
+              --locked \
+              --no-default-features \
+              --features rustls,postgres
+          fi
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: www/pnpm-lock.yaml
+
+      - name: Install WWW dependencies
+        working-directory: www
+        run: pnpm install --frozen-lockfile
+
+      - name: Synchronize WWW database schema
+        run: bash tools/scripts/sync-wwW-db-schema.sh
+
+      - name: Check generated Drizzle schema
+        shell: bash
+        run: |
+          if ! git diff --exit-code -- \
+            www/src/lib/server/db/generated/schema.ts \
+            www/src/lib/server/db/generated/relations.ts; then
+
+            echo
+            echo "ERROR: The generated Drizzle schema is out of date."
+            echo
+            echo "A change under db/migrations was not reflected in the"
+            echo "committed WWW Drizzle schema."
+            echo
+            echo "Run locally:"
+            echo
+            echo "  ./tools/sync-ww-db-schema.sh"
+            echo
+            echo "Then commit:"
+            echo
+            echo "  www/src/lib/server/db/generated/schema.ts"
+            echo "  www/src/lib/server/db/generated/relations.ts"
+            echo
+
+            exit 1
+          fi
+
+      - name: Reject untracked generated schema files
+        shell: bash
+        run: |
+          untracked_files="$(
+            git ls-files \
+              --others \
+              --exclude-standard \
+              -- www/src/lib/server/db/generated
+          )"
+
+          if [ -n "$untracked_files" ]; then
+            echo "ERROR: Drizzle generated untracked files:"
+            echo
+            echo "$untracked_files"
+            echo
+            echo "Commit required TypeScript output or update .gitignore"
+            echo "for Drizzle migration artifacts that SQLx does not use."
+            exit 1
+          fi
