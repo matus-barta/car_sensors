@@ -3,6 +3,8 @@
 target
 .sqlx
 
+output.txt
+
 node_modules
 
 # Output
