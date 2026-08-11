@@ -2,6 +2,12 @@
 	"name": "www",
 	"version": "0.0.1",
 	"packageManager": "pnpm@11.21.0",
+	"license": "AGPL-3.0-only",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/matus-barta/car_sensors.git",
+		"directory": "www"
+	},
 	"type": "module",
 	"scripts": {
 		"dev": "vite dev",
