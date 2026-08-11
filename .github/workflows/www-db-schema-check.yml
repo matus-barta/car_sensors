@@ -5,7 +5,7 @@ on:
     paths:
       - "db/migrations/**"
       - "www/**"
-      - "tools/scripts/sync-wwW-db-schema.sh"
+      - "tools/scripts/sync-www-db-schema.sh"
       - ".github/workflows/www-db-schema-check.yml"
 
   push:
@@ -15,7 +15,7 @@ on:
     paths:
       - "db/migrations/**"
       - "www/**"
-      - "tools/scripts/sync-wWw-db-schema.sh"
+      - "tools/scripts/sync-www-db-schema.sh"
       - ".github/workflows/www-db-schema-check.yml"
 
 permissions:
@@ -100,7 +100,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Synchronize WWW database schema
-        run: bash tools/scripts/sync-wwW-db-schema.sh
+        run: bash tools/scripts/sync-www-db-schema.sh
 
       - name: Check generated Drizzle schema
         shell: bash
@@ -117,7 +117,7 @@ jobs:
             echo
             echo "Run locally:"
             echo
-            echo "  ./tools/sync-ww-db-schema.sh"
+            echo "  ./tools/sync-www-db-schema.sh"
             echo
             echo "Then commit:"
             echo
