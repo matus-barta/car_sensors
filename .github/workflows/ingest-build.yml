@@ -10,7 +10,7 @@ on:
       - "shared/**"
       - "Cargo.toml"
       - "Cargo.lock"
-      - ".github/workflows/ingest.yml"
+      - ".github/workflows/ingest-build.yml"
       - "!ingest/*.md"
       - ".dockerignore"
       - "!docker-compose.yml"
