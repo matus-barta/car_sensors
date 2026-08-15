@@ -5,14 +5,14 @@ target
 
 output.txt
 
-node_modules
+www/node_modules
 
 # Output
 .output
 .vercel
 .netlify
 .wrangler
-.svelte-kit
+www/.svelte-kit
 build
 
 # OS
@@ -26,10 +26,10 @@ Thumbs.db
 !.env.test
 
 # Vite
-vite.config.js.timestamp-*
-vite.config.ts.timestamp-*
+wwW/vite.config.js.timestamp-*
+www/vite.config.ts.timestamp-*
 # Playwright
-test-results
+www/test-results
 
 # Temporary schema used only when bootstrapping/upgrading Better Auth
 www/.generated-auth/
