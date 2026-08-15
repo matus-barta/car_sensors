@@ -28,19 +28,11 @@
 	let submitting = $state(false);
 	let errorMessage = $state<string | null>(null);
 
-	const normalizedName = $derived(name.trim());
-	const normalizedDeviceId = $derived(deviceId.trim());
-
-	const canSubmit = $derived(
-		normalizedName.length > 0 && normalizedDeviceId.length > 0 && !submitting
-	);
-
 	function resetForm() {
 		name = '';
 		deviceId = '';
 		notes = '';
 		errorMessage = null;
-		submitting = false;
 	}
 
 	function handleOpenChange(nextOpen: boolean) {
@@ -54,8 +46,12 @@
 	function closeDialog() {
 		if (submitting) return;
 
-		open = false;
 		resetForm();
+		open = false;
+	}
+
+	function canSubmit(): boolean {
+		return name.trim().length > 0 && deviceId.trim().length > 0 && !submitting;
 	}
 
 	async function submit(event: SubmitEvent) {
@@ -64,6 +60,10 @@
 		if (submitting) return;
 
 		errorMessage = null;
+
+		const normalizedName = name.trim();
+		const normalizedDeviceId = deviceId.trim();
+		const normalizedNotes = notes.trim();
 
 		if (!normalizedName) {
 			errorMessage = 'Enter a vehicle name.';
@@ -81,11 +81,11 @@
 			await onSubmit?.({
 				name: normalizedName,
 				deviceId: normalizedDeviceId,
-				notes: notes.trim() || null
+				notes: normalizedNotes || null
 			});
 
-			open = false;
 			resetForm();
+			open = false;
 		} catch (error) {
 			console.error('Failed to add vehicle:', error);
 
@@ -186,7 +186,7 @@
 					Cancel
 				</Button>
 
-				<Button type="submit" disabled={!canSubmit}>
+				<Button type="submit" disabled={!canSubmit()}>
 					{#if submitting}
 						<LoaderCircle class="size-4 animate-spin" aria-hidden="true" />
 						Adding…

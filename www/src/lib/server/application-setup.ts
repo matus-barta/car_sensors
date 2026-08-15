@@ -25,11 +25,11 @@ export async function getApplicationSetupState(): Promise<ApplicationSetupState>
 		})
 		.from(schema.user);
 
-	if (users.count === 0) {
-		return 'required';
+	if (!users) {
+		throw new Error('Unable to determine the application user count.');
 	}
 
-	return 'incomplete';
+	return users.count === 0 ? 'required' : 'incomplete';
 }
 
 export async function isApplicationSetupRequired(): Promise<boolean> {
