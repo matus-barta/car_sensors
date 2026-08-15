@@ -1,4 +1,4 @@
-name: WWW - database schema consistency
+name: WWW - validation
 
 on:
   pull_request:
@@ -6,7 +6,8 @@ on:
       - "db/migrations/**"
       - "www/**"
       - "tools/scripts/sync-www-db-schema.sh"
-      - ".github/workflows/www-db-schema-check.yml"
+      - "tools/scripts/cleanup-drizzle-output.js"
+      - ".github/workflows/www-validation.yml"
 
   push:
     branches:
@@ -16,18 +17,19 @@ on:
       - "db/migrations/**"
       - "www/**"
       - "tools/scripts/sync-www-db-schema.sh"
-      - ".github/workflows/www-db-schema-check.yml"
+      - "tools/scripts/cleanup-drizzle-output.js"
+      - ".github/workflows/www-validation.yml"
 
 permissions:
   contents: read
 
 concurrency:
-  group: www-db-schema-${{ github.workflow }}-${{ github.ref }}
+  group: www-validation-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  schema-consistency:
-    name: SQLx migrations match Drizzle schema
+  validate:
+    name: Validate WWW project and database schemas
     runs-on: ubuntu-latest
 
     services:
@@ -47,8 +49,6 @@ jobs:
 
     env:
       DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/carsensors_schema_check
-
-      # Required if pnpm check loads the Better Auth configuration.
       ORIGIN: http://localhost:5173
       BETTER_AUTH_SECRET: ci-only-better-auth-secret-not-used-in-production
 
@@ -66,7 +66,6 @@ jobs:
             ~/.cargo/bin
             ~/.cargo/registry
             ~/.cargo/git
-            target
           key: ${{ runner.os }}-sqlx-cli-0.9.0
           restore-keys: |
             ${{ runner.os }}-sqlx-cli-
@@ -99,36 +98,56 @@ jobs:
         working-directory: www
         run: pnpm install --frozen-lockfile
 
-      - name: Synchronize WWW database schema
+      - name: Synchronize schemas and validate WWW project
         run: bash tools/scripts/sync-www-db-schema.sh
 
-      - name: Check generated Drizzle schema
+      - name: Verify required generated schema files
+        shell: bash
+        run: |
+          required_files=(
+            "www/src/lib/server/db/generated/schema.ts"
+            "www/src/lib/server/db/generated/auth.schema.ts"
+          )
+
+          for file in "${required_files[@]}"; do
+            if [ ! -f "$file" ]; then
+              echo "ERROR: Required generated schema file is missing:"
+              echo
+              echo "  $file"
+              echo
+              exit 1
+            fi
+          done
+
+      - name: Check generated database schemas
         shell: bash
         run: |
           if ! git diff --exit-code -- \
             www/src/lib/server/db/generated/schema.ts \
-            www/src/lib/server/db/generated/relations.ts; then
+            www/src/lib/server/db/generated/auth.schema.ts; then
 
             echo
-            echo "ERROR: The generated Drizzle schema is out of date."
+            echo "ERROR: Generated database schemas are out of date."
             echo
-            echo "A change under db/migrations was not reflected in the"
-            echo "committed WWW Drizzle schema."
+            echo "The committed SQLx migrations, application schema, or"
+            echo "Better Auth configuration do not match the committed"
+            echo "generated TypeScript schemas."
             echo
-            echo "Run locally:"
+            echo "Run locally from the repository root:"
             echo
-            echo "  ./tools/sync-www-db-schema.sh"
+            echo "  ./tools/scripts/sync-www-db-schema.sh"
             echo
-            echo "Then commit:"
+            echo
+            echo "Review and commit:"
             echo
             echo "  www/src/lib/server/db/generated/schema.ts"
-            echo "  www/src/lib/server/db/generated/relations.ts"
+            echo "  www/src/lib/server/db/generated/auth.schema.ts"
             echo
 
             exit 1
           fi
 
-      - name: Reject untracked generated schema files
+      - name: Reject unexpected generated files
         shell: bash
         run: |
           untracked_files="$(
@@ -139,11 +158,11 @@ jobs:
           )"
 
           if [ -n "$untracked_files" ]; then
-            echo "ERROR: Drizzle generated untracked files:"
+            echo "ERROR: Unexpected generated files were created:"
             echo
             echo "$untracked_files"
             echo
-            echo "Commit required TypeScript output or update .gitignore"
-            echo "for Drizzle migration artifacts that SQLx does not use."
+            echo "Commit required TypeScript schema files or update"
+            echo ".gitignore for unused Drizzle migration artifacts."
             exit 1
           fi

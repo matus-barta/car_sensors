@@ -2,7 +2,7 @@
 
 [![License](https://img.shields.io/github/license/matus-barta/car_sensors)](LICENSE) [![Rust](https://img.shields.io/badge/Rust-stable-orange)](https://www.rust-lang.org/) ![Last Commit](https://img.shields.io/github/last-commit/matus-barta/car_sensors)
 
-[![Ingest Build](https://github.com/matus-barta/car_sensors/actions/workflows/ingest-build.yml/badge.svg)](https://github.com/matus-barta/car_sensors/actions/workflows/ingest-build.yml) [![WWW - database schema consistency](https://github.com/matus-barta/car_sensors/actions/workflows/www-db-schema-check.yml/badge.svg)](https://github.com/matus-barta/car_sensors/actions/workflows/www-db-schema-check.yml)
+[![Ingest Build](https://github.com/matus-barta/car_sensors/actions/workflows/ingest-build.yml/badge.svg)](https://github.com/matus-barta/car_sensors/actions/workflows/ingest-build.yml) [![WWW - database schema consistency](https://github.com/matus-barta/car_sensors/actions/workflows/www-validation.yml/badge.svg)](https://github.com/matus-barta/car_sensors/actions/workflows/www-validation.yml)
 
 Open-source GPS tracking platform.
 
