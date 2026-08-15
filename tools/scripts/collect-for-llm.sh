@@ -31,6 +31,7 @@ EXCLUDED_FOLDERS=(
     "target"
     "android"
     "tools"
+    "ui"
 )
 
 is_excluded_file() {
