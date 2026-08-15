@@ -19,16 +19,15 @@
 		"lint": "prettier --check . && eslint .",
 		"format": "prettier --write .",
 		"test:unit": "vitest",
-		"test": "npm run test:unit -- --run && npm run test:e2e",
+		"test": "pnpm test:unit --run && pnpm test:e2e",
 		"test:e2e": "playwright install && playwright test",
-		"db:cleanup": "node scripts/cleanup-drizzle-output.js",
+		"db:cleanup": "node ../tools/scripts/cleanup-drizzle-output.js",
 		"db:pull": "drizzle-kit pull",
 		"db:studio": "drizzle-kit studio",
-		"db:format": "prettier --write src/lib/server/db/generated/*.ts",
-		"db:sync": "pnpm db:pull && pnpm auth:schema:generate && pnpm db:format",
+		"db:format": "prettier --write \"src/lib/server/db/generated/*.ts\"",
+		"db:sync": "pnpm db:pull && pnpm db:cleanup && pnpm auth:schema:generate && pnpm db:format",
 		"db:check": "pnpm db:sync && git diff --exit-code -- src/lib/server/db/generated",
-		"auth:schema:generate": "auth generate --config src/lib/server/auth.ts --output src/lib/server/db/generated/auth.schema.ts --yes",
-		"auth:schema:export": "drizzle-kit export --dialect=postgresql --schema=.generated-auth/auth.schema.ts"
+		"auth:schema:generate": "auth generate --config src/lib/server/auth.ts --output src/lib/server/db/generated/auth.schema.ts --yes"
 	},
 	"devDependencies": {
 		"@eslint/js": "^10.0.1",

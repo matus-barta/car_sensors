@@ -1,20 +1,21 @@
 import { readFile, rm } from 'node:fs/promises';
 
 const relationsPath = new URL(
-    '../src/lib/server/db/generated/relations.ts',
+    '../../www/src/lib/server/db/generated/relations.ts',
     import.meta.url
 );
 
 try {
     const content = await readFile(relationsPath, 'utf8');
 
-    const hasNoRelations =
-        content.includes("import {} from './schema'") &&
-        !content.includes('export const');
+    const hasEmptySchemaImport =
+        /import\s*\{\s*\}\s*from\s*['"]\.\/schema['"]\s*;?/.test(content);
 
-    if (hasNoRelations) {
+    const hasRelationExports = /\bexport\s+const\b/.test(content);
+
+    if (hasEmptySchemaImport && !hasRelationExports) {
         await rm(relationsPath);
-        console.log('Removed empty generated relations.ts');
+        console.info('Removed empty generated relations.ts');
     }
 } catch (error) {
     if (
