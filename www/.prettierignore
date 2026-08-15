@@ -1,10 +1,23 @@
-# Package Managers
+# Package managers
 package-lock.json
 pnpm-lock.yaml
 yarn.lock
 bun.lock
 bun.lockb
 
-# Miscellaneous
-/static/
-/drizzle/
+# Generated output
+.svelte-kit/
+build/
+coverage/
+playwright-report/
+test-results/
+
+# Static assets
+static/
+
+# Generated Drizzle migration artifacts
+src/lib/server/db/generated/meta/
+src/lib/server/db/generated/*.sql
+
+# Generated shadcn-svelte components
+src/lib/components/ui/
