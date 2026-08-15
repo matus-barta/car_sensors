@@ -1,61 +1,61 @@
 import { fail, redirect } from '@sveltejs/kit';
-import type { Actions } from './$types';
-import type { PageServerLoad } from './$types';
-import { auth } from '$lib/server/auth';
 import { APIError } from 'better-auth/api';
 
-export const load: PageServerLoad = (event) => {
-	if (event.locals.user) {
-		return redirect(302, '/demo/better-auth');
+import { auth } from '$lib/server/auth';
+import { isApplicationSetupRequired } from '$lib/server/application-setup';
+
+import type { Actions, PageServerLoad } from './$types';
+
+export const load: PageServerLoad = async ({ locals }) => {
+	if (await isApplicationSetupRequired()) {
+		redirect(303, '/auth/setup');
 	}
+
+	if (locals.user) {
+		redirect(303, '/');
+	}
+
 	return {};
 };
 
 export const actions: Actions = {
-	signInEmail: async (event) => {
+	default: async (event) => {
 		const formData = await event.request.formData();
-		const email = formData.get('email')?.toString() ?? '';
+
+		const email = formData.get('email')?.toString().trim().toLowerCase() ?? '';
 		const password = formData.get('password')?.toString() ?? '';
+
+		if (!email || !password) {
+			return fail(400, {
+				message: 'Enter your email address and password.',
+				email
+			});
+		}
 
 		try {
 			await auth.api.signInEmail({
+				headers: event.request.headers,
 				body: {
 					email,
-					password,
-					callbackURL: '/auth/verification-success'
+					password
 				}
 			});
 		} catch (error) {
 			if (error instanceof APIError) {
-				return fail(400, { message: error.message || 'Signin failed' });
+				return fail(400, {
+					message: 'The email address or password is incorrect.',
+					email
+				});
 			}
-			return fail(500, { message: 'Unexpected error' });
-		}
 
-		return redirect(302, '/demo/better-auth');
-	},
-	signUpEmail: async (event) => {
-		const formData = await event.request.formData();
-		const email = formData.get('email')?.toString() ?? '';
-		const password = formData.get('password')?.toString() ?? '';
-		const name = formData.get('name')?.toString() ?? '';
+			console.error('Sign-in failed:', error);
 
-		try {
-			await auth.api.signUpEmail({
-				body: {
-					email,
-					password,
-					name,
-					callbackURL: '/auth/verification-success'
-				}
+			return fail(500, {
+				message: 'Sign-in is temporarily unavailable.',
+				email
 			});
-		} catch (error) {
-			if (error instanceof APIError) {
-				return fail(400, { message: error.message || 'Registration failed' });
-			}
-			return fail(500, { message: 'Unexpected error' });
 		}
 
-		return redirect(302, '/demo/better-auth');
+		redirect(303, '/');
 	}
 };

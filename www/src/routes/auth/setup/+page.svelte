@@ -1,6 +1,6 @@
 <script lang="ts">
 	import CarFront from '@lucide/svelte/icons/car-front';
-	import LogIn from '@lucide/svelte/icons/log-in';
+	import ShieldCheck from '@lucide/svelte/icons/shield-check';
 
 	import { enhance } from '$app/forms';
 
@@ -11,16 +11,17 @@
 	import { Label } from '$lib/components/ui/label';
 
 	import type { ActionData } from './$types';
+	import { PASSWD_LENGTH } from '$lib/config';
 
 	let { form }: { form: ActionData } = $props();
 </script>
 
 <svelte:head>
-	<title>Sign in | Car Sensors</title>
+	<title>Set up Car Sensors</title>
 </svelte:head>
 
 <div class="flex min-h-dvh items-center justify-center bg-muted/30 p-4">
-	<Card.Root class="w-full max-w-sm">
+	<Card.Root class="w-full max-w-md">
 		<Card.Header class="space-y-4">
 			<div
 				class="flex size-12 items-center justify-center rounded-xl bg-primary text-primary-foreground"
@@ -29,8 +30,11 @@
 			</div>
 
 			<div class="space-y-1">
-				<Card.Title>Sign in</Card.Title>
-				<Card.Description>Sign in to monitor your vehicles and telemetry.</Card.Description>
+				<Card.Title>Set up Car Sensors</Card.Title>
+				<Card.Description>
+					Create the initial administrator account. Public registration will be disabled after
+					setup.
+				</Card.Description>
 			</div>
 		</Card.Header>
 
@@ -43,32 +47,56 @@
 				{/if}
 
 				<div class="grid gap-2">
-					<Label for="login-email">Email</Label>
+					<Label for="setup-name">Name</Label>
 					<Input
-						id="login-email"
-						name="email"
-						type="email"
-						value={form?.email ?? ''}
-						autocomplete="email"
-						autofocus
+						id="setup-name"
+						name="name"
+						value={form?.name ?? ''}
+						autocomplete="name"
 						required
 					/>
 				</div>
 
 				<div class="grid gap-2">
-					<Label for="login-password">Password</Label>
+					<Label for="setup-email">Email</Label>
 					<Input
-						id="login-password"
+						id="setup-email"
+						name="email"
+						type="email"
+						value={form?.email ?? ''}
+						autocomplete="email"
+						required
+					/>
+				</div>
+
+				<div class="grid gap-2">
+					<Label for="setup-password">Password</Label>
+					<Input
+						id="setup-password"
 						name="password"
 						type="password"
-						autocomplete="current-password"
+						autocomplete="new-password"
+						minlength={PASSWD_LENGTH}
+						required
+					/>
+					<p class="text-xs text-muted-foreground">Use at least {PASSWD_LENGTH} characters.</p>
+				</div>
+
+				<div class="grid gap-2">
+					<Label for="setup-confirm-password">Confirm password</Label>
+					<Input
+						id="setup-confirm-password"
+						name="confirmPassword"
+						type="password"
+						autocomplete="new-password"
+						minlength={PASSWD_LENGTH}
 						required
 					/>
 				</div>
 
 				<Button type="submit" class="w-full">
-					<LogIn class="size-4" aria-hidden="true" />
-					Sign in
+					<ShieldCheck class="size-4" aria-hidden="true" />
+					Create administrator
 				</Button>
 			</form>
 		</Card.Content>

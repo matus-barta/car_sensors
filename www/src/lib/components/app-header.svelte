@@ -80,7 +80,7 @@
 	<div class="flex min-w-0 flex-1 items-center gap-3">
 		<a
 			href={resolve('/')}
-			class="focus-visibleound flex shrink-0 items-center gap-2 rounded-md focus-visible:ring-2"
+			class="flex shrink-0 items-center gap-2 rounded-md focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
 		>
 			<span
 				class="flex size-9 items-center justify-center rounded-lg bg-primary text-primary-foreground"
@@ -241,7 +241,7 @@
 
 			<DropdownMenu.Separator />
 
-			<DropdownMenu.Item onclick={onAddVehicle}>
+			<DropdownMenu.Item onclick={addVehicle}>
 				<Plus class="size-4" aria-hidden="true" />
 				Add vehicle
 			</DropdownMenu.Item>

@@ -21,12 +21,13 @@
 		"test:unit": "vitest",
 		"test": "npm run test:unit -- --run && npm run test:e2e",
 		"test:e2e": "playwright install && playwright test",
+		"db:cleanup": "node scripts/cleanup-drizzle-output.js",
 		"db:pull": "drizzle-kit pull",
 		"db:studio": "drizzle-kit studio",
-		"db:format": "prettier --write src/lib/server/db/generated/schema.ts src/lib/server/db/generated/relations.ts",
-		"db:sync": "pnpm db:pull && pnpm db:format",
+		"db:format": "prettier --write src/lib/server/db/generated/*.ts",
+		"db:sync": "pnpm db:pull && pnpm auth:schema:generate && pnpm db:format",
 		"db:check": "pnpm db:sync && git diff --exit-code -- src/lib/server/db/generated",
-		"auth:schema:generate": "auth generate --config src/lib/server/auth.ts --output .generated-auth/auth.schema.ts --yes",
+		"auth:schema:generate": "auth generate --config src/lib/server/auth.ts --output src/lib/server/db/generated/auth.schema.ts --yes",
 		"auth:schema:export": "drizzle-kit export --dialect=postgresql --schema=.generated-auth/auth.schema.ts"
 	},
 	"devDependencies": {
