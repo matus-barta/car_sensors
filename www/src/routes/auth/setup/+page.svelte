@@ -11,7 +11,7 @@
 	import { Label } from '$lib/components/ui/label';
 
 	import type { ActionData } from './$types';
-	import { PASSWD_LENGTH } from '$lib/config';
+	import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from '$lib/config';
 
 	let { form }: { form: ActionData } = $props();
 </script>
@@ -76,10 +76,13 @@
 						name="password"
 						type="password"
 						autocomplete="new-password"
-						minlength={PASSWD_LENGTH}
+						minlength={MIN_PASSWORD_LENGTH}
+						maxlength={MAX_PASSWORD_LENGTH}
 						required
 					/>
-					<p class="text-xs text-muted-foreground">Use at least {PASSWD_LENGTH} characters.</p>
+					<p class="text-xs text-muted-foreground">
+						Use at least {MIN_PASSWORD_LENGTH} characters.
+					</p>
 				</div>
 
 				<div class="grid gap-2">
@@ -89,7 +92,8 @@
 						name="confirmPassword"
 						type="password"
 						autocomplete="new-password"
-						minlength={PASSWD_LENGTH}
+						minlength={MIN_PASSWORD_LENGTH}
+						maxlength={MAX_PASSWORD_LENGTH}
 						required
 					/>
 				</div>

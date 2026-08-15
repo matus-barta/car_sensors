@@ -8,7 +8,7 @@ import { sveltekitCookies } from 'better-auth/svelte-kit';
 
 import { AUTH_SETUP_HEADER, AUTH_SETUP_TOKEN } from '$lib/server/auth-bootstrap';
 import { db, schema } from '$lib/server/db';
-import { PASSWD_LENGTH } from '$lib/config';
+import { MIN_PASSWORD_LENGTH, MAX_PASSWORD_LENGTH } from '$lib/config';
 
 if (!env.ORIGIN) {
 	throw new Error('ORIGIN is not set');
@@ -25,7 +25,8 @@ export const auth = betterAuth({
 	database: drizzleAdapter(db, { provider: 'pg', schema }),
 	emailAndPassword: {
 		enabled: true,
-		minPasswordLength: PASSWD_LENGTH
+		minPasswordLength: MIN_PASSWORD_LENGTH,
+		maxPasswordLength: MAX_PASSWORD_LENGTH
 	},
 
 	hooks: {

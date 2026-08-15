@@ -7,8 +7,8 @@ import { auth } from '$lib/server/auth';
 import { db, schema } from '$lib/server/db';
 import { isApplicationSetupRequired } from '$lib/server/application-setup';
 
-import type { Actions, PageServerLoad } from '../../$types';
-import { PASSWD_LENGTH } from '$lib/config';
+import type { Actions, PageServerLoad } from './$types';
+import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from '$lib/config';
 
 export const load: PageServerLoad = async () => {
 	if (!(await isApplicationSetupRequired())) {
@@ -43,9 +43,17 @@ export const actions: Actions = {
 			});
 		}
 
-		if (password.length < PASSWD_LENGTH) {
+		if (password.length < MIN_PASSWORD_LENGTH) {
 			return fail(400, {
-				message: `Use a password containing at least ${PASSWD_LENGTH} characters.`,
+				message: `Use a password containing at least ${MIN_PASSWORD_LENGTH} characters.`,
+				name,
+				email
+			});
+		}
+
+		if (password.length > MAX_PASSWORD_LENGTH) {
+			return fail(400, {
+				message: `The password must not exceed ${MAX_PASSWORD_LENGTH} characters.`,
 				name,
 				email
 			});
@@ -91,7 +99,7 @@ export const actions: Actions = {
 				const headers = new Headers(event.request.headers);
 				headers.set(AUTH_SETUP_HEADER, AUTH_SETUP_TOKEN);
 
-				await auth.api.signUpEmail({
+				const signUpResult = await auth.api.signUpEmail({
 					headers,
 					body: {
 						name,
@@ -100,12 +108,14 @@ export const actions: Actions = {
 					}
 				});
 
+				const createdUserId = signUpResult.user.id;
+
 				const updatedUsers = await transaction
 					.update(schema.user)
 					.set({
 						role: 'admin'
 					})
-					.where(eq(schema.user.email, email))
+					.where(eq(schema.user.id, createdUserId))
 					.returning({
 						id: schema.user.id
 					});
