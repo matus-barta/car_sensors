@@ -3,7 +3,6 @@
 	import ChevronsUpDown from '@lucide/svelte/icons/chevrons-up-down';
 	import LogOut from '@lucide/svelte/icons/log-out';
 	import Plus from '@lucide/svelte/icons/plus';
-	import UserRound from '@lucide/svelte/icons/user-round';
 	import Check from '@lucide/svelte/icons/check';
 
 	import { Button } from '$lib/components/ui/button';
@@ -244,11 +243,6 @@
 			<DropdownMenu.Item onclick={addVehicle}>
 				<Plus class="size-4" aria-hidden="true" />
 				Add vehicle
-			</DropdownMenu.Item>
-
-			<DropdownMenu.Item disabled>
-				<UserRound class="size-4" aria-hidden="true" />
-				Account
 			</DropdownMenu.Item>
 
 			<DropdownMenu.Separator />

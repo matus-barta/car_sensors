@@ -11,16 +11,7 @@ export default defineConfig({
 		url: process.env.DATABASE_URL
 	},
 	schemaFilter: ['public'],
-	// Pull application tables, but exclude SQLx infrastructure.
-	tablesFilter: [
-		'!_sqlx_migrations',
-
-		// Better Auth supplies its own runtime Drizzle schema.
-		'!user',
-		'!session',
-		'!account',
-		'!verification'
-	],
+	tablesFilter: ['application_setup', 'known_devices', 'telemetry_samples'],
 	verbose: true,
 	strict: true
 });

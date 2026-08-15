@@ -1,2 +1,6 @@
-<h1>Welcome to SvelteKit</h1>
-<p>Visit <a href="https://svelte.dev/docs/kit">svelte.dev/docs/kit</a> to read the documentation</p>
+<div class="flex h-full items-center justify-center bg-muted/30">
+	<div class="text-center">
+		<p class="text-sm font-medium">Vehicle map</p>
+		<p class="mt-1 text-sm text-muted-foreground">Map integration will be added here.</p>
+	</div>
+</div>

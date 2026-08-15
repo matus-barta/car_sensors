@@ -14,6 +14,6 @@
 </script>
 
 <Avatar.Root class={className}>
-	<Avatar.Image src={image} alt="user avatar" />
+	<Avatar.Image src={image} alt={name} />
 	<Avatar.Fallback>{initials}</Avatar.Fallback>
 </Avatar.Root>
