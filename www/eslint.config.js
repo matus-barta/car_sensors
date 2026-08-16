@@ -39,8 +39,6 @@ export default defineConfig(
 		rules: {}
 	},
 	{
-		ignores: [
-			'src/lib/components/ui/**'
-		]
+		ignores: ['src/lib/components/ui/**']
 	}
 );
