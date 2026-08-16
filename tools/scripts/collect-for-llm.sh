@@ -16,6 +16,7 @@ EXCLUDED_FILENAMES=(
     "LICENSE"
     "pnpm-lock.yaml"
     "*.svg"
+    "src/lib/server/db/generated/*.sql"
 )
 
 # Folder names or relative folder paths to exclude.
@@ -32,6 +33,8 @@ EXCLUDED_FOLDERS=(
     "android"
     "tools"
     "ui"
+    "test-results"
+    "src/lib/server/db/generated/meta"
 )
 
 is_excluded_file() {
