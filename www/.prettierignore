@@ -15,8 +15,9 @@ test-results/
 # Static assets
 static/
 
-# Generated database schemas
-src/lib/server/db/generated/
+# Generated Drizzle migration artifacts
+src/lib/server/db/generated/meta/
+src/lib/server/db/generated/*.sql
 
 # Generated shadcn-svelte components
 src/lib/components/ui/
