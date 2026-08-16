@@ -9,40 +9,47 @@
 	} from '$lib/components/add-vehicle-dialog.svelte';
 	import AppHeader, { type HeaderUser } from '$lib/components/app-header.svelte';
 	import type { VehicleSummary } from '$lib/models/vehicle';
+	import { setVehicleState, VehicleState } from '$lib/state/vehicles.svelte';
 
 	let { children, data } = $props();
 
-	let vehicles: VehicleSummary[] = $state([
-		{
-			id: 'car-1',
-			name: 'Škoda Octavia',
-			status: 'online',
-			lastSeenAt: new Date()
-		},
-		{
-			id: 'car-2',
-			name: 'Volkswagen Golf',
-			status: 'stale',
-			lastSeenAt: new Date(Date.now() - 12 * 60 * 1000)
-		},
-		{
-			id: 'car-3',
-			name: 'Toyota Corolla',
-			status: 'offline',
-			lastSeenAt: new Date(Date.now() - 2 * 60 * 60 * 1000)
-		}
-	]);
+	const vehicleState = setVehicleState(
+		new VehicleState(
+			[
+				{
+					id: 'car-1',
+					name: 'Škoda Octavia',
+					status: 'online',
+					lastSeenAt: new Date(),
+					latitude: 48.1486,
+					longitude: 17.1077
+				},
+				{
+					id: 'car-2',
+					name: 'Volkswagen Golf',
+					status: 'stale',
+					lastSeenAt: new Date(Date.now() - 12 * 60 * 1000),
+					latitude: 48.156,
+					longitude: 17.115
+				},
+				{
+					id: 'car-3',
+					name: 'Toyota Corolla',
+					status: 'offline',
+					lastSeenAt: new Date(Date.now() - 2 * 60 * 60 * 1000),
+					latitude: 48.141,
+					longitude: 17.095
+				}
+			],
+			'car-1'
+		)
+	);
 
-	let selectedVehicleId = $state<string | null>('car-1');
 	let addVehicleDialogOpen = $state(false);
 
 	const headerUser = $derived<HeaderUser | null>(
 		data.user ? { name: data.user.name, email: data.user.email, image: data.user.image } : null
 	);
-
-	function selectVehicle(vehicleId: string) {
-		selectedVehicleId = vehicleId;
-	}
 
 	function openAddVehicleDialog() {
 		addVehicleDialogOpen = true;
@@ -60,10 +67,6 @@
 	}
 
 	async function addVehicle(input: AddVehicleInput) {
-		console.info('Add vehicle:', input);
-
-		// Temporary local implementation.
-		// Replace this with a server action or API request.
 		const vehicle: VehicleSummary = {
 			id: input.deviceId,
 			name: input.name,
@@ -71,8 +74,7 @@
 			lastSeenAt: null
 		};
 
-		vehicles.push(vehicle);
-		selectedVehicleId = vehicle.id;
+		vehicleState.addVehicle(vehicle);
 	}
 </script>
 
@@ -85,9 +87,9 @@
 	<div class="flex h-dvh flex-col overflow-hidden">
 		<AppHeader
 			user={headerUser}
-			{vehicles}
-			{selectedVehicleId}
-			onVehicleSelect={selectVehicle}
+			vehicles={vehicleState.vehicles}
+			selectedVehicleId={vehicleState.selectedVehicleId}
+			onVehicleSelect={(vehicleId) => vehicleState.selectVehicle(vehicleId)}
 			onAddVehicle={openAddVehicleDialog}
 			onSignOut={signOut}
 		/>

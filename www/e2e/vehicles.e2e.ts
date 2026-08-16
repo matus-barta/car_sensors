@@ -36,6 +36,8 @@ test.describe('vehicle selection and creation', () => {
 
 		await expect(page).toHaveURL('/');
 		await expect(getVehicleSelector(page)).toBeVisible();
+
+		await expect(page.getByTestId('vehicle-map')).toBeVisible();
 	});
 
 	test('shows the initially selected vehicle', async ({ page }) => {

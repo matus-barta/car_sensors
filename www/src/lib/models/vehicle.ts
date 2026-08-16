@@ -5,4 +5,7 @@ export interface VehicleSummary {
 	name: string;
 	status: VehicleStatus;
 	lastSeenAt?: Date | string | null;
+	latitude?: number | null;
+	longitude?: number | null;
+	bearing?: number | null;
 }

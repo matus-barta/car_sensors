@@ -1,6 +1,16 @@
-<div class="flex h-full items-center justify-center bg-muted/30">
-	<div class="text-center">
-		<p class="text-sm font-medium">Vehicle map</p>
-		<p class="mt-1 text-sm text-muted-foreground">Map integration will be added here.</p>
-	</div>
-</div>
+<script lang="ts">
+	import VehicleMap from '$lib/components/vehicle-map.svelte';
+	import { getVehicleState } from '$lib/state/vehicles.svelte';
+
+	const vehicleState = getVehicleState();
+</script>
+
+<svelte:head>
+	<title>Vehicle map | Car Sensors</title>
+</svelte:head>
+
+<VehicleMap
+	vehicles={vehicleState.vehicles}
+	selectedVehicleId={vehicleState.selectedVehicleId}
+	onVehicleSelect={(vehicleId) => vehicleState.selectVehicle(vehicleId)}
+/>
