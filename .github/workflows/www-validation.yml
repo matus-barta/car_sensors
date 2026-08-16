@@ -171,10 +171,6 @@ jobs:
       - name: Set up WWW environment
         uses: ./.github/actions/setup-www
 
-      - name: Install Playwright Chromium
-        working-directory: www
-        run: pnpm exec playwright install --with-deps chromium
-
       - name: Run end-to-end tests
         working-directory: www
         run: pnpm test:e2e

@@ -7,6 +7,11 @@ inputs:
     required: false
     default: "true"
 
+  install-playwright:
+    description: Install Playwright Chromium and system dependencies
+    required: false
+    default: "true"
+
   sqlx-version:
     description: SQLx CLI version
     required: false
@@ -80,3 +85,9 @@ runs:
       shell: bash
       working-directory: www
       run: pnpm install --frozen-lockfile
+
+    - name: Install Playwright Chromium
+      if: inputs.install-playwright == 'true'
+      shell: bash
+      working-directory: www
+      run: pnpm exec playwright install --with-deps chromium
