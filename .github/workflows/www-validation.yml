@@ -31,7 +31,7 @@ concurrency:
 
 jobs:
   validate:
-    name: Validate project and database schemas
+    name: Validate WWW project and database schemas
     runs-on: ubuntu-latest
 
     services:
