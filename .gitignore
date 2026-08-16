@@ -1,38 +1,45 @@
-.DS_Store
-.env
-target
-.sqlx
-
-output.txt
-
-www/node_modules
-
-# Output
-.output
-.vercel
-.netlify
-.wrangler
-www/.svelte-kit
-build
-
-# OS
+# macOS and Windows
 .DS_Store
 Thumbs.db
 
-# Env
+# Environment files
 .env
-.env.*
 !.env.example
-!.env.test
+!.env.*.example
 
-# Vite
-wwW/vite.config.js.timestamp-*
+# Rust
+target/
+.sqlx/
+
+# Temporary files
+output.txt
+
+# WWW dependencies
+www/node_modules/
+
+# WWW generated output
+www/.svelte-kit/
+www/build/
+www/.output/
+www/.vercel/
+www/.netlify/
+www/.wrangler/
+
+# Vite temporary files
+www/vite.config.js.timestamp-*
 www/vite.config.ts.timestamp-*
-# Playwright
-www/test-results
 
-# Temporary schema used only when bootstrapping/upgrading Better Auth
+# Playwright output
+www/playwright-report/
+www/test-results/
+www/blob-report/
+
+# Test coverage
+www/coverage/
+
+# Temporary Better Auth schema
 www/.generated-auth/
 
+# Generated Drizzle migration artifacts
 www/src/lib/server/db/generated/meta/
 www/src/lib/server/db/generated/*.sql
