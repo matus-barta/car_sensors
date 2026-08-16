@@ -159,6 +159,12 @@
 		map.easeTo({
 			center: [selectedVehicle.longitude, selectedVehicle.latitude],
 			zoom: Math.max(map.getZoom(), 14),
+			padding: {
+				top: 80,
+				right: 40,
+				bottom: 40,
+				left: 320
+			},
 			duration: 700,
 			essential: true
 		});
