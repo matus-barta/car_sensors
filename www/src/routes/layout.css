@@ -128,10 +128,6 @@
 	}
 }
 
-.maplibregl-map {
-	font-family: 'Inter Variable', sans-serif;
-}
-
 .maplibregl-ctrl-group {
 	overflow: hidden;
 	border: 1px solid var(--border);
@@ -174,14 +170,4 @@
 	height: 100%;
 	overflow: hidden;
 	font-family: 'Inter Variable', sans-serif;
-}
-
-.maplibregl-canvas-container,
-.maplibregl-canvas {
-	width: 100%;
-	height: 100%;
-}
-
-.maplibregl-canvas {
-	display: block;
 }

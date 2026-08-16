@@ -36,8 +36,6 @@ test.describe('vehicle selection and creation', () => {
 
 		await expect(page).toHaveURL('/');
 		await expect(getVehicleSelector(page)).toBeVisible();
-
-		await expect(page.getByTestId('vehicle-map')).toBeVisible();
 	});
 
 	test('shows the initially selected vehicle', async ({ page }) => {
@@ -151,6 +149,18 @@ test.describe('vehicle selection and creation', () => {
 				exact: true
 			})
 		).not.toBeVisible();
+	});
+
+	test('initializes the vehicle map', async ({ page }) => {
+		const map = page.getByTestId('vehicle-map');
+
+		await expect(map).toBeVisible();
+
+		await expect(map).toHaveAttribute('data-map-state', 'ready', {
+			timeout: 20_000
+		});
+
+		await expect(page.getByTestId('vehicle-map-loading')).toHaveAttribute('aria-hidden', 'true');
 	});
 
 	test('resets the vehicle form after cancellation', async ({ page }) => {

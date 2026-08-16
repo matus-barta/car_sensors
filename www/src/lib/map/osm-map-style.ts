@@ -1,14 +1,17 @@
 import type { StyleSpecification, VectorSourceSpecification } from 'maplibre-gl';
 
-const OSM_COLORFUL_STYLE_URL = 'https://vector.openstreetmap.org/styles/shortbread/colorful.json';
+const SHORTBREAD_SOURCE_ID = 'versatiles-shortbread';
 
 const OPENSTREETMAP_ATTRIBUTION =
 	'<a href="https://www.openstreetmap.org/copyright" ' +
 	'target="_blank" rel="noopener noreferrer">' +
 	'© OpenStreetMap contributors</a>';
 
-export async function createOsmMapStyle(vectorTileUrl: string): Promise<StyleSpecification> {
-	const response = await fetch(OSM_COLORFUL_STYLE_URL);
+export async function createOsmMapStyle(
+	styleUrl: string,
+	vectorTileUrl: string
+): Promise<StyleSpecification> {
+	const response = await fetch(styleUrl);
 
 	if (!response.ok) {
 		throw new Error(
@@ -18,21 +21,24 @@ export async function createOsmMapStyle(vectorTileUrl: string): Promise<StyleSpe
 
 	const style = (await response.json()) as StyleSpecification;
 
-	for (const source of Object.values(style.sources)) {
-		if (source.type !== 'vector') {
-			continue;
-		}
+	const source = style.sources[SHORTBREAD_SOURCE_ID];
 
-		const vectorSource = source as VectorSourceSpecification;
-
-		vectorSource.tiles = [vectorTileUrl];
-		vectorSource.attribution = OPENSTREETMAP_ATTRIBUTION;
-		vectorSource.scheme = 'xyz';
-		vectorSource.minzoom = 0;
-		vectorSource.maxzoom = 14;
-
-		delete vectorSource.url;
+	if (!source || source.type !== 'vector') {
+		throw new Error(
+			`The OpenStreetMap style does not contain the expected ` +
+				`"${SHORTBREAD_SOURCE_ID}" vector source.`
+		);
 	}
+
+	const vectorSource = source as VectorSourceSpecification;
+
+	vectorSource.tiles = [vectorTileUrl];
+	vectorSource.attribution = OPENSTREETMAP_ATTRIBUTION;
+	vectorSource.scheme = 'xyz';
+	vectorSource.minzoom = 0;
+	vectorSource.maxzoom = 14;
+
+	delete vectorSource.url;
 
 	return style;
 }

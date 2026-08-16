@@ -5,12 +5,16 @@ import { render } from 'vitest-browser-svelte';
 import VehicleMap from './vehicle-map.svelte';
 
 describe('VehicleMap', () => {
-	it('renders the map container', async () => {
+	it('renders the initial loading state', async () => {
 		render(VehicleMap, {
 			vehicles: [],
 			selectedVehicleId: null
 		});
 
-		await expect.element(page.getByTestId('vehicle-map')).toBeInTheDocument();
+		await expect
+			.element(page.getByTestId('vehicle-map'))
+			.toHaveAttribute('data-map-state', 'loading');
+
+		await expect.element(page.getByTestId('vehicle-map-loading')).toBeInTheDocument();
 	});
 });

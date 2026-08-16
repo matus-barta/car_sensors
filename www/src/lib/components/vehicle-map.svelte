@@ -1,16 +1,16 @@
 <script lang="ts">
-	import { onMount, tick } from 'svelte';
-	import { PUBLIC_OSM_VECTOR_TILE_URL } from '$env/static/public';
+	import { PUBLIC_OSM_STYLE_URL, PUBLIC_OSM_VECTOR_TILE_URL } from '$env/static/public';
 
 	import type { GeoJSONSource, Map as MapLibreMap, MapLayerMouseEvent } from 'maplibre-gl';
-
 	import type { FeatureCollection, Point } from 'geojson';
+
+	import mapLibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
+	import 'maplibre-gl/dist/maplibre-gl.css';
 
 	import type { VehicleSummary } from '$lib/models/vehicle';
 	import { createOsmMapStyle } from '$lib/map/osm-map-style';
 
-	import mapLibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
-	import 'maplibre-gl/dist/maplibre-gl.css';
+	import { onMount, tick } from 'svelte';
 
 	interface Props {
 		vehicles?: VehicleSummary[];
@@ -25,6 +25,9 @@
 	let map: MapLibreMap | null = null;
 	let mapLoaded = $state(false);
 	let mapError = $state<string | null>(null);
+
+	const styleUrl =
+		PUBLIC_OSM_STYLE_URL || 'https://vector.openstreetmap.org/styles/shortbread/colorful.json';
 
 	const vectorTileUrl =
 		PUBLIC_OSM_VECTOR_TILE_URL || 'https://vector.openstreetmap.org/shortbread_v1/{z}/{x}/{y}.mvt';
@@ -248,7 +251,7 @@
 
 				maplibre.setWorkerUrl(mapLibreWorkerUrl);
 
-				const style = await createOsmMapStyle(vectorTileUrl);
+				const style = await createOsmMapStyle(styleUrl, vectorTileUrl);
 
 				if (destroyed) {
 					return;
@@ -266,7 +269,13 @@
 					}
 				});
 
-				resizeObserver = new ResizeObserver(() => {
+				resizeObserver = new ResizeObserver((entries) => {
+					const entry = entries[0];
+
+					if (!entry || entry.contentRect.width === 0 || entry.contentRect.height === 0) {
+						return;
+					}
+
 					map?.resize();
 				});
 
@@ -290,7 +299,10 @@
 				);
 
 				map.on('error', (event) => {
-					console.error('MapLibre error:', event.error);
+					console.error('MapLibre resource error:', {
+						error: event.error,
+						sourceId: 'sourceId' in event ? event.sourceId : undefined
+					});
 				});
 
 				async function markMapReady(): Promise<void> {
@@ -362,7 +374,7 @@
 	<div
 		class={[
 			'pointer-events-none absolute inset-x-0 top-4 z-20 flex justify-center transition-opacity',
-			mapLoaded || mapError ? 'invisible opacity-0' : 'visible opacity-100'
+			mapLoaded || mapError !== null ? 'invisible opacity-0' : 'visible opacity-100'
 		]}
 		aria-live="polite"
 		aria-hidden={mapLoaded || mapError !== null}
