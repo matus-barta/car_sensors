@@ -10,6 +10,10 @@ function getVehicleSelector(page: Page) {
 	});
 }
 
+function getVehicleInfoCard(page: Page) {
+	return page.getByTestId('vehicle-info-card');
+}
+
 async function openAddVehicleDialog(page: Page) {
 	const vehicleSelector = getVehicleSelector(page);
 
@@ -40,18 +44,19 @@ test.describe('vehicle selection and creation', () => {
 
 	test('shows the initially selected vehicle', async ({ page }) => {
 		const vehicleSelector = getVehicleSelector(page);
+		const vehicleInfoCard = getVehicleInfoCard(page);
 
 		await expect(vehicleSelector).toContainText('Škoda Octavia');
 
-		await expect(
-			page.getByText('Online', {
-				exact: true
-			})
-		).toBeVisible();
+		await expect(vehicleInfoCard).toBeVisible();
+		await expect(vehicleInfoCard).toContainText('Škoda Octavia');
+
+		await expect(vehicleInfoCard.getByTestId('vehicle-status-badge')).toHaveText('Online');
 	});
 
 	test('selects another existing vehicle', async ({ page }) => {
 		const vehicleSelector = getVehicleSelector(page);
+		const vehicleInfoCard = getVehicleInfoCard(page);
 
 		await vehicleSelector.click();
 
@@ -68,12 +73,9 @@ test.describe('vehicle selection and creation', () => {
 			.click();
 
 		await expect(vehicleSelector).toContainText('Volkswagen Golf');
+		await expect(vehicleInfoCard).toContainText('Volkswagen Golf');
 
-		await expect(
-			page.getByText('Stale', {
-				exact: true
-			})
-		).toBeVisible();
+		await expect(vehicleInfoCard.getByTestId('vehicle-status-badge')).toHaveText('Stale');
 	});
 
 	test('adds a vehicle and selects it', async ({ page }) => {
