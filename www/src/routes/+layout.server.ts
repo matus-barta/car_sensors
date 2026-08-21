@@ -1,8 +1,7 @@
 import { error, redirect } from '@sveltejs/kit';
+import type { LayoutServerLoad } from './$types';
 
 import { getApplicationSetupState } from '$lib/server/application-setup';
-
-import type { LayoutServerLoad } from './$types';
 
 const PUBLIC_AUTH_PATHS = new Set(['/auth/login', '/auth/setup']);
 

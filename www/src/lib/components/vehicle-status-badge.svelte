@@ -1,10 +1,10 @@
 <script lang="ts">
 	import { Badge } from '$lib/components/ui/badge';
-	import type { VehicleStatus } from '$lib/models/vehicle';
+	import type { VehicleStatus } from '$lib/vehicles/vehicle';
 	import {
 		getVehicleStatusDotClass,
 		getVehicleStatusLabel
-	} from '$lib/presentation/vehicle-status';
+	} from '$lib/vehicles/vehicle-status-style';
 
 	interface Props {
 		status: VehicleStatus;

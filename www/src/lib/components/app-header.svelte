@@ -9,15 +9,17 @@
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
 	import * as Popover from '$lib/components/ui/popover';
 	import { Separator } from '$lib/components/ui/separator';
-	import type { VehicleSummary } from '$lib/models/vehicle';
+	import type { VehicleSummary } from '$lib/vehicles/vehicle';
 	import { formatRelativeTime } from '$lib/utils/date';
 	import {
 		getVehicleStatusDotClass,
 		getVehicleStatusLabel
-	} from '$lib/presentation/vehicle-status';
+	} from '$lib/vehicles/vehicle-status-style';
 	import UserAvatar from '$lib/components/user-avatar.svelte';
 	import { resolve } from '$app/paths';
 	import VehicleStatusBadge from '$lib/components/vehicle-status-badge.svelte';
+	import VehicleSelectorSkeleton from '$lib/components/vehicle-selector-skeleton.svelte';
+	import ModeSwitcher from './mode-switcher.svelte';
 
 	export interface HeaderUser {
 		name: string;
@@ -28,6 +30,7 @@
 	interface Props {
 		user: HeaderUser;
 		vehicles?: VehicleSummary[];
+		vehiclesLoading?: boolean;
 		selectedVehicleId?: string | null;
 		onVehicleSelect?: (vehicleId: string) => void;
 		onAddVehicle?: () => void;
@@ -37,6 +40,7 @@
 	let {
 		user,
 		vehicles = [],
+		vehiclesLoading = false,
 		selectedVehicleId = null,
 		onVehicleSelect,
 		onAddVehicle,
@@ -92,112 +96,115 @@
 
 		<Separator orientation="vertical" class="hidden h-6 sm:block" />
 
-		<Popover.Root bind:open={vehicleMenuOpen}>
-			<Popover.Trigger>
-				{#snippet child({ props })}
-					<Button
-						{...props}
-						variant="outline"
-						aria-label="Select vehicle"
-						class="h-10 max-w-[18rem] min-w-0 justify-between gap-3 px-3"
-					>
-						<span class="flex min-w-0 items-center gap-2">
-							<CarFront class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+		{#if vehiclesLoading}
+			<VehicleSelectorSkeleton />
+		{:else}
+			<Popover.Root bind:open={vehicleMenuOpen}>
+				<Popover.Trigger>
+					{#snippet child({ props })}
+						<Button
+							{...props}
+							variant="outline"
+							aria-label="Select vehicle"
+							class="h-10 max-w-[18rem] min-w-0 justify-between gap-3 px-3"
+						>
+							<span class="flex min-w-0 items-center gap-2">
+								<CarFront class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
 
-							<span class="min-w-0 truncate">
-								{selectedVehicle?.name ?? 'Select vehicle'}
-							</span>
+								<span class="min-w-0 truncate">
+									{selectedVehicle?.name ?? 'Select vehicle'}
+								</span>
 
-							{#if selectedVehicle}
-								<span
-									class={[
-										'size-2 shrink-0 rounded-full',
-										getVehicleStatusDotClass(selectedVehicle.status)
-									]}
-									aria-hidden="true"
-								></span>
-							{/if}
-						</span>
-
-						<ChevronsUpDown class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-					</Button>
-				{/snippet}
-			</Popover.Trigger>
-
-			<Popover.Content align="start" class="w-[min(22rem,calc(100vw-1.5rem))] p-1">
-				<div class="px-2 py-1.5">
-					<p class="text-sm font-medium">Vehicles</p>
-					<p class="text-xs text-muted-foreground">Select a vehicle to display on the map.</p>
-				</div>
-
-				<Separator class="my-1" />
-
-				<div class="max-h-72 overflow-y-auto p-1">
-					{#if vehicles.length > 0}
-						{#each vehicles as vehicle (vehicle.id)}
-							{@const lastSeen = formatRelativeTime(vehicle.lastSeenAt)}
-							<Button
-								variant="ghost"
-								class={[
-									'h-auto w-full justify-start gap-3 px-2 py-2 text-left',
-									vehicle.id === selectedVehicleId && 'bg-accent'
-								]}
-								aria-current={vehicle.id === selectedVehicleId ? 'true' : undefined}
-								onclick={() => selectVehicle(vehicle.id)}
-							>
-								<span
-									class="relative flex size-9 shrink-0 items-center justify-center rounded-md border"
-								>
-									<CarFront class="size-4 text-muted-foreground" aria-hidden="true" />
-
+								{#if selectedVehicle}
 									<span
 										class={[
-											'absolute -right-0.5 -bottom-0.5 size-2.5 rounded-full ring-2 ring-background',
-											getVehicleStatusDotClass(vehicle.status)
+											'size-2 shrink-0 rounded-full',
+											getVehicleStatusDotClass(selectedVehicle.status)
 										]}
 										aria-hidden="true"
 									></span>
-								</span>
-
-								<span class="min-w-0 flex-1">
-									<span class="block truncate text-sm font-medium">
-										{vehicle.name}
-									</span>
-
-									<span class="block truncate text-xs text-muted-foreground">
-										{getVehicleStatusLabel(vehicle.status)}
-
-										{#if lastSeen}
-											· {lastSeen}
-										{/if}
-									</span>
-								</span>
-
-								{#if vehicle.id === selectedVehicleId}
-									<Check class="size-4 shrink-0 text-primary" aria-label="Selected vehicle" />
 								{/if}
-							</Button>
-						{/each}
-					{:else}
-						<div class="px-3 py-6 text-center">
-							<CarFront class="mx-auto mb-2 size-6 text-muted-foreground" aria-hidden="true" />
-							<p class="text-sm font-medium">No vehicles</p>
-							<p class="mt-1 text-xs text-muted-foreground">
-								Add your first vehicle to start tracking.
-							</p>
-						</div>
-					{/if}
-				</div>
+							</span>
 
-				<Separator class="my-1" />
+							<ChevronsUpDown class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+						</Button>
+					{/snippet}
+				</Popover.Trigger>
 
-				<Button variant="ghost" class="w-full justify-start" onclick={addVehicle}>
-					<Plus class="size-4" aria-hidden="true" />
-					Add vehicle
-				</Button>
-			</Popover.Content>
-		</Popover.Root>
+				<Popover.Content align="start" class="w-[min(22rem,calc(100vw-1.5rem))] p-1">
+					<div class="px-2 py-1.5">
+						<p class="text-sm font-medium">Vehicles</p>
+						<p class="text-xs text-muted-foreground">Select a vehicle to display on the map.</p>
+					</div>
 
+					<Separator class="my-1" />
+
+					<div class="max-h-72 overflow-y-auto p-1">
+						{#if vehicles.length > 0}
+							{#each vehicles as vehicle (vehicle.id)}
+								{@const lastSeen = formatRelativeTime(vehicle.lastSeenAt)}
+								<Button
+									variant="ghost"
+									class={[
+										'h-auto w-full justify-start gap-3 px-2 py-2 text-left',
+										vehicle.id === selectedVehicleId && 'bg-accent'
+									]}
+									aria-current={vehicle.id === selectedVehicleId ? 'true' : undefined}
+									onclick={() => selectVehicle(vehicle.id)}
+								>
+									<span
+										class="relative flex size-9 shrink-0 items-center justify-center rounded-md border"
+									>
+										<CarFront class="size-4 text-muted-foreground" aria-hidden="true" />
+
+										<span
+											class={[
+												'absolute -right-0.5 -bottom-0.5 size-2.5 rounded-full ring-2 ring-background',
+												getVehicleStatusDotClass(vehicle.status)
+											]}
+											aria-hidden="true"
+										></span>
+									</span>
+
+									<span class="min-w-0 flex-1">
+										<span class="block truncate text-sm font-medium">
+											{vehicle.name}
+										</span>
+
+										<span class="block truncate text-xs text-muted-foreground">
+											{getVehicleStatusLabel(vehicle.status)}
+
+											{#if lastSeen}
+												· {lastSeen}
+											{/if}
+										</span>
+									</span>
+
+									{#if vehicle.id === selectedVehicleId}
+										<Check class="size-4 shrink-0 text-primary" aria-label="Selected vehicle" />
+									{/if}
+								</Button>
+							{/each}
+						{:else}
+							<div class="px-3 py-6 text-center">
+								<CarFront class="mx-auto mb-2 size-6 text-muted-foreground" aria-hidden="true" />
+								<p class="text-sm font-medium">No vehicles</p>
+								<p class="mt-1 text-xs text-muted-foreground">
+									Add your first vehicle to start tracking.
+								</p>
+							</div>
+						{/if}
+					</div>
+
+					<Separator class="my-1" />
+
+					<Button variant="ghost" class="w-full justify-start" onclick={addVehicle}>
+						<Plus class="size-4" aria-hidden="true" />
+						Add vehicle
+					</Button>
+				</Popover.Content>
+			</Popover.Root>
+		{/if}
 		{#if selectedVehicle}
 			{@const vehicle = selectedVehicle}
 
@@ -253,4 +260,6 @@
 			</DropdownMenu.Item>
 		</DropdownMenu.Content>
 	</DropdownMenu.Root>
+
+	<ModeSwitcher />
 </header>

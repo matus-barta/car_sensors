@@ -1,6 +1,12 @@
 import { expect, test, type Page } from '@playwright/test';
 
-import { resetDatabase } from './fixtures/database';
+import {
+	createTestTelemetry,
+	createTestVehicle,
+	getKnownDeviceById,
+	resetDatabase
+} from './fixtures/database';
+
 import { createInitialAdministrator } from './fixtures/users';
 
 function getVehicleSelector(page: Page) {
@@ -12,6 +18,10 @@ function getVehicleSelector(page: Page) {
 
 function getVehicleInfoCard(page: Page) {
 	return page.getByTestId('vehicle-info-card');
+}
+
+function getVehicleStatusBadge(page: Page) {
+	return getVehicleInfoCard(page).getByTestId('vehicle-status-badge');
 }
 
 async function openAddVehicleDialog(page: Page) {
@@ -36,10 +46,59 @@ async function openAddVehicleDialog(page: Page) {
 test.describe('vehicle selection and creation', () => {
 	test.beforeEach(async ({ page }) => {
 		await resetDatabase();
+
+		const now = Date.now();
+
+		await createTestVehicle({
+			deviceId: 'car-1',
+			name: 'Škoda Octavia',
+			lastSeenAt: new Date(now)
+		});
+
+		await createTestVehicle({
+			deviceId: 'car-2',
+			name: 'Volkswagen Golf',
+			lastSeenAt: new Date(now - 12 * 60 * 1000)
+		});
+
+		await createTestVehicle({
+			deviceId: 'car-3',
+			name: 'Toyota Corolla',
+			lastSeenAt: new Date(now - 2 * 60 * 60 * 1000)
+		});
+
+		await createTestTelemetry({
+			deviceId: 'car-1',
+			id: 1,
+			timestamp: now,
+			latitude: 48.1486,
+			longitude: 17.1077,
+			bearing: 60
+		});
+
+		await createTestTelemetry({
+			deviceId: 'car-2',
+			id: 1,
+			timestamp: now - 12 * 60 * 1000,
+			latitude: 48.156,
+			longitude: 17.115,
+			bearing: 210
+		});
+
+		await createTestTelemetry({
+			deviceId: 'car-3',
+			id: 1,
+			timestamp: now - 2 * 60 * 60 * 1000,
+			latitude: 48.141,
+			longitude: 17.095,
+			bearing: 320
+		});
+
 		await createInitialAdministrator(page);
 
 		await expect(page).toHaveURL('/');
-		await expect(getVehicleSelector(page)).toBeVisible();
+		await expect(getVehicleSelector(page)).toContainText('Škoda Octavia');
+		await expect(getVehicleInfoCard(page)).toContainText('Škoda Octavia');
 	});
 
 	test('shows the initially selected vehicle', async ({ page }) => {
@@ -50,8 +109,9 @@ test.describe('vehicle selection and creation', () => {
 
 		await expect(vehicleInfoCard).toBeVisible();
 		await expect(vehicleInfoCard).toContainText('Škoda Octavia');
+		await expect(vehicleInfoCard).toContainText('car-1');
 
-		await expect(vehicleInfoCard.getByTestId('vehicle-status-badge')).toHaveText('Online');
+		await expect(getVehicleStatusBadge(page)).toHaveText('Online');
 	});
 
 	test('selects another existing vehicle', async ({ page }) => {
@@ -73,13 +133,16 @@ test.describe('vehicle selection and creation', () => {
 			.click();
 
 		await expect(vehicleSelector).toContainText('Volkswagen Golf');
-		await expect(vehicleInfoCard).toContainText('Volkswagen Golf');
 
-		await expect(vehicleInfoCard.getByTestId('vehicle-status-badge')).toHaveText('Stale');
+		await expect(vehicleInfoCard).toContainText('Volkswagen Golf');
+		await expect(vehicleInfoCard).toContainText('car-2');
+
+		await expect(getVehicleStatusBadge(page)).toHaveText('Stale');
 	});
 
-	test('adds a vehicle and selects it', async ({ page }) => {
+	test('adds a vehicle, persists it and selects it', async ({ page }) => {
 		const vehicleSelector = getVehicleSelector(page);
+		const vehicleInfoCard = getVehicleInfoCard(page);
 		const dialog = await openAddVehicleDialog(page);
 
 		await dialog
@@ -105,17 +168,34 @@ test.describe('vehicle selection and creation', () => {
 
 		await expect(dialog).not.toBeVisible();
 
-		// The newly created vehicle becomes the selected vehicle.
+		const createdVehicle = await getKnownDeviceById('device-e2e-001');
+
+		expect(createdVehicle).not.toBeNull();
+
+		expect(createdVehicle).toMatchObject({
+			device_id: 'device-e2e-001',
+			name: 'Development Vehicle',
+			is_active: true,
+			notes: 'Created by the Playwright E2E suite'
+		});
+
 		await expect(vehicleSelector).toContainText('Development Vehicle');
 
-		await vehicleSelector.click();
+		await expect(vehicleInfoCard).toContainText('Development Vehicle');
+		await expect(vehicleInfoCard).toContainText('device-e2e-001');
 
-		// The vehicle also appears in the list and is marked offline.
-		await expect(
-			page.getByRole('button', {
-				name: /Development Vehicle Offline/
-			})
-		).toBeVisible();
+		await expect(getVehicleStatusBadge(page)).toHaveText('Offline');
+
+		await page.reload();
+
+		await expect(page).toHaveURL('/');
+
+		await expect(getVehicleSelector(page)).toContainText('Development Vehicle');
+
+		await expect(getVehicleInfoCard(page)).toContainText('Development Vehicle');
+		await expect(getVehicleInfoCard(page)).toContainText('device-e2e-001');
+
+		await expect(getVehicleStatusBadge(page)).toHaveText('Offline');
 	});
 
 	test('does not add a vehicle when the dialog is cancelled', async ({ page }) => {
@@ -143,6 +223,10 @@ test.describe('vehicle selection and creation', () => {
 
 		await expect(dialog).not.toBeVisible();
 		await expect(vehicleSelector).toContainText('Škoda Octavia');
+
+		const cancelledVehicle = await getKnownDeviceById('cancelled-device');
+
+		expect(cancelledVehicle).toBeNull();
 
 		await vehicleSelector.click();
 
