@@ -6,6 +6,8 @@
 
 	import favicon from '$lib/assets/favicon.svg';
 
+	import { ModeWatcher } from 'mode-watcher';
+
 	import AddVehicleDialog, {
 		type AddVehicleInput
 	} from '$lib/components/add-vehicle-dialog.svelte';
@@ -118,6 +120,8 @@
 	<link rel="icon" href={favicon} />
 	<title>Car Sensors</title>
 </svelte:head>
+
+<ModeWatcher />
 
 {#if headerUser}
 	<div class="flex h-dvh flex-col overflow-hidden">

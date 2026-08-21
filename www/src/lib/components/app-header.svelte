@@ -19,6 +19,7 @@
 	import { resolve } from '$app/paths';
 	import VehicleStatusBadge from '$lib/components/vehicle-status-badge.svelte';
 	import VehicleSelectorSkeleton from '$lib/components/vehicle-selector-skeleton.svelte';
+	import ModeSwitcher from './mode-switcher.svelte';
 
 	export interface HeaderUser {
 		name: string;
@@ -259,4 +260,6 @@
 			</DropdownMenu.Item>
 		</DropdownMenu.Content>
 	</DropdownMenu.Root>
+
+	<ModeSwitcher />
 </header>
