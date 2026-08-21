@@ -97,7 +97,8 @@ test.describe('vehicle selection and creation', () => {
 		await createInitialAdministrator(page);
 
 		await expect(page).toHaveURL('/');
-		await expect(getVehicleSelector(page)).toBeVisible();
+		await expect(getVehicleSelector(page)).toContainText('Škoda Octavia');
+		await expect(getVehicleInfoCard(page)).toContainText('Škoda Octavia');
 	});
 
 	test('shows the initially selected vehicle', async ({ page }) => {

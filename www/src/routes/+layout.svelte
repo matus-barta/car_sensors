@@ -1,10 +1,10 @@
 <script lang="ts">
 	import './layout.css';
-	import favicon from '$lib/assets/favicon.svg';
 
 	import { goto, invalidateAll } from '$app/navigation';
 	import { resolve } from '$app/paths';
-	import { untrack } from 'svelte';
+
+	import favicon from '$lib/assets/favicon.svg';
 
 	import AddVehicleDialog, {
 		type AddVehicleInput
@@ -18,33 +18,9 @@
 
 	const vehicleState = setVehicleState(new VehicleState());
 
-	const isAuthenticated = untrack(() => data.user !== null);
-	const vehiclesQuery = isAuthenticated ? getVehicles() : null;
+	let vehiclesQuery: ReturnType<typeof getVehicles> | null = null;
 
-	async function initializeVehicles(): Promise<void> {
-		if (!vehiclesQuery) {
-			vehicleState.setLoading(false);
-			return;
-		}
-
-		try {
-			const initialVehicles = await vehiclesQuery;
-
-			vehicleState.replaceVehicles(initialVehicles);
-			vehicleState.setError(null);
-		} catch (cause) {
-			console.error('Failed to load vehicles:', cause);
-
-			vehicleState.setError(
-				cause instanceof Error ? cause.message : 'The vehicle list could not be loaded.'
-			);
-		} finally {
-			vehicleState.setLoading(false);
-		}
-	}
-
-	void initializeVehicles();
-
+	let vehicleInitializationStarted = false;
 	let addVehicleDialogOpen = $state(false);
 
 	const headerUser = $derived<HeaderUser | null>(
@@ -57,13 +33,43 @@
 			: null
 	);
 
-	function openAddVehicleDialog(): void {
-		addVehicleDialogOpen = true;
+	async function initializeVehicles(): Promise<void> {
+		if (!vehiclesQuery) {
+			return;
+		}
+
+		vehicleState.setLoading(true);
+		vehicleState.setError(null);
+
+		try {
+			const vehicles = await vehiclesQuery;
+
+			vehicleState.replaceVehicles(vehicles);
+		} catch (cause) {
+			console.error('Failed to load vehicles:', cause);
+
+			vehicleState.setError(
+				cause instanceof Error ? cause.message : 'The vehicle list could not be loaded.'
+			);
+		} finally {
+			vehicleState.setLoading(false);
+		}
 	}
+
+	$effect(() => {
+		if (!data.user || vehicleInitializationStarted) {
+			return;
+		}
+
+		vehicleInitializationStarted = true;
+		vehiclesQuery = getVehicles();
+
+		void initializeVehicles();
+	});
 
 	async function refreshVehicles(): Promise<void> {
 		if (!vehiclesQuery) {
-			throw new Error('The vehicle list cannot be refreshed while unauthenticated.');
+			throw new Error('The vehicle list is not initialized.');
 		}
 
 		await vehiclesQuery.refresh();
@@ -75,6 +81,7 @@
 		}
 
 		vehicleState.replaceVehicles(refreshedVehicles);
+		vehicleState.setError(null);
 	}
 
 	async function addVehicle(input: AddVehicleInput): Promise<void> {
@@ -87,6 +94,10 @@
 		await refreshVehicles();
 
 		vehicleState.selectVehicle(createdVehicle.id);
+	}
+
+	function openAddVehicleDialog(): void {
+		addVehicleDialogOpen = true;
 	}
 
 	async function signOut(): Promise<void> {
