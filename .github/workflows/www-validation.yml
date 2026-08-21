@@ -53,6 +53,8 @@ jobs:
       DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/carsensors_schema_check
       ORIGIN: http://localhost:5173
       BETTER_AUTH_SECRET: ci-only-better-auth-secret-not-used-in-production
+      PUBLIC_OSM_VECTOR_TILE_URL: "https://vector.openstreetmap.org/shortbread_v1/{z}/{x}/{y}.mvt"
+      PUBLIC_OSM_STYLE_URL: "https://vector.openstreetmap.org/styles/shortbread/colorful.json"
       CI: true
 
     steps:
