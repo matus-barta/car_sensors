@@ -1,7 +1,9 @@
 <script lang="ts">
 	import VehicleInfoCard from '$lib/components/vehicle-info-card.svelte';
+	import VehicleInfoCardSkeleton from '$lib/components/vehicle-info-card-skeleton.svelte';
 	import VehicleMap from '$lib/components/vehicle-map.svelte';
-	import { getVehicleState } from '$lib/vehicles/vehicle-state.svelte';
+
+	import { getVehicleState } from '$lib/vehicles/vehicle-state.svelte.js';
 
 	const vehicleState = getVehicleState();
 
@@ -21,8 +23,12 @@
 		onVehicleSelect={(vehicleId) => vehicleState.selectVehicle(vehicleId)}
 	/>
 
-	{#if selectedVehicle}
-		<div class="pointer-events-none absolute top-4 left-4 z-30 md:right-5 md:bottom-5">
+	{#if vehicleState.loading}
+		<div class="pointer-events-none absolute top-4 left-4 z-30 md:top-5 md:left-5">
+			<VehicleInfoCardSkeleton />
+		</div>
+	{:else if selectedVehicle}
+		<div class="pointer-events-none absolute top-4 left-4 z-30 md:top-5 md:left-5">
 			<div class="pointer-events-auto">
 				<VehicleInfoCard vehicle={selectedVehicle} />
 			</div>

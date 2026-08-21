@@ -1,13 +1,14 @@
 import { command, getRequestEvent, query } from '$app/server';
+
 import { error } from '@sveltejs/kit';
 import { z } from 'zod';
-
-import type { VehicleSummary } from './vehicle';
 
 import {
 	createVehicle as createVehicleRecord,
 	getVehicleSummaries
 } from '$lib/server/vehicles/vehicle-service';
+
+import type { VehicleSummary } from './vehicle';
 
 const createVehicleSchema = z.object({
 	name: z
@@ -63,7 +64,9 @@ export const createVehicle = command(
 
 			console.error('Failed to create vehicle:', cause);
 
-			throw new Error('The vehicle could not be created.', { cause: cause });
+			throw new Error('The vehicle could not be created.', {
+				cause
+			});
 		}
 	}
 );

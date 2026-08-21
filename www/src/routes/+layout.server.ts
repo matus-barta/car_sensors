@@ -1,9 +1,7 @@
 import { error, redirect } from '@sveltejs/kit';
+import type { LayoutServerLoad } from './$types';
 
 import { getApplicationSetupState } from '$lib/server/application-setup';
-import { getVehicleSummaries } from '$lib/server/vehicles/vehicle-service';
-
-import type { LayoutServerLoad } from './$types';
 
 const PUBLIC_AUTH_PATHS = new Set(['/auth/login', '/auth/setup']);
 
@@ -31,11 +29,8 @@ export const load: LayoutServerLoad = async ({ locals, url }) => {
 		redirect(303, '/');
 	}
 
-	const vehicles = locals.user ? await getVehicleSummaries() : [];
-
 	return {
 		user: locals.user ?? null,
-		setupRequired: setupState === 'required',
-		vehicles
+		setupRequired: setupState === 'required'
 	};
 };

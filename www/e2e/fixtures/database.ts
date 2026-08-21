@@ -333,3 +333,21 @@ export async function createTestTelemetry(input: TestTelemetryInput): Promise<vo
 		)
 	`;
 }
+
+export async function getKnownDeviceById(deviceId: string) {
+	const sql = getTestSql();
+
+	const [record] = await sql`
+		SELECT
+			device_id,
+			name,
+			is_active,
+			last_seen_at,
+			notes
+		FROM known_devices
+		WHERE device_id = ${deviceId}
+		LIMIT 1
+	`;
+
+	return record ?? null;
+}

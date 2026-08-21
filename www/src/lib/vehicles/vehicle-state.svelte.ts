@@ -1,34 +1,53 @@
 import { getContext, setContext } from 'svelte';
 
-import type { VehicleSummary } from '$lib/vehicles/vehicle';
+import type { VehicleSummary } from './vehicle';
 
 const VEHICLES_CONTEXT = Symbol('vehicles');
 
 export class VehicleState {
 	vehicles = $state<VehicleSummary[]>([]);
 	selectedVehicleId = $state<string | null>(null);
+	loading = $state(false);
+	error = $state<string | null>(null);
+
+	setLoading(loading: boolean): void {
+		this.loading = loading;
+	}
+
+	setError(error: string | null): void {
+		this.error = error;
+	}
 
 	constructor(vehicles: VehicleSummary[] = [], selectedVehicleId: string | null = null) {
-		this.vehicles = vehicles;
-		this.selectedVehicleId = selectedVehicleId;
+		this.replaceVehicles(vehicles);
+
+		if (selectedVehicleId && this.vehicles.some((vehicle) => vehicle.id === selectedVehicleId)) {
+			this.selectedVehicleId = selectedVehicleId;
+		}
 	}
 
 	selectVehicle(vehicleId: string): void {
+		if (!this.vehicles.some((vehicle) => vehicle.id === vehicleId)) {
+			return;
+		}
+
 		this.selectedVehicleId = vehicleId;
 	}
 
-	addVehicle(vehicle: VehicleSummary): void {
-		const existingIndex = this.vehicles.findIndex(
-			(existingVehicle) => existingVehicle.id === vehicle.id
-		);
+	replaceVehicles(vehicles: VehicleSummary[]): void {
+		const previousSelection = this.selectedVehicleId;
 
-		if (existingIndex >= 0) {
-			this.vehicles[existingIndex] = vehicle;
-		} else {
-			this.vehicles.push(vehicle);
+		this.vehicles = [...vehicles];
+
+		const selectionStillExists =
+			previousSelection !== null &&
+			this.vehicles.some((vehicle) => vehicle.id === previousSelection);
+
+		if (selectionStillExists) {
+			return;
 		}
 
-		this.selectedVehicleId = vehicle.id;
+		this.selectedVehicleId = this.vehicles[0]?.id ?? null;
 	}
 }
 
@@ -37,5 +56,11 @@ export function setVehicleState(state: VehicleState): VehicleState {
 }
 
 export function getVehicleState(): VehicleState {
-	return getContext<VehicleState>(VEHICLES_CONTEXT);
+	const state = getContext<VehicleState>(VEHICLES_CONTEXT);
+
+	if (!state) {
+		throw new Error('VehicleState is not available in the current component context.');
+	}
+
+	return state;
 }
