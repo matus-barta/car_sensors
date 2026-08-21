@@ -35,28 +35,30 @@
 </script>
 
 <Card.Root
-	class="w-[min(24rem,calc(100vw-2rem))] border-border/70 bg-background/95 shadow-lg backdrop-blur-md"
+	class="w-[min(24rem,calc(100vw-2rem))] min-w-0 overflow-hidden border-border/70 bg-background/95 shadow-lg backdrop-blur-md"
 	data-testid="vehicle-info-card"
 >
-	<Card.Header class="pb-4">
-		<div class="flex items-start gap-3">
+	<Card.Header class="min-w-0 pb-4">
+		<div class="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-3">
 			<div
 				class="flex size-11 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground"
 			>
 				<CarFront class="size-5" aria-hidden="true" />
 			</div>
 
-			<div class="min-w-0 flex-1">
-				<Card.Title class="truncate text-base">
-					{vehicle.name}
-				</Card.Title>
+			<div class="min-w-0">
+				<div class="flex min-w-0 items-center gap-2">
+					<Card.Title class="min-w-0 flex-1 truncate text-base">
+						{vehicle.name}
+					</Card.Title>
 
-				<Card.Description class="mt-1 truncate">
+					<VehicleStatusBadge status={vehicle.status} pulse={false} class="shrink-0" />
+				</div>
+
+				<Card.Description class="mt-1 font-mono text-xs leading-relaxed break-all">
 					{vehicle.id}
 				</Card.Description>
 			</div>
-
-			<VehicleStatusBadge status={vehicle.status} pulse={false} />
 		</div>
 	</Card.Header>
 
@@ -67,9 +69,12 @@
 			<div class="flex min-w-0 items-center gap-3">
 				<Clock class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
 
-				<span class="text-muted-foreground">Last seen</span>
+				<span class="shrink-0 text-muted-foreground"> Last seen </span>
 
-				<span class="ml-auto truncate font-medium">
+				<span
+					class="ml-auto min-w-0 truncate text-right font-medium"
+					title={lastSeen ?? 'No telemetry received'}
+				>
 					{lastSeen ?? 'No telemetry received'}
 				</span>
 			</div>
@@ -77,9 +82,12 @@
 			<div class="flex min-w-0 items-center gap-3">
 				<MapPin class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
 
-				<span class="text-muted-foreground">Location</span>
+				<span class="shrink-0 text-muted-foreground"> Location </span>
 
-				<span class="ml-auto truncate font-mono text-xs font-medium">
+				<span
+					class="ml-auto min-w-0 truncate text-right font-mono text-xs font-medium"
+					title={coordinates ?? 'Unavailable'}
+				>
 					{coordinates ?? 'Unavailable'}
 				</span>
 			</div>
