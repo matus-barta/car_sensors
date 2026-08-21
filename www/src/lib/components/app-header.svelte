@@ -9,12 +9,12 @@
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
 	import * as Popover from '$lib/components/ui/popover';
 	import { Separator } from '$lib/components/ui/separator';
-	import type { VehicleSummary } from '$lib/models/vehicle';
+	import type { VehicleSummary } from '$lib/vehicles/vehicle';
 	import { formatRelativeTime } from '$lib/utils/date';
 	import {
 		getVehicleStatusDotClass,
 		getVehicleStatusLabel
-	} from '$lib/presentation/vehicle-status';
+	} from '$lib/vehicles/vehicle-status-style';
 	import UserAvatar from '$lib/components/user-avatar.svelte';
 	import { resolve } from '$app/paths';
 	import VehicleStatusBadge from '$lib/components/vehicle-status-badge.svelte';

@@ -105,7 +105,7 @@ skipped_binary_count=0
     printf '    This document contains text files from the repository.\n'
     printf '    Each file is enclosed in BEGIN_FILE and END_FILE markers.\n'
     printf '    Paths are relative to the repository root.\n'
-    printf '  </description>\n\n'
+    printf '  </description>\n'
 } > "$TEMP_OUTPUT"
 
 while IFS= read -r -d '' file; do
@@ -144,7 +144,7 @@ while IFS= read -r -d '' file; do
             printf '\n'
         fi
 
-        printf '===== END_FILE: %s =====\n\n' "$relative_path"
+        printf '===== END_FILE: %s =====\n' "$relative_path"
     } >> "$TEMP_OUTPUT"
 
     ((file_count += 1))

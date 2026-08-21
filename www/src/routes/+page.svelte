@@ -1,7 +1,7 @@
 <script lang="ts">
 	import VehicleInfoCard from '$lib/components/vehicle-info-card.svelte';
 	import VehicleMap from '$lib/components/vehicle-map.svelte';
-	import { getVehicleState } from '$lib/state/vehicles.svelte';
+	import { getVehicleState } from '$lib/vehicles/vehicle-state.svelte';
 
 	const vehicleState = getVehicleState();
 

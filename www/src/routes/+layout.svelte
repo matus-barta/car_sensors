@@ -8,42 +8,13 @@
 		type AddVehicleInput
 	} from '$lib/components/add-vehicle-dialog.svelte';
 	import AppHeader, { type HeaderUser } from '$lib/components/app-header.svelte';
-	import type { VehicleSummary } from '$lib/models/vehicle';
-	import { setVehicleState, VehicleState } from '$lib/state/vehicles.svelte';
+	import type { VehicleSummary } from '$lib/vehicles/vehicle.js';
+	import { setVehicleState, VehicleState } from '$lib/vehicles/vehicle-state.svelte.js';
 
 	let { children, data } = $props();
 
-	const vehicleState = setVehicleState(
-		new VehicleState(
-			[
-				{
-					id: 'car-1',
-					name: 'Škoda Octavia',
-					status: 'online',
-					lastSeenAt: new Date(),
-					latitude: 48.1486,
-					longitude: 17.1077
-				},
-				{
-					id: 'car-2',
-					name: 'Volkswagen Golf',
-					status: 'stale',
-					lastSeenAt: new Date(Date.now() - 12 * 60 * 1000),
-					latitude: 48.156,
-					longitude: 17.115
-				},
-				{
-					id: 'car-3',
-					name: 'Toyota Corolla',
-					status: 'offline',
-					lastSeenAt: new Date(Date.now() - 2 * 60 * 60 * 1000),
-					latitude: 48.141,
-					longitude: 17.095
-				}
-			],
-			'car-1'
-		)
-	);
+	const initialVehicleId = data.vehicles[0]?.id ?? null;
+	const vehicleState = setVehicleState(new VehicleState(data.vehicles, initialVehicleId));
 
 	let addVehicleDialogOpen = $state(false);
 

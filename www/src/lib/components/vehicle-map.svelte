@@ -7,7 +7,7 @@
 	import mapLibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 	import 'maplibre-gl/dist/maplibre-gl.css';
 
-	import type { VehicleSummary } from '$lib/models/vehicle';
+	import type { VehicleSummary } from '$lib/vehicles/vehicle';
 	import { createOsmMapStyle } from '$lib/map/osm-map-style';
 
 	import { onMount, tick } from 'svelte';

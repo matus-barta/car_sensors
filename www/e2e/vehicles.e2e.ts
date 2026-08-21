@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 
-import { resetDatabase } from './fixtures/database';
+import { createTestTelemetry, createTestVehicle, resetDatabase } from './fixtures/database';
 import { createInitialAdministrator } from './fixtures/users';
 
 function getVehicleSelector(page: Page) {
@@ -36,6 +36,37 @@ async function openAddVehicleDialog(page: Page) {
 test.describe('vehicle selection and creation', () => {
 	test.beforeEach(async ({ page }) => {
 		await resetDatabase();
+
+		await createTestVehicle({
+			deviceId: 'car-1',
+			name: 'Škoda Octavia',
+			lastSeenAt: new Date()
+		});
+
+		await createTestVehicle({
+			deviceId: 'car-2',
+			name: 'Volkswagen Golf',
+			lastSeenAt: new Date(Date.now() - 12 * 60 * 1000)
+		});
+
+		await createTestTelemetry({
+			deviceId: 'car-1',
+			id: 1,
+			timestamp: Date.now(),
+			latitude: 48.1486,
+			longitude: 17.1077,
+			bearing: 60
+		});
+
+		await createTestTelemetry({
+			deviceId: 'car-2',
+			id: 1,
+			timestamp: Date.now() - 12 * 60 * 1000,
+			latitude: 48.156,
+			longitude: 17.115,
+			bearing: 210
+		});
+
 		await createInitialAdministrator(page);
 
 		await expect(page).toHaveURL('/');

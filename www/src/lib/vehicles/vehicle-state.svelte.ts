@@ -1,6 +1,6 @@
 import { getContext, setContext } from 'svelte';
 
-import type { VehicleSummary } from '$lib/models/vehicle';
+import type { VehicleSummary } from '$lib/vehicles/vehicle';
 
 const VEHICLES_CONTEXT = Symbol('vehicles');
 

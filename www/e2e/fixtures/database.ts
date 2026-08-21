@@ -276,3 +276,60 @@ async function terminateTestDatabaseConnections(): Promise<void> {
 function escapeIdentifier(value: string): string {
 	return value.replaceAll('"', '""');
 }
+export interface TestVehicleInput {
+	deviceId: string;
+	name: string;
+	lastSeenAt?: Date | null;
+}
+
+export async function createTestVehicle(input: TestVehicleInput): Promise<void> {
+	const sql = getTestSql();
+
+	await sql`
+		INSERT INTO known_devices (
+			device_id,
+			name,
+			is_active,
+			last_seen_at
+		)
+		VALUES (
+			${input.deviceId},
+			${input.name},
+			TRUE,
+			${input.lastSeenAt ?? null}
+		)
+	`;
+}
+export interface TestTelemetryInput {
+	deviceId: string;
+	id: number;
+	timestamp: number;
+	latitude: number;
+	longitude: number;
+	bearing?: number | null;
+}
+
+export async function createTestTelemetry(input: TestTelemetryInput): Promise<void> {
+	const sql = getTestSql();
+
+	await sql`
+		INSERT INTO telemetry_samples (
+			device_id,
+			id,
+			event,
+			timestamp,
+			latitude,
+			longitude,
+			bearing
+		)
+		VALUES (
+			${input.deviceId},
+			${input.id},
+			'location',
+			${input.timestamp},
+			${input.latitude},
+			${input.longitude},
+			${input.bearing ?? null}
+		)
+	`;
+}

@@ -1,4 +1,4 @@
-import type { VehicleStatus } from '$lib/models/vehicle';
+import type { VehicleStatus } from '$lib/vehicles/vehicle';
 
 export type VehicleStatusBadgeVariant = 'default' | 'secondary' | 'outline';
 

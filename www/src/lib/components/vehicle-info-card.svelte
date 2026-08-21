@@ -6,7 +6,7 @@
 
 	import * as Card from '$lib/components/ui/card';
 	import { Separator } from '$lib/components/ui/separator';
-	import type { VehicleSummary } from '$lib/models/vehicle';
+	import type { VehicleSummary } from '$lib/vehicles/vehicle';
 	import { formatRelativeTime } from '$lib/utils/date';
 	import VehicleStatusBadge from '$lib/components/vehicle-status-badge.svelte';
 
