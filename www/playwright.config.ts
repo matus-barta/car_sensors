@@ -38,17 +38,12 @@ export default defineConfig({
 		reuseExistingServer: false,
 		timeout: 120_000,
 		env: {
-			DATABASE_URL:
-				process.env.DATABASE_URL ??
-				'postgres://postgres:postgres@127.0.0.1:5432/carsensors_e2e_test',
-
-			POSTGRES_ADMIN_URL:
-				process.env.POSTGRES_ADMIN_URL ?? 'postgres://postgres:postgres@127.0.0.1:5432/postgres',
-
-			ORIGIN: process.env.ORIGIN ?? 'http://127.0.0.1:4173',
-
-			BETTER_AUTH_SECRET:
-				process.env.BETTER_AUTH_SECRET ?? 'e2e-only-better-auth-secret-not-for-production'
+			DATABASE_URL: 'postgres://postgres:postgres@127.0.0.1:5432/carsensors_e2e_test',
+			POSTGRES_ADMIN_URL: 'postgres://postgres:postgres@127.0.0.1:5432/postgres',
+			ORIGIN: 'http://127.0.0.1:4173',
+			BETTER_AUTH_SECRET: 'e2e-only-better-auth-secret-not-for-production',
+			PUBLIC_OSM_VECTOR_TILE_URL: 'https://vector.openstreetmap.org/shortbread_v1/{z}/{x}/{y}.mvt',
+			PUBLIC_OSM_STYLE_URL: 'https://vector.openstreetmap.org/styles/shortbread/colorful.json'
 		}
 	}
 });
