@@ -11,6 +11,48 @@ runs `cargo clippy --all-targets --all-features -- -D warnings` or `cargo test`,
 which is why the workspace accumulated four clippy errors without anyone
 noticing. `www` has its own validation workflow; the Rust side has no equivalent.
 
+## Telemetry upload protocol
+
+### Stream uploads as NDJSON instead of one JSON array
+
+An upload is a single JSON array, and the `Json` extractor buffers the whole
+body before parsing it, so the memory a request costs is bounded only by the
+body limits in `ingest/src/lib.rs` - currently 4 MiB compressed and 32 MiB once
+expanded. That is the reason a limit has to exist at all, and it caps how much
+backlog a device can hand over in one request.
+
+Sending one sample per line instead would let the service parse and insert as
+the body arrives, making the cost of a request proportional to a single sample
+rather than to the whole backlog, and removing the need to guess a limit.
+
+This is a protocol change on both sides: the Android uploader would have to emit
+NDJSON as well, so it belongs with the Android work rather than as a
+server-only change.
+
+## Device authentication
+
+### Decide whether the device id stays the credential
+
+`X-Device-ID` both names a device and authorises it: the middleware checks that
+the value matches an active row in `known_devices`, and nothing else is proven.
+The id is a random UUIDv4 generated per installation, so it cannot be guessed,
+and TLS is terminated by the reverse proxy, so it is not exposed in transit on
+the public side.
+
+What remains is that the identifier is the secret. It is visible to the phone's
+user and to anyone signed in to the web application, it appears in the database
+and in service logs, and if it leaks, whoever holds it can post telemetry
+indistinguishable from the real device - fake positions on the live map, junk in
+the history. Revoking it means deactivating the device, which locks out the
+genuine phone too.
+
+This was not worth deciding while the registration endpoint was open to anyone;
+that endpoint is gone, so it is now the weakest link. Accepting it for a private
+deployment is a reasonable answer, as long as it is a decision rather than an
+oversight. If it should change, the options in increasing order of effort are a
+per-device bearer token stored as a hash and issued at registration, HMAC-signed
+uploads carrying a timestamp and nonce, which also stops replay, and mutual TLS.
+
 ## Android app
 
 ### Timestamp a sample from GPS when a fix is available
