@@ -2,8 +2,7 @@ import { sql } from 'drizzle-orm';
 
 import { db, schema } from '$lib/server/db';
 import type { VehicleSummary } from '$lib/vehicles/vehicle';
-
-import { calculateVehicleStatus } from './vehicle-status';
+import { calculateVehicleStatus } from '$lib/vehicles/vehicle-status';
 
 type VehicleSummaryRow = Record<string, unknown> & {
 	id: string;
