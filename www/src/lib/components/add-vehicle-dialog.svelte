@@ -8,6 +8,7 @@
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
 	import { Textarea } from '$lib/components/ui/textarea';
+	import { getErrorMessage } from '$lib/utils/error';
 
 	export interface AddVehicleInput {
 		name: string;
@@ -89,10 +90,7 @@
 		} catch (error) {
 			console.error('Failed to add vehicle:', error);
 
-			errorMessage =
-				error instanceof Error
-					? error.message
-					: 'The vehicle could not be added. Please try again.';
+			errorMessage = getErrorMessage(error, 'The vehicle could not be added. Please try again.');
 		} finally {
 			submitting = false;
 		}

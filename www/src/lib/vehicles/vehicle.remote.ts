@@ -5,6 +5,7 @@ import { z } from 'zod';
 
 import {
 	createVehicle as createVehicleRecord,
+	DuplicateDeviceIdError,
 	getVehicleSummaries
 } from '$lib/server/vehicles/vehicle-service';
 
@@ -55,18 +56,18 @@ export const createVehicle = command(
 		try {
 			return await createVehicleRecord(input);
 		} catch (cause) {
-			if (
-				cause instanceof Error &&
-				cause.message === 'A vehicle with this device ID already exists.'
-			) {
-				throw cause;
+			/*
+			 * SvelteKit replaces any thrown error that is not an HttpError with a
+			 * generic "Internal Error", so anything the user should read has to be
+			 * raised through `error()`.
+			 */
+			if (cause instanceof DuplicateDeviceIdError) {
+				error(409, cause.message);
 			}
 
 			console.error('Failed to create vehicle:', cause);
 
-			throw new Error('The vehicle could not be created.', {
-				cause
-			});
+			error(500, 'The vehicle could not be created.');
 		}
 	}
 );
