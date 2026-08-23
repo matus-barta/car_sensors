@@ -2,7 +2,6 @@ import { sql } from 'drizzle-orm';
 
 import { db, schema } from '$lib/server/db';
 import type { VehicleSummary } from '$lib/vehicles/vehicle';
-import { calculateVehicleStatus } from '$lib/vehicles/vehicle-status';
 
 type VehicleSummaryRow = Record<string, unknown> & {
 	id: string;
@@ -66,12 +65,9 @@ export async function getVehicleSummaries(): Promise<VehicleSummary[]> {
 				device.device_id
 		`);
 
-	const now = Date.now();
-
 	return rows.map((row) => ({
 		id: row.id,
 		name: row.name?.trim() || row.id,
-		status: calculateVehicleStatus(row.lastSeenAt, now),
 		lastSeenAt: row.lastSeenAt,
 		latitude: normalizeLatitude(row.latitude),
 		longitude: normalizeLongitude(row.longitude),
@@ -102,7 +98,6 @@ export async function createVehicle(input: CreateVehicleRecordInput): Promise<Ve
 		return {
 			id: created.id,
 			name: created.name?.trim() || created.id,
-			status: 'offline',
 			lastSeenAt: created.lastSeenAt,
 			latitude: null,
 			longitude: null,

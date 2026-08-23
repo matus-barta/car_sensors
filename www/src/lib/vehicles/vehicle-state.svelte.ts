@@ -2,9 +2,12 @@ import { createContext } from 'svelte';
 
 import type { RemoteQuery } from '@sveltejs/kit';
 
+import { clock } from '$lib/utils/clock.svelte';
 import { getErrorMessage } from '$lib/utils/error';
 
-import type { VehicleSummary } from './vehicle';
+import { calculateVehicleStatus } from './vehicle-status';
+
+import type { VehicleSummary, VehicleWithStatus } from './vehicle';
 
 /**
  * Presents a vehicle query to the UI.
@@ -13,21 +16,39 @@ import type { VehicleSummary } from './vehicle';
  * flag and its failure. Only the selection is owned here, and it is resolved
  * against the current list on read so a vehicle that disappears cannot leave a
  * dangling selection behind.
+ *
+ * Status is attached here rather than by each consumer: it is derived from
+ * `lastSeenAt` against the shared clock, so a vehicle that stops reporting
+ * fades from online to stale to offline on its own, with no request involved.
  */
 export class VehicleState {
 	#query: RemoteQuery<VehicleSummary[]>;
 	#requestedVehicleId = $state<string | null>(null);
 
+	#vehicles: VehicleWithStatus[] = $derived.by(() => {
+		const now = clock.now;
+
+		return (this.#query.current ?? []).map((vehicle) => ({
+			...vehicle,
+			status: calculateVehicleStatus(vehicle.lastSeenAt, now)
+		}));
+	});
+
 	constructor(query: RemoteQuery<VehicleSummary[]>) {
 		this.#query = query;
 	}
 
-	get vehicles(): VehicleSummary[] {
-		return this.#query.current ?? [];
+	get vehicles(): VehicleWithStatus[] {
+		return this.#vehicles;
 	}
 
+	/*
+	 * The query reports `loading` during a refresh as well, and the background
+	 * poll refreshes it regularly — reporting that would replace the rendered
+	 * list with skeletons every half minute, so only the first load counts.
+	 */
 	get loading(): boolean {
-		return this.#query.loading;
+		return this.#query.loading && !this.#query.ready;
 	}
 
 	get error(): string | null {
@@ -50,7 +71,7 @@ export class VehicleState {
 		return this.vehicles[0]?.id ?? null;
 	}
 
-	get selectedVehicle(): VehicleSummary | null {
+	get selectedVehicle(): VehicleWithStatus | null {
 		const selectedVehicleId = this.selectedVehicleId;
 
 		if (selectedVehicleId === null) {

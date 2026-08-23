@@ -85,7 +85,9 @@ The root `docker-compose.yml` is the *deployment* file (Postgres, Valkey, pgAdmi
 
 **Server-only code lives in `$lib/server/`.** That is the only directory SvelteKit prevents the browser from importing, so all database and auth access belongs there — not in a `server/` folder nested inside a feature directory, which gets no protection.
 
-**Vehicle data reaches the browser through remote functions** (`$lib/vehicles/vehicle.remote.ts`, enabled by `experimental.remoteFunctions`). The returned query is the single source of truth: `VehicleState` wraps it, exposing `.current`/`.loading`/`.error`, and owns only the selection. Do not mirror query results into separate `$state` — that was a bug once already.
+**Vehicle data reaches the browser through remote functions** (`$lib/vehicles/vehicle.remote.ts`, enabled by `experimental.remoteFunctions`). The returned query is the single source of truth: `VehicleState` wraps it, exposing `.current`/`.loading`/`.error`, and owns the selection plus the derived status. Do not mirror query results into separate `$state` — that was a bug once already. Note that the query reports `loading` during refreshes too, so `VehicleState.loading` gates it on `ready` to keep the background poll from flashing skeletons.
+
+**Anything derived from a timestamp is derived in the browser, against `clock`** (`$lib/utils/clock.svelte.ts`). A status computed on the server freezes at the value it had when the response was sent, so `VehicleSummary` carries `lastSeenAt` and no status; `VehicleWithStatus` is what the components receive. The clock's interval only runs while an effect is reading it. Freshness of the data itself comes from `pollWhileVisible()` (`$lib/utils/poll.svelte.ts`) in the app shell, which pauses on a hidden tab; polling faster than 30s is pointless because `ingest` throttles each device's `last_seen_at` write to that.
 
 **Errors from remote functions must be raised with `error()`.** SvelteKit replaces any other thrown value with a generic `"Internal Error"`, so a plain `throw new Error('...')` silently loses its message. On the client, use `getErrorMessage()` from `$lib/utils/error` — SvelteKit's `HttpError` does not extend `Error` and carries its text on `body.message`.
 
@@ -108,6 +110,10 @@ E2E tests run serially against a real Postgres database whose name must end in `
 Prettier runs only inside `www/` (tabs, single quotes, no trailing commas, 100 columns). Generated output — `src/lib/components/ui/` and `src/lib/server/db/generated/` — is excluded from it.
 
 Agent skills are vendored in `.agents/skills/` and symlinked into `.claude/skills/`, tracked by `skills-lock.json` at the repo root. `.agents/` is not in git. Their markdown contains annotated code samples that Prettier cannot parse, so keep them outside any formatter's scope.
+
+**Commit subjects open with a topic tag**, followed by a space, a colon and a space: `www : Derive vehicle status in the browser`, `ingest : Throttle the last_seen_at write`. It is a convenience for scanning a log that covers four largely independent pieces, not a rule to enforce. The topic is usually the folder the change lives in, which is usually the sub-project.
+
+`wip` marks a work-in-progress commit — a feature that is not finished, but has accumulated substantial work that should not be lost. It follows the tag: `www : wip live vehicle streaming`.
 
 Licensed AGPL-3.0-only.
 
