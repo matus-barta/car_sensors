@@ -35,6 +35,24 @@ docker compose up -d
 docker compose down
 ```
 
+### Running behind a reverse proxy
+
+Exposing the services publicly is left to the operator, and so is TLS. The
+Compose file publishes plain HTTP on the loopback interface; putting a reverse
+proxy in front of it is the expected way to serve it to the internet.
+
+Two things the proxy has to get right:
+
+- **`ingest` serves everything under `/api`.** Health is `/api/health` and
+  uploads are `/api/telemetry/upload`. Route that prefix to the ingestion
+  service and leave the rest to the web application - a single hostname works if
+  the proxy selects by path prefix. Do not strip the prefix: the service expects
+  to receive it. The device's configured base URL must include whatever prefix
+  the deployment uses.
+- **Request bodies must be allowed through.** `ingest` accepts uploads up to
+  4 MiB on the wire, expanding to 32 MiB once decompressed. A proxy with a
+  smaller body limit will reject a device's backlog before the service sees it.
+
 ### Scope of the Compose deployment
 
 The Compose file currently starts PostgreSQL, Valkey, pgAdmin and the Rust
