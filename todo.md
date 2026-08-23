@@ -2,6 +2,79 @@
 
 Work that is understood but not scheduled yet.
 
+## Web application
+
+### Live-track the selected vehicle
+
+`ingest` already publishes the newest position of a device to Valkey: the JSON
+snapshot is stored at `device:live:{device_id}` with a fifteen minute expiry and
+announced on the `telemetry:live` channel, carrying `deviceId`, `timestamp`,
+`latitude`, `longitude`, `altitude`, `speedKmh`, `bearing`, `accuracyM`,
+`charging` and `powerSource`. Nothing consumes it yet.
+
+The transport on the `www` side is `query.live`, which the installed SvelteKit
+ships as part of the remote functions this project already enables. It streams
+values from an async generator to the browser over server-sent events, with
+reconnection and backoff built in, so it needs no WebSocket, no custom Node
+server and no separate endpoint to authenticate. A live query is the natural
+shape here because the browser never sends anything back - writes already go
+through commands.
+
+What has to be built:
+
+- One Valkey subscriber per `www` process. A subscribed connection cannot issue
+  other commands, so it is a dedicated one, and it must fan out in memory to the
+  live queries rather than opening a connection per browser tab.
+- A `watchVehicle` live query beside `getVehicles`, guarded by the same
+  authentication check, yielding the stored snapshot on connect and then each
+  announcement for that device.
+- Merging the live sample over that vehicle's summary, so the info card and the
+  map marker follow it. Status needs no special handling: it is already derived
+  from `lastSeenAt` against the shared clock.
+- Keeping the existing thirty second poll for the rest of the fleet - only the
+  selected vehicle is streamed.
+
+Decisions worth making deliberately:
+
+- `REDIS_URL` should be optional in `www`'s validated environment, with live
+  tracking degrading to the existing poll when it is absent. Making it required
+  would give development, CI and the whole end-to-end suite a hard dependency on
+  Valkey, which today they do not have.
+- The session is checked when the stream opens and not again, so a long-lived
+  stream outlives a sign-out on the server side. The app shell already tears the
+  client down; a lifetime cap or a periodic re-check would close the rest.
+- SvelteKit's documentation warns that a live query response must never be
+  cached by a service worker, since the cloned response keeps streaming after
+  the page closes. This application has no service worker today.
+- A reverse proxy must not buffer the response. Traefik does not by default and
+  ignores its flush interval for streaming responses, so this only matters if
+  someone puts a buffering middleware in front of the application.
+
+Note that the Android app uploads only over unmetered networks and in batches,
+so live updates will arrive in bursts until that changes. The plumbing is
+correct either way, but it will not look live on the road until the device
+pushes over mobile data.
+
+## Continuous integration
+
+### Extract a setup-rust action once a second Rust job exists
+
+`ingest-validation.yml` installs the toolchain with clippy and rustfmt and warms
+`Swatinem/rust-cache` inline. That is one job, so there is nothing to share and
+a composite action would be indirection for its own sake.
+
+The moment a second Rust job appears - splitting formatting, clippy and tests to
+run in parallel, adding `cargo audit`, or a coverage job - those two steps become
+worth extracting into `.github/actions/setup-rust`, the same trade
+`.github/actions/setup-www` already makes for four job references.
+
+Two constraints to remember when that day comes. Service containers cannot live
+in a composite action, because `services` is a job-level key; sharing the
+Postgres and Valkey setup is what the reusable workflow is for. And the Rust
+setup inside `setup-www` should stay where it is: it exists to install the SQLx
+CLI and wants neither the components nor the workspace cache, so merging the two
+would produce one action with flags selecting between unrelated behaviours.
+
 ## Telemetry upload protocol
 
 ### Stream uploads as NDJSON instead of one JSON array
