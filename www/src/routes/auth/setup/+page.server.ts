@@ -1,11 +1,14 @@
 import { fail, redirect } from '@sveltejs/kit';
 import { APIError } from 'better-auth/api';
-import { count, eq, sql } from 'drizzle-orm';
 
 import { AUTH_SETUP_HEADER, AUTH_SETUP_TOKEN } from '$lib/server/auth-bootstrap';
 import { auth } from '$lib/server/auth';
-import { db, schema } from '$lib/server/db';
-import { isApplicationSetupRequired } from '$lib/server/application-setup';
+import {
+	deleteSetupUser,
+	finalizeApplicationSetup,
+	getApplicationSetupState,
+	isApplicationSetupRequired
+} from '$lib/server/application-setup';
 
 import type { Actions, PageServerLoad } from './$types';
 import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from '$lib/config';
@@ -67,72 +70,67 @@ export const actions: Actions = {
 			});
 		}
 
-		try {
-			await db.transaction(async (transaction) => {
-				const setupRows = await transaction.execute<{
-					completed: boolean;
-				}>(
-					sql`
-						SELECT completed
-						FROM application_setup
-						WHERE id = 'global'
-						FOR UPDATE
-					`
-				);
+		const setupState = await getApplicationSetupState();
 
-				const setupState = setupRows[0];
-
-				if (!setupState || setupState.completed) {
-					throw new Error('Application setup has already been completed.');
-				}
-
-				const [existingUsers] = await transaction
-					.select({
-						value: count()
-					})
-					.from(schema.user);
-
-				if (existingUsers.value > 0) {
-					throw new Error('Application setup has already been completed.');
-				}
-
-				const headers = new Headers(event.request.headers);
-				headers.set(AUTH_SETUP_HEADER, AUTH_SETUP_TOKEN);
-
-				const signUpResult = await auth.api.signUpEmail({
-					headers,
-					body: {
-						name,
-						email,
-						password
-					}
-				});
-
-				const createdUserId = signUpResult.user.id;
-
-				const updatedUsers = await transaction
-					.update(schema.user)
-					.set({
-						role: 'admin'
-					})
-					.where(eq(schema.user.id, createdUserId))
-					.returning({
-						id: schema.user.id
-					});
-
-				if (updatedUsers.length !== 1) {
-					throw new Error('The initial administrator could not be assigned.');
-				}
-
-				await transaction
-					.update(schema.applicationSetup)
-					.set({
-						completed: true,
-						completedAt: sql`now()`
-					})
-					.where(eq(schema.applicationSetup.id, 'global'));
+		if (setupState === 'complete') {
+			return fail(409, {
+				message: 'Application setup has already been completed.',
+				name,
+				email
 			});
+		}
+
+		if (setupState === 'incomplete') {
+			return fail(409, {
+				message:
+					'An earlier setup attempt was interrupted. Sign in with that account to finish setup.',
+				name,
+				email
+			});
+		}
+
+		/*
+		 * Better Auth writes the account on its own connection, so it cannot take
+		 * part in the transaction that claims the setup row. The account is
+		 * therefore created first and removed again if the claim does not
+		 * succeed, which keeps the installation in a state the UI can recover
+		 * from.
+		 */
+		let createdUserId: string | null = null;
+
+		try {
+			const headers = new Headers(event.request.headers);
+			headers.set(AUTH_SETUP_HEADER, AUTH_SETUP_TOKEN);
+
+			const signUpResult = await auth.api.signUpEmail({
+				headers,
+				body: {
+					name,
+					email,
+					password
+				}
+			});
+
+			createdUserId = signUpResult.user.id;
+
+			if (!(await finalizeApplicationSetup(createdUserId))) {
+				await deleteSetupUser(createdUserId);
+
+				return fail(409, {
+					message: 'Application setup has already been completed.',
+					name,
+					email
+				});
+			}
 		} catch (error) {
+			if (createdUserId) {
+				try {
+					await deleteSetupUser(createdUserId);
+				} catch (cleanupError) {
+					console.error('Failed to roll back the interrupted setup account:', cleanupError);
+				}
+			}
+
 			if (error instanceof APIError) {
 				return fail(400, {
 					message: error.message || 'The administrator could not be created.',

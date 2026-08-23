@@ -1,16 +1,33 @@
-import { error, redirect } from '@sveltejs/kit';
+import { redirect } from '@sveltejs/kit';
 import type { LayoutServerLoad } from './$types';
 
-import { getApplicationSetupState } from '$lib/server/application-setup';
+import { finalizeApplicationSetup, getApplicationSetupState } from '$lib/server/application-setup';
 
 const PUBLIC_AUTH_PATHS = new Set(['/auth/login', '/auth/setup']);
 
 export const load: LayoutServerLoad = async ({ locals, url }) => {
-	const setupState = await getApplicationSetupState();
+	let setupState = await getApplicationSetupState();
 	const currentPath = url.pathname;
 
+	/*
+	 * An interrupted setup attempt can leave an account behind without marking
+	 * setup complete. Signing in with that account proves ownership, so the
+	 * installation finishes itself instead of becoming unreachable.
+	 */
+	if (setupState === 'incomplete' && locals.user) {
+		await finalizeApplicationSetup(locals.user.id);
+
+		setupState = await getApplicationSetupState();
+	}
+
 	if (setupState === 'incomplete') {
-		error(503, 'Application setup is incomplete. An account exists, but setup was not finalized.');
+		if (currentPath !== '/auth/login') {
+			redirect(303, '/auth/login');
+		}
+
+		return {
+			user: null
+		};
 	}
 
 	if (setupState === 'required' && currentPath !== '/auth/setup') {
@@ -30,7 +47,15 @@ export const load: LayoutServerLoad = async ({ locals, url }) => {
 	}
 
 	return {
-		user: locals.user ?? null,
-		setupRequired: setupState === 'required'
+		// Only the fields the header renders. The full Better Auth user carries
+		// account state (role, ban details) the browser has no use for.
+		user: locals.user
+			? {
+					id: locals.user.id,
+					name: locals.user.name,
+					email: locals.user.email,
+					image: locals.user.image ?? null
+				}
+			: null
 	};
 };

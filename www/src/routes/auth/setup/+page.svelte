@@ -4,7 +4,7 @@
 
 	import { enhance } from '$app/forms';
 
-	import { Alert, AlertDescription } from '$lib/components/ui/alert';
+	import * as Alert from '$lib/components/ui/alert';
 	import { Button } from '$lib/components/ui/button';
 	import * as Card from '$lib/components/ui/card';
 	import { Input } from '$lib/components/ui/input';
@@ -22,14 +22,14 @@
 
 <div class="flex min-h-dvh items-center justify-center bg-muted/30 p-4">
 	<Card.Root class="w-full max-w-md">
-		<Card.Header class="space-y-4">
+		<Card.Header class="flex flex-col gap-4">
 			<div
 				class="flex size-12 items-center justify-center rounded-xl bg-primary text-primary-foreground"
 			>
 				<CarFront class="size-6" aria-hidden="true" />
 			</div>
 
-			<div class="space-y-1">
+			<div class="flex flex-col gap-1">
 				<Card.Title>Set up Car Sensors</Card.Title>
 				<Card.Description>
 					Create the initial administrator account. Public registration will be disabled after
@@ -41,9 +41,9 @@
 		<Card.Content>
 			<form method="post" use:enhance class="grid gap-5">
 				{#if form?.message}
-					<Alert variant="destructive">
-						<AlertDescription>{form.message}</AlertDescription>
-					</Alert>
+					<Alert.Root variant="destructive">
+						<Alert.Description>{form.message}</Alert.Description>
+					</Alert.Root>
 				{/if}
 
 				<div class="grid gap-2">
@@ -99,7 +99,7 @@
 				</div>
 
 				<Button type="submit" class="w-full">
-					<ShieldCheck class="size-4" aria-hidden="true" />
+					<ShieldCheck aria-hidden="true" />
 					Create administrator
 				</Button>
 			</form>

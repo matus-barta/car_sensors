@@ -172,16 +172,33 @@ Better Auth tables are generated separately from the application schema because 
 ## Project structure
 
 ```text
-src/lib/components/          Application and shadcn-svelte components
-src/lib/models/              Shared application models
-src/lib/presentation/        UI presentation helpers
-src/lib/server/              Server-only authentication and database code
+src/lib/components/          Application components
+src/lib/components/ui/       Generated shadcn-svelte components
+src/lib/map/                 MapLibre style construction
+src/lib/server/              Server-only code, unreachable from the browser
 src/lib/server/db/generated/ Generated Drizzle schemas
-src/lib/utils/               Reusable utilities
-src/routes/auth/             Authentication routes
+src/lib/utils/               Framework-agnostic helpers
+src/lib/vehicles/            Vehicle domain: types, status, state, remote functions
 src/routes/                  Application routes
+src/routes/auth/             Authentication routes
 static/                      Static assets
+e2e/                         Playwright end-to-end tests
 ```
+
+Only `src/lib/server/` is protected from browser imports by SvelteKit, so
+database and authentication access lives there rather than in a nested
+`server/` folder inside a feature directory.
+
+`src/lib/components/ui/` holds only the components the application actually
+renders. Add more with the shadcn-svelte CLI as they are needed:
+
+```bash
+pnpm dlx shadcn-svelte@latest add <component>
+```
+
+Vehicle data reaches the browser through the remote functions in
+`src/lib/vehicles/vehicle.remote.ts`. The returned query is the single source
+of truth for the list; `VehicleState` wraps it and owns only the selection.
 
 ## Useful commands
 
