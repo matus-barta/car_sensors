@@ -2,6 +2,15 @@
 
 Work that is understood but not scheduled yet.
 
+## Continuous integration
+
+### Run clippy and the test suite in CI
+
+`.github/workflows/ingest-build.yml` builds and pushes the Docker image but never
+runs `cargo clippy --all-targets --all-features -- -D warnings` or `cargo test`,
+which is why the workspace accumulated four clippy errors without anyone
+noticing. `www` has its own validation workflow; the Rust side has no equivalent.
+
 ## Android app
 
 ### Timestamp a sample from GPS when a fix is available
