@@ -13,7 +13,7 @@
 		<div class="flex items-start gap-3">
 			<Skeleton class="size-11 shrink-0 rounded-lg" />
 
-			<div class="min-w-0 flex-1 space-y-2">
+			<div class="flex min-w-0 flex-1 flex-col gap-2">
 				<Skeleton class="h-4 w-36" />
 				<Skeleton class="h-3 w-24" />
 			</div>
