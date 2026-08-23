@@ -11,7 +11,7 @@ pub async fn init_redis(redis_url: String) -> MultiplexedConnection {
 
     tracing::info!("Connected to Redis");
 
-    return conn;
+    conn
 }
 
 pub async fn get_key<T>(
@@ -22,7 +22,7 @@ where
     T: for<'a> serde::Deserialize<'a>,
 {
     let mut redis = redis_conn.lock().await;
-    let redis_response = redis.get(&key).await;
+    let redis_response = redis.get(key).await;
 
     match redis_response {
         Ok(data) => match data {
@@ -60,8 +60,38 @@ pub async fn set_key_w_ttl<T>(
     let mut redis = redis_conn.lock().await;
 
     match serde_json::to_string(&response) {
-        Ok(json) => match redis.set_ex(&key, json, ttl.into()).await {
+        Ok(json) => match redis.set_ex(key, json, ttl.into()).await {
             Ok(_) => tracing::debug!("Set cached key: {}", &key),
+            Err(e) => cache_error(e),
+        },
+        Err(e) => cache_error(e),
+    };
+}
+
+/// Publishes `message` to `channel` as JSON.
+///
+/// Pub/sub delivery is at most once: a subscriber that is not connected at this
+/// moment never sees the message, and nothing is stored for it to catch up on.
+/// What is published must therefore be a hint that fresher data exists, never
+/// the only copy of it.
+pub async fn publish<T>(
+    redis_conn: &Arc<tokio::sync::Mutex<MultiplexedConnection>>,
+    channel: &str,
+    message: &T,
+) where
+    T: serde::Serialize,
+{
+    let mut redis = redis_conn.lock().await;
+
+    match serde_json::to_string(message) {
+        Ok(json) => match redis.publish(channel, json).await {
+            Ok(receivers) => {
+                tracing::debug!(
+                    "Published on channel: {} - {} receiver(s)",
+                    channel,
+                    receivers
+                )
+            }
             Err(e) => cache_error(e),
         },
         Err(e) => cache_error(e),

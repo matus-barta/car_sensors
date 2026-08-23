@@ -15,6 +15,7 @@ use tower_http::{
 
 mod db;
 mod helpers;
+mod live;
 mod models;
 mod routes;
 
