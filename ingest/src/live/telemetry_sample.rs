@@ -1,3 +1,5 @@
+use std::time::{SystemTime, UNIX_EPOCH};
+
 use serde::{Deserialize, Serialize};
 use shared::cache::{get_key, publish, set_key_w_ttl};
 
@@ -13,6 +15,15 @@ const LIVE_SAMPLE_CHANNEL: &str = "telemetry:live";
 /// Covers the window in which `www` still treats a vehicle as stale rather than
 /// offline. Past it a stored position is of no use to anybody, so let it go.
 const LIVE_SAMPLE_TTL_SECS: u32 = 15 * 60;
+
+/// How far ahead of the server a device's clock may run before its samples stop
+/// counting as live.
+///
+/// Samples are stamped with `System.currentTimeMillis()` on the phone, and
+/// Android takes that clock from the cellular network or NTP rather than from
+/// GPS, so a device that has been offline can be wrong. Ordinary skew is small;
+/// this only has to catch a clock that is grossly wrong.
+const MAX_CLOCK_SKEW_MS: i64 = 5 * 60 * 1000;
 
 /// The newest known position of a device, as `www` receives it.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -44,7 +55,7 @@ pub(crate) async fn publish_live_sample(
     device_id: &str,
     samples: &[TelemetrySample],
 ) {
-    let Some(sample) = newest_located_sample(samples) else {
+    let Some(sample) = newest_located_sample(samples, now_ms()) else {
         return;
     };
 
@@ -86,21 +97,53 @@ pub(crate) async fn publish_live_sample(
     publish(&state.redis, LIVE_SAMPLE_CHANNEL, &live).await;
 }
 
-/// The newest sample carrying a position.
+/// The newest sample carrying a position and a believable timestamp.
 ///
 /// A sample without coordinates cannot move a marker, and the batch holds plenty
 /// of them: the device merges its sensors into a row every 500 ms whether or not
 /// a location arrived in that window.
-fn newest_located_sample(samples: &[TelemetrySample]) -> Option<&TelemetrySample> {
+///
+/// A sample stamped in the future is skipped individually rather than rejecting
+/// the upload: the whole batch is already stored in Postgres, which keeps the
+/// history whatever the device believed the time was, and only the live position
+/// needs a clock that can be trusted. One such sample would otherwise sit in the
+/// snapshot and suppress every genuine position until its key expired. Samples
+/// stamped in the past are left alone - a device uploads its backlog, so old
+/// timestamps are normal and simply lose to newer ones.
+fn newest_located_sample(samples: &[TelemetrySample], now_ms: i64) -> Option<&TelemetrySample> {
+    let horizon = now_ms.saturating_add(MAX_CLOCK_SKEW_MS);
+
     samples
         .iter()
         .filter(|sample| sample.latitude.is_some() && sample.longitude.is_some())
+        .filter(|sample| {
+            if sample.timestamp > horizon {
+                tracing::warn!(
+                    "Ignoring live sample stamped {} ms ahead of the server clock",
+                    sample.timestamp - now_ms
+                );
+
+                return false;
+            }
+
+            true
+        })
         .max_by_key(|sample| sample.timestamp)
+}
+
+fn now_ms() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as i64
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Server clock the tests measure their samples against.
+    const NOW_MS: i64 = 10_000;
 
     /// Builds a sample through the real deserializer, which fills every sensor
     /// field this test does not care about with `None`.
@@ -125,7 +168,8 @@ mod tests {
             sample(2_000, Some((48.2, 17.2))),
         ];
 
-        let newest = newest_located_sample(&samples).expect("a located sample should be found");
+        let newest =
+            newest_located_sample(&samples, NOW_MS).expect("a located sample should be found");
 
         assert_eq!(newest.timestamp, 3_000);
     }
@@ -134,7 +178,8 @@ mod tests {
     fn newest_located_sample_should_ignore_samples_without_coordinates() {
         let samples = [sample(1_000, Some((48.1, 17.1))), sample(9_000, None)];
 
-        let newest = newest_located_sample(&samples).expect("a located sample should be found");
+        let newest =
+            newest_located_sample(&samples, NOW_MS).expect("a located sample should be found");
 
         assert_eq!(newest.timestamp, 1_000);
     }
@@ -143,7 +188,31 @@ mod tests {
     fn newest_located_sample_should_return_none_without_any_position() {
         let samples = [sample(1_000, None), sample(2_000, None)];
 
-        assert!(newest_located_sample(&samples).is_none());
+        assert!(newest_located_sample(&samples, NOW_MS).is_none());
+    }
+
+    #[test]
+    fn newest_located_sample_should_skip_a_sample_from_a_grossly_wrong_clock() {
+        let samples = [
+            sample(1_000, Some((48.1, 17.1))),
+            sample(NOW_MS + MAX_CLOCK_SKEW_MS + 1, Some((48.9, 17.9))),
+        ];
+
+        let newest = newest_located_sample(&samples, NOW_MS).expect("a sample should be found");
+
+        assert_eq!(newest.timestamp, 1_000);
+    }
+
+    #[test]
+    fn newest_located_sample_should_accept_a_sample_inside_the_skew_tolerance() {
+        let samples = [
+            sample(1_000, Some((48.1, 17.1))),
+            sample(NOW_MS + MAX_CLOCK_SKEW_MS, Some((48.9, 17.9))),
+        ];
+
+        let newest = newest_located_sample(&samples, NOW_MS).expect("a sample should be found");
+
+        assert_eq!(newest.timestamp, NOW_MS + MAX_CLOCK_SKEW_MS);
     }
 
     #[test]
