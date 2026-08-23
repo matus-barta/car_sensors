@@ -1,12 +1,10 @@
-import { getContext, setContext } from 'svelte';
+import { createContext } from 'svelte';
 
 import type { RemoteQuery } from '@sveltejs/kit';
 
 import { getErrorMessage } from '$lib/utils/error';
 
 import type { VehicleSummary } from './vehicle';
-
-const VEHICLES_CONTEXT = Symbol('vehicles');
 
 /**
  * Presents a vehicle query to the UI.
@@ -71,16 +69,8 @@ export class VehicleState {
 	}
 }
 
-export function setVehicleState(state: VehicleState): VehicleState {
-	return setContext(VEHICLES_CONTEXT, state);
-}
-
-export function getVehicleState(): VehicleState {
-	const state = getContext<VehicleState>(VEHICLES_CONTEXT);
-
-	if (!state) {
-		throw new Error('VehicleState is not available in the current component context.');
-	}
-
-	return state;
-}
+/**
+ * `createContext` carries the type across, so consumers need no cast and get a
+ * thrown error automatically when the state was never provided.
+ */
+export const [getVehicleState, setVehicleState] = createContext<VehicleState>();
