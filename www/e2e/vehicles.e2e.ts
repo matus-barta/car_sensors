@@ -7,7 +7,7 @@ import {
 	resetDatabase
 } from './fixtures/database';
 
-import { createInitialAdministrator } from './fixtures/users';
+import { createInitialAdministrator, signIn, signOut } from './fixtures/users';
 
 function getVehicleSelector(page: Page) {
 	return page.getByRole('button', {
@@ -235,6 +235,64 @@ test.describe('vehicle selection and creation', () => {
 				exact: true
 			})
 		).not.toBeVisible();
+	});
+
+	test('explains that a device ID is already registered', async ({ page }) => {
+		const dialog = await openAddVehicleDialog(page);
+
+		await dialog
+			.getByLabel('Vehicle name', {
+				exact: true
+			})
+			.fill('Duplicate Vehicle');
+
+		await dialog
+			.getByLabel('Device ID', {
+				exact: true
+			})
+			.fill('car-1');
+
+		await dialog
+			.getByRole('button', {
+				name: 'Add vehicle',
+				exact: true
+			})
+			.click();
+
+		await expect(dialog.getByRole('alert')).toHaveText(
+			'A vehicle with this device ID already exists.'
+		);
+
+		await expect(dialog).toBeVisible();
+
+		await dialog
+			.getByRole('button', {
+				name: 'Cancel',
+				exact: true
+			})
+			.click();
+	});
+
+	test('loads a fresh vehicle list after signing out and back in', async ({ page }) => {
+		await signOut(page);
+
+		await createTestVehicle({
+			deviceId: 'car-4',
+			name: 'Added While Signed Out',
+			lastSeenAt: new Date()
+		});
+
+		await signIn(page);
+
+		const vehicleSelector = getVehicleSelector(page);
+
+		await vehicleSelector.click();
+
+		await expect(
+			page.getByRole('button', {
+				name: /Added While Signed Out/
+			})
+		).toBeVisible();
 	});
 
 	test('initializes the vehicle map', async ({ page }) => {

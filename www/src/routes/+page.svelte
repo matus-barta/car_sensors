@@ -6,10 +6,6 @@
 	import { getVehicleState } from '$lib/vehicles/vehicle-state.svelte.js';
 
 	const vehicleState = getVehicleState();
-
-	const selectedVehicle = $derived(
-		vehicleState.vehicles.find((vehicle) => vehicle.id === vehicleState.selectedVehicleId) ?? null
-	);
 </script>
 
 <svelte:head>
@@ -27,7 +23,9 @@
 		<div class="pointer-events-none absolute top-4 left-4 z-30 md:top-5 md:left-5">
 			<VehicleInfoCardSkeleton />
 		</div>
-	{:else if selectedVehicle}
+	{:else if vehicleState.selectedVehicle}
+		{@const selectedVehicle = vehicleState.selectedVehicle}
+
 		<div class="pointer-events-none absolute top-4 left-4 z-30 md:top-5 md:left-5">
 			<div class="pointer-events-auto">
 				<VehicleInfoCard vehicle={selectedVehicle} />

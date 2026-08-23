@@ -1,53 +1,73 @@
 import { getContext, setContext } from 'svelte';
 
+import type { RemoteQuery } from '@sveltejs/kit';
+
+import { getErrorMessage } from '$lib/utils/error';
+
 import type { VehicleSummary } from './vehicle';
 
 const VEHICLES_CONTEXT = Symbol('vehicles');
 
+/**
+ * Presents a vehicle query to the UI.
+ *
+ * The query itself stays the single source of truth for the list, its loading
+ * flag and its failure. Only the selection is owned here, and it is resolved
+ * against the current list on read so a vehicle that disappears cannot leave a
+ * dangling selection behind.
+ */
 export class VehicleState {
-	vehicles = $state<VehicleSummary[]>([]);
-	selectedVehicleId = $state<string | null>(null);
-	loading = $state(false);
-	error = $state<string | null>(null);
+	#query: RemoteQuery<VehicleSummary[]>;
+	#requestedVehicleId = $state<string | null>(null);
 
-	setLoading(loading: boolean): void {
-		this.loading = loading;
+	constructor(query: RemoteQuery<VehicleSummary[]>) {
+		this.#query = query;
 	}
 
-	setError(error: string | null): void {
-		this.error = error;
+	get vehicles(): VehicleSummary[] {
+		return this.#query.current ?? [];
 	}
 
-	constructor(vehicles: VehicleSummary[] = [], selectedVehicleId: string | null = null) {
-		this.replaceVehicles(vehicles);
+	get loading(): boolean {
+		return this.#query.loading;
+	}
 
-		if (selectedVehicleId && this.vehicles.some((vehicle) => vehicle.id === selectedVehicleId)) {
-			this.selectedVehicleId = selectedVehicleId;
+	get error(): string | null {
+		const error: unknown = this.#query.error;
+
+		if (!error) {
+			return null;
 		}
+
+		return getErrorMessage(error, 'The vehicle list could not be loaded.');
+	}
+
+	get selectedVehicleId(): string | null {
+		const requested = this.#requestedVehicleId;
+
+		if (requested !== null && this.vehicles.some((vehicle) => vehicle.id === requested)) {
+			return requested;
+		}
+
+		return this.vehicles[0]?.id ?? null;
+	}
+
+	get selectedVehicle(): VehicleSummary | null {
+		const selectedVehicleId = this.selectedVehicleId;
+
+		if (selectedVehicleId === null) {
+			return null;
+		}
+
+		return this.vehicles.find((vehicle) => vehicle.id === selectedVehicleId) ?? null;
 	}
 
 	selectVehicle(vehicleId: string): void {
-		if (!this.vehicles.some((vehicle) => vehicle.id === vehicleId)) {
-			return;
-		}
-
-		this.selectedVehicleId = vehicleId;
+		this.#requestedVehicleId = vehicleId;
 	}
 
-	replaceVehicles(vehicles: VehicleSummary[]): void {
-		const previousSelection = this.selectedVehicleId;
-
-		this.vehicles = [...vehicles];
-
-		const selectionStillExists =
-			previousSelection !== null &&
-			this.vehicles.some((vehicle) => vehicle.id === previousSelection);
-
-		if (selectionStillExists) {
-			return;
-		}
-
-		this.selectedVehicleId = this.vehicles[0]?.id ?? null;
+	async refresh(): Promise<void> {
+		await this.#query.refresh();
 	}
 }
 

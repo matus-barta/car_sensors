@@ -4,6 +4,7 @@
 	import LogOut from '@lucide/svelte/icons/log-out';
 	import Plus from '@lucide/svelte/icons/plus';
 	import Check from '@lucide/svelte/icons/check';
+	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 
 	import { Button } from '$lib/components/ui/button';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
@@ -11,6 +12,7 @@
 	import { Separator } from '$lib/components/ui/separator';
 	import type { VehicleSummary } from '$lib/vehicles/vehicle';
 	import { formatRelativeTime } from '$lib/utils/date';
+	import { getErrorMessage } from '$lib/utils/error';
 	import {
 		getVehicleStatusDotClass,
 		getVehicleStatusLabel
@@ -31,6 +33,7 @@
 		user: HeaderUser;
 		vehicles?: VehicleSummary[];
 		vehiclesLoading?: boolean;
+		vehiclesError?: string | null;
 		selectedVehicleId?: string | null;
 		onVehicleSelect?: (vehicleId: string) => void;
 		onAddVehicle?: () => void;
@@ -41,6 +44,7 @@
 		user,
 		vehicles = [],
 		vehiclesLoading = false,
+		vehiclesError = null,
 		selectedVehicleId = null,
 		onVehicleSelect,
 		onAddVehicle,
@@ -49,6 +53,7 @@
 
 	let vehicleMenuOpen = $state(false);
 	let signingOut = $state(false);
+	let signOutError = $state<string | null>(null);
 
 	const selectedVehicle = $derived(
 		vehicles.find((vehicle) => vehicle.id === selectedVehicleId) ?? null
@@ -68,9 +73,14 @@
 		if (!onSignOut || signingOut) return;
 
 		signingOut = true;
+		signOutError = null;
 
 		try {
 			await onSignOut();
+		} catch (error) {
+			console.error('Failed to sign out:', error);
+
+			signOutError = getErrorMessage(error, 'Signing out failed. Please try again.');
 		} finally {
 			signingOut = false;
 		}
@@ -140,7 +150,13 @@
 					<Separator class="my-1" />
 
 					<div class="max-h-72 overflow-y-auto p-1">
-						{#if vehicles.length > 0}
+						{#if vehiclesError}
+							<div class="px-3 py-6 text-center" role="alert" data-testid="vehicle-list-error">
+								<TriangleAlert class="mx-auto mb-2 size-6 text-destructive" aria-hidden="true" />
+								<p class="text-sm font-medium">The vehicle list could not be loaded.</p>
+								<p class="mt-1 text-xs text-muted-foreground">{vehiclesError}</p>
+							</div>
+						{:else if vehicles.length > 0}
 							{#each vehicles as vehicle (vehicle.id)}
 								{@const lastSeen = formatRelativeTime(vehicle.lastSeenAt)}
 								<Button
@@ -254,10 +270,21 @@
 
 			<DropdownMenu.Separator />
 
-			<DropdownMenu.Item variant="destructive" disabled={signingOut} onclick={signOut}>
+			<DropdownMenu.Item
+				variant="destructive"
+				disabled={signingOut}
+				closeOnSelect={false}
+				onclick={signOut}
+			>
 				<LogOut class="size-4" aria-hidden="true" />
 				{signingOut ? 'Signing out…' : 'Sign out'}
 			</DropdownMenu.Item>
+
+			{#if signOutError}
+				<p class="px-2 py-1.5 text-xs text-destructive" role="alert" data-testid="sign-out-error">
+					{signOutError}
+				</p>
+			{/if}
 		</DropdownMenu.Content>
 	</DropdownMenu.Root>
 
