@@ -57,6 +57,44 @@ pushes over mobile data.
 
 ## Continuous integration
 
+### Stop the CI test credentials triggering GitGuardian
+
+GitGuardian raised an incident for the `POSTGRES_PASSWORD: postgres` literal in
+the workflow service containers. The value is a throwaway for an ephemeral
+container that never leaves the runner, so this is noise rather than a finding -
+but it is noise that recurs on every change to those files.
+
+The alerts come from the GitHub App, and that decides which remedy works.
+GitGuardian's own documentation is explicit that ggshield "does not share its
+ignored secrets with the dashboard", while dashboard ignores *are* honoured by
+ggshield. Committing a `.gitguardian.yaml` would therefore silence a local or CI
+run of ggshield and change nothing about the incidents being raised today. That
+file is worth adding only if ggshield is ever wired into a hook or a workflow;
+its keys are `ignored_paths`, `ignored_matches` and `ignored_detectors`, and
+`ggshield secret ignore --last-found` writes it in the right shape.
+
+Two things that do work, and they compose:
+
+- In the dashboard, ignore the incident with the reason "test credential", which
+  also stops it reopening when the same string reappears, and add a filepath
+  exclusion for `www/.env.test`. That file holds an end-to-end auth secret and is
+  committed on purpose, because `vite preview` runs in production mode and would
+  not read it otherwise. Exclusions are glob-style, can be scoped to a single
+  repository, and apply retroactively to existing incidents.
+- Remove the literal instead of excusing it. Setting
+  `POSTGRES_HOST_AUTH_METHOD: trust` on the service container in place of
+  `POSTGRES_PASSWORD` lets the job connect with no password in the URL at all -
+  verified against `postgres:18` from an external client, which is how a job
+  reaches a service container, with a password-protected container refusing the
+  same connection. Trusting every connection is acceptable for a container that
+  exists for the length of one job and is not reachable outside it. The
+  `BETTER_AUTH_SECRET` values in the web workflow can go the same way, generated
+  per run with `openssl rand -hex 32` into `GITHUB_ENV` rather than committed.
+
+The compose files keep their `postgres` and `pgadmin` passwords either way:
+those are for a local stack an operator is expected to change, and documenting
+them is the point.
+
 ### Extract a setup-rust action once a second Rust job exists
 
 `ingest-validation.yml` installs the toolchain with clippy and rustfmt and warms
