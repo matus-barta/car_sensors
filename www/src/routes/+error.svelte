@@ -15,14 +15,14 @@
 
 <div class="flex min-h-dvh items-center justify-center bg-muted/30 p-4">
 	<Card.Root class="w-full max-w-md" data-testid="error-page">
-		<Card.Header class="space-y-4">
+		<Card.Header class="flex flex-col gap-4">
 			<div
 				class="flex size-12 items-center justify-center rounded-xl bg-destructive/10 text-destructive"
 			>
 				<TriangleAlert class="size-6" aria-hidden="true" />
 			</div>
 
-			<div class="space-y-1">
+			<div class="flex flex-col gap-1">
 				<Card.Title>Something went wrong</Card.Title>
 
 				<Card.Description data-testid="error-message">
@@ -37,7 +37,7 @@
 
 		<Card.Footer>
 			<Button href={resolve('/')} class="w-full">
-				<CarFront class="size-4" aria-hidden="true" />
+				<CarFront aria-hidden="true" />
 				Back to the vehicle map
 			</Button>
 		</Card.Footer>
