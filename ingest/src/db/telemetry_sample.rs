@@ -151,10 +151,9 @@ fn insert_statement(device_id: &str, samples: &[TelemetrySample]) -> QueryBuilde
 /// ```
 #[cfg(test)]
 mod tests {
-    use std::time::{SystemTime, UNIX_EPOCH};
-
     use shared::pg::init_pg;
     use shared::sqlx::query_scalar;
+    use shared::time::since_epoch;
     use shared::tokio;
 
     use super::*;
@@ -162,10 +161,7 @@ mod tests {
     /// Every test owns a device id, so tests running side by side and leftovers
     /// from an earlier run cannot decide the outcome.
     fn unique_device_id(name: &str) -> String {
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos();
+        let nanos = since_epoch().as_nanos();
 
         format!("test-{name}-{nanos}")
     }

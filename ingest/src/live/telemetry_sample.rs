@@ -1,7 +1,6 @@
-use std::time::{SystemTime, UNIX_EPOCH};
-
 use serde::{Deserialize, Serialize};
 use shared::cache::{get_key, publish, set_key_w_ttl};
+use shared::time::now_ms;
 
 use crate::{AppState, models::telemetry_sample::TelemetrySample};
 
@@ -144,13 +143,6 @@ fn newest_located_sample(samples: &[TelemetrySample], now_ms: i64) -> Option<&Te
             true
         })
         .max_by_key(|sample| sample.timestamp)
-}
-
-fn now_ms() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis() as i64
 }
 
 #[cfg(test)]

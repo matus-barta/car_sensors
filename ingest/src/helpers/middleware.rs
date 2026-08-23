@@ -1,5 +1,3 @@
-use std::time::{SystemTime, UNIX_EPOCH};
-
 use axum::{
     body::Body,
     extract::State,
@@ -9,6 +7,7 @@ use axum::{
 };
 use shared::cache::{get_key, set_key_w_ttl};
 use shared::sqlx::{Error, Pool, Postgres, query, query_scalar};
+use shared::time::now_secs;
 
 use crate::{AppState, models::device_auth::KnownDeviceId};
 
@@ -127,10 +126,7 @@ async fn touch_known_device(db_pool: &Pool<Postgres>, device_id: &str) -> Result
 /// Failures are logged rather than returned: the upload itself is what the
 /// device came for, and losing a `last_seen_at` update is not worth failing it.
 async fn update_last_seen_throttled(state: &AppState, device_id: &str) {
-    let now_epoch = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs() as i64;
+    let now_epoch = now_secs();
 
     let last_seen_key = format!("device:last_seen:{device_id}");
 

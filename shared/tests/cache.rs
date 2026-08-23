@@ -11,11 +11,10 @@
 //! TEST_REDIS_URL=redis://127.0.0.1:6379 cargo test -p shared
 //! ```
 
-use std::time::{SystemTime, UNIX_EPOCH};
-
 use serde::{Deserialize, Serialize};
 use shared::cache::{CacheError, get_key, init_redis, publish, set_key_w_ttl};
 use shared::redis::{self, AsyncTypedCommands};
+use shared::time::since_epoch;
 use tokio::time::{Duration, timeout};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -33,10 +32,7 @@ fn redis_url() -> Option<String> {
 /// Keys are unique per test run so a leftover value from an earlier run, or a
 /// test running beside this one, cannot decide the outcome.
 fn unique_key(name: &str) -> String {
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_nanos();
+    let nanos = since_epoch().as_nanos();
 
     format!("shared-test:{name}:{nanos}")
 }
