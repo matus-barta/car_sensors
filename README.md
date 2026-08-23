@@ -35,6 +35,22 @@ docker compose up -d
 docker compose down
 ```
 
+### Scope of the Compose deployment
+
+The Compose file currently starts PostgreSQL, Valkey, pgAdmin and the Rust
+ingestion service. The SvelteKit web application is **not** part of it yet and
+has no container image, so `www/` must be built and run separately:
+
+```bash
+cd www
+pnpm install
+pnpm build
+node build
+```
+
+The web application needs `DATABASE_URL`, `ORIGIN` and `BETTER_AUTH_SECRET` in
+its environment. See `www/README.md`.
+
 ## Development
 
 ### Repository Structure
