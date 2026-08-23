@@ -111,6 +111,10 @@ Prettier runs only inside `www/` (tabs, single quotes, no trailing commas, 100 c
 
 Agent skills are vendored in `.agents/skills/` and symlinked into `.claude/skills/`, tracked by `skills-lock.json` at the repo root. `.agents/` is not in git. Their markdown contains annotated code samples that Prettier cannot parse, so keep them outside any formatter's scope.
 
+**Commit subjects open with a topic tag**, followed by a space, a colon and a space: `www : Derive vehicle status in the browser`, `ingest : Throttle the last_seen_at write`. It is a convenience for scanning a log that covers four largely independent pieces, not a rule to enforce. The topic is usually the folder the change lives in, which is usually the sub-project.
+
+`wip` marks a work-in-progress commit — a feature that is not finished, but has accumulated substantial work that should not be lost. It follows the tag: `www : wip live vehicle streaming`.
+
 Licensed AGPL-3.0-only.
 
 `docs/ai-policy.md` governs AI-assisted work here: an AI tool may prepare changes in a supervised working tree, but **a human must review the result and create the commit personally**, and must be able to explain every substantive part of it. Prepare and explain changes; leave committing to the user unless they explicitly ask.
