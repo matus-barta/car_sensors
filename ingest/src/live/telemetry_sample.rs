@@ -66,11 +66,21 @@ pub(crate) async fn publish_live_sample(
      * reach us after a newer one already has. Announcing it unguarded would drag
      * the map marker backwards in time.
      */
-    let is_stale = get_key::<LiveSample>(&state.redis, &key)
+    let stored = get_key::<LiveSample>(&state.redis, &key)
         .await
-        .is_some_and(|stored| stored.timestamp >= sample.timestamp);
+        .unwrap_or_else(|error| {
+            /*
+             * Without the stored snapshot there is nothing to compare against.
+             * Announcing the sample is the better failure: the position is the
+             * newest this upload carries, and a subscriber that receives an
+             * out-of-order one corrects itself on the next message.
+             */
+            tracing::warn!("Could not read the stored live sample: {}", error);
 
-    if is_stale {
+            None
+        });
+
+    if stored.is_some_and(|stored| stored.timestamp >= sample.timestamp) {
         tracing::debug!(
             "Skipping live sample for {} - a newer one is stored",
             device_id
@@ -93,8 +103,13 @@ pub(crate) async fn publish_live_sample(
         power_source: sample.power_source.clone(),
     };
 
-    set_key_w_ttl(&state.redis, &key, &live, LIVE_SAMPLE_TTL_SECS).await;
-    publish(&state.redis, LIVE_SAMPLE_CHANNEL, &live).await;
+    if let Err(error) = set_key_w_ttl(&state.redis, &key, &live, LIVE_SAMPLE_TTL_SECS).await {
+        tracing::error!("Could not store the live sample: {}", error);
+    }
+
+    if let Err(error) = publish(&state.redis, LIVE_SAMPLE_CHANNEL, &live).await {
+        tracing::error!("Could not announce the live sample: {}", error);
+    }
 }
 
 /// The newest sample carrying a position and a believable timestamp.

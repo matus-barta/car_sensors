@@ -1,23 +1,7 @@
-use axum::{Router, extract::DefaultBodyLimit};
-use shared::{
-    cache::init_redis,
-    pg::init_pg,
-    redis::aio::MultiplexedConnection,
-    sqlx::{Pool, Postgres},
-    tokio,
-};
 use std::env;
-use std::sync::Arc;
-use tower_http::{
-    cors::CorsLayer, decompression::RequestDecompressionLayer, limit::RequestBodyLimitLayer,
-    trace::TraceLayer,
-};
 
-mod db;
-mod helpers;
-mod live;
-mod models;
-mod routes;
+use ingest::{AppState, build_app};
+use shared::{cache::init_redis, pg::init_pg, tokio};
 
 #[tokio::main]
 async fn main() {
@@ -41,21 +25,15 @@ async fn main() {
     let redis_url = env::var("REDIS_URL").expect("Missing Redis URL env var");
 
     let app_state = AppState {
-        db_pool: init_pg(db_url).await,
-        redis: Arc::new(tokio::sync::Mutex::new(init_redis(redis_url).await)),
+        db_pool: init_pg(&db_url)
+            .await
+            .expect("Could not initialize Postgres"),
+        redis: init_redis(&redis_url)
+            .await
+            .expect("Could not initialize Redis"),
     };
 
-    // build our application with a route
-    let app = Router::new()
-        .merge(routes::router(app_state.clone()))
-        .layer(RequestDecompressionLayer::new())
-        .layer(TraceLayer::new_for_http())
-        .layer(DefaultBodyLimit::disable())
-        .layer(CorsLayer::permissive()) //TODO: check if needed in prod and if yes research CORS
-        .layer(RequestBodyLimitLayer::new(
-            250 * 1024 * 1024, /* 250MiB */ //make configurable?
-        ))
-        .with_state(app_state);
+    let app = build_app(app_state);
 
     // run our app with hyper
     let listener = tokio::net::TcpListener::bind(server_ip_port)
@@ -70,13 +48,44 @@ async fn main() {
     );
 
     axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown_signal())
         .await
         .expect("Could not successfully create server");
 }
 
-#[derive(Clone)]
-struct AppState {
-    // that holds some api specific state
-    db_pool: Pool<Postgres>,
-    redis: Arc<tokio::sync::Mutex<MultiplexedConnection>>,
+/// Resolves when the process is asked to stop.
+///
+/// Without this a `docker stop` drops connections mid-request, which for an
+/// upload means the device retries a batch that may already be half committed.
+/// Waiting for in-flight requests costs a moment and avoids that entirely.
+async fn shutdown_signal() {
+    #[cfg(unix)]
+    {
+        use tokio::signal::unix::{SignalKind, signal};
+
+        let mut terminate = match signal(SignalKind::terminate()) {
+            Ok(signal) => signal,
+            Err(error) => {
+                tracing::error!("Could not listen for SIGTERM: {}", error);
+
+                return;
+            }
+        };
+
+        tokio::select! {
+            result = tokio::signal::ctrl_c() => {
+                if let Err(error) = result {
+                    tracing::error!("Could not listen for Ctrl+C: {}", error);
+                }
+            }
+            _ = terminate.recv() => {}
+        }
+    }
+
+    #[cfg(not(unix))]
+    if let Err(error) = tokio::signal::ctrl_c().await {
+        tracing::error!("Could not listen for Ctrl+C: {}", error);
+    }
+
+    tracing::info!("Shutdown signal received - finishing in-flight requests");
 }
