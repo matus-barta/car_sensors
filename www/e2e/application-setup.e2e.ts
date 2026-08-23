@@ -4,10 +4,11 @@ import {
 	getApplicationSetup,
 	getUserByEmail,
 	getUserCount,
+	markApplicationSetupIncomplete,
 	resetDatabase
 } from './fixtures/database';
 
-import { createInitialAdministrator, testAdministrator } from './fixtures/users';
+import { createInitialAdministrator, signIn, signOut, testAdministrator } from './fixtures/users';
 
 test.describe('initial application setup', () => {
 	test.beforeEach(async () => {
@@ -143,6 +144,61 @@ test.describe('initial application setup', () => {
 				exact: true
 			})
 		).toBeVisible();
+
+		expect(await getUserCount()).toBe(1);
+	});
+});
+
+test.describe('interrupted application setup', () => {
+	test.beforeEach(async ({ page }) => {
+		await resetDatabase();
+		await createInitialAdministrator(page);
+		await signOut(page);
+
+		// An account exists but setup was never finalized.
+		await markApplicationSetupIncomplete();
+	});
+
+	test('sends an unauthenticated visitor to sign-in instead of failing', async ({ page }) => {
+		await page.goto('/');
+
+		await expect(page).toHaveURL(/\/auth\/login$/);
+
+		await expect(
+			page.getByRole('button', {
+				name: 'Sign in',
+				exact: true
+			})
+		).toBeVisible();
+	});
+
+	test('keeps setup closed while an account already exists', async ({ page }) => {
+		await page.goto('/auth/setup');
+
+		await expect(page).toHaveURL(/\/auth\/login$/);
+
+		expect(await getUserCount()).toBe(1);
+	});
+
+	test('finishes the installation when the account owner signs in', async ({ page }) => {
+		await signIn(page);
+
+		await expect(page).toHaveURL('/');
+
+		const setup = await getApplicationSetup();
+
+		expect(setup).toMatchObject({
+			id: 'global',
+			completed: true
+		});
+
+		expect(setup.completedAt).toBeInstanceOf(Date);
+
+		const user = await getUserByEmail(testAdministrator.email);
+
+		expect(user).toMatchObject({
+			role: 'admin'
+		});
 
 		expect(await getUserCount()).toBe(1);
 	});

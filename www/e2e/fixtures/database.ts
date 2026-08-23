@@ -1,4 +1,6 @@
 import { execFile } from 'node:child_process';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 
 import postgres from 'postgres';
@@ -6,7 +8,10 @@ import { loadEnv } from 'vite';
 
 const execFileAsync = promisify(execFile);
 
-const environment = loadEnv('test', process.cwd(), '');
+// Anchored to this file so the fixture works regardless of working directory.
+const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
+
+const environment = loadEnv('test', projectRoot, '');
 
 const databaseUrl = process.env.DATABASE_URL ?? environment.DATABASE_URL;
 
@@ -70,13 +75,17 @@ export async function createTestDatabase(): Promise<void> {
 
 	await adminSql.unsafe(`CREATE DATABASE "${escapeIdentifier(databaseName)}"`);
 
-	await execFileAsync('sqlx', ['migrate', 'run', '--source', '../db/migrations'], {
-		cwd: process.cwd(),
-		env: {
-			...process.env,
-			DATABASE_URL: databaseUrl
+	await execFileAsync(
+		'sqlx',
+		['migrate', 'run', '--source', resolve(projectRoot, '../db/migrations')],
+		{
+			cwd: projectRoot,
+			env: {
+				...process.env,
+				DATABASE_URL: databaseUrl
+			}
 		}
-	});
+	);
 
 	await resetDatabase();
 }
@@ -129,34 +138,26 @@ export async function dropTestDatabase(): Promise<void> {
 }
 
 /**
- * Produces a deliberately incomplete application setup state.
+ * Rewinds a completed installation to the state left behind by a setup attempt
+ * that created its account but never finalized setup.
+ *
+ * Run this after `createInitialAdministrator` so the account keeps working
+ * credentials, which is what makes the state recoverable.
  */
-export async function createIncompleteSetupState(): Promise<void> {
-	await resetDatabase();
-
+export async function markApplicationSetupIncomplete(): Promise<void> {
 	const sql = getTestSql();
 
 	await sql`
-		INSERT INTO "user" (
-			id,
-			name,
-			email,
-			email_verified,
-			created_at,
-			updated_at,
-			role,
-			banned
-		)
-		VALUES (
-			'e2e-incomplete-setup-user',
-			'Test User',
-			'incomplete@example.test',
-			FALSE,
-			NOW(),
-			NOW(),
-			'user',
-			FALSE
-		)
+		UPDATE application_setup
+		SET
+			completed = FALSE,
+			completed_at = NULL
+		WHERE id = 'global'
+	`;
+
+	await sql`
+		UPDATE "user"
+		SET role = 'user'
 	`;
 }
 

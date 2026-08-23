@@ -1,13 +1,15 @@
 <script lang="ts">
 	import CarFront from '@lucide/svelte/icons/car-front';
-	import LoaderCircle from '@lucide/svelte/icons/loader-circle';
 	import Plus from '@lucide/svelte/icons/plus';
 
+	import * as Alert from '$lib/components/ui/alert';
 	import { Button } from '$lib/components/ui/button';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
+	import { Spinner } from '$lib/components/ui/spinner';
 	import { Textarea } from '$lib/components/ui/textarea';
+	import { getErrorMessage } from '$lib/utils/error';
 
 	export interface AddVehicleInput {
 		name: string;
@@ -89,10 +91,7 @@
 		} catch (error) {
 			console.error('Failed to add vehicle:', error);
 
-			errorMessage =
-				error instanceof Error
-					? error.message
-					: 'The vehicle could not be added. Please try again.';
+			errorMessage = getErrorMessage(error, 'The vehicle could not be added. Please try again.');
 		} finally {
 			submitting = false;
 		}
@@ -110,7 +109,7 @@
 						<CarFront class="size-5" aria-hidden="true" />
 					</span>
 
-					<div class="space-y-1">
+					<div class="flex flex-col gap-1">
 						<Dialog.Title>Add vehicle</Dialog.Title>
 
 						<Dialog.Description>Associate a vehicle with a telemetry device.</Dialog.Description>
@@ -172,12 +171,9 @@
 				</div>
 
 				{#if errorMessage}
-					<p
-						class="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
-						role="alert"
-					>
-						{errorMessage}
-					</p>
+					<Alert.Root variant="destructive">
+						<Alert.Description>{errorMessage}</Alert.Description>
+					</Alert.Root>
 				{/if}
 			</div>
 
@@ -188,10 +184,10 @@
 
 				<Button type="submit" disabled={!canSubmit()}>
 					{#if submitting}
-						<LoaderCircle class="size-4 animate-spin" aria-hidden="true" />
+						<Spinner />
 						Adding…
 					{:else}
-						<Plus class="size-4" aria-hidden="true" />
+						<Plus aria-hidden="true" />
 						Add vehicle
 					{/if}
 				</Button>

@@ -9,7 +9,8 @@
 	import type { VehicleSummary } from '$lib/vehicles/vehicle';
 	import { createOsmMapStyle } from '$lib/map/osm-map-style';
 
-	import { onMount, tick } from 'svelte';
+	import { tick } from 'svelte';
+	import type { Attachment } from 'svelte/attachments';
 
 	interface Props {
 		vehicles?: VehicleSummary[];
@@ -18,8 +19,6 @@
 	}
 
 	let { vehicles = [], selectedVehicleId = null, onVehicleSelect }: Props = $props();
-
-	let container: HTMLDivElement;
 
 	let map: MapLibreMap | null = null;
 	let mapLoaded = $state(false);
@@ -242,7 +241,13 @@
 		focusSelectedVehicle();
 	});
 
-	onMount(() => {
+	/*
+	 * An attachment rather than onMount: it receives the element directly, and
+	 * its teardown is tied to that element leaving the DOM. Declared as a
+	 * non-reactive const and reading no props synchronously, so a vehicle
+	 * update never tears the map down and rebuilds it.
+	 */
+	const attachMap: Attachment<HTMLDivElement> = (container) => {
 		let destroyed = false;
 		let resizeObserver: ResizeObserver | null = null;
 
@@ -364,12 +369,12 @@
 			map.remove();
 			map = null;
 		};
-	});
+	};
 </script>
 
 <div class="relative isolate size-full min-h-0 overflow-hidden bg-muted">
 	<div
-		bind:this={container}
+		{@attach attachMap}
 		class="absolute inset-0 z-0 size-full"
 		data-testid="vehicle-map"
 		data-map-state={mapError ? 'error' : mapLoaded ? 'ready' : 'loading'}

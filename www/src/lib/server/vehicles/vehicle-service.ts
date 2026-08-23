@@ -2,8 +2,7 @@ import { sql } from 'drizzle-orm';
 
 import { db, schema } from '$lib/server/db';
 import type { VehicleSummary } from '$lib/vehicles/vehicle';
-
-import { calculateVehicleStatus } from './vehicle-status';
+import { calculateVehicleStatus } from '$lib/vehicles/vehicle-status';
 
 type VehicleSummaryRow = Record<string, unknown> & {
 	id: string;
@@ -18,6 +17,15 @@ export interface CreateVehicleRecordInput {
 	name: string;
 	deviceId: string;
 	notes: string | null;
+}
+
+/** Raised when the requested device ID is already registered to a vehicle. */
+export class DuplicateDeviceIdError extends Error {
+	constructor(options?: ErrorOptions) {
+		super('A vehicle with this device ID already exists.', options);
+
+		this.name = 'DuplicateDeviceIdError';
+	}
 }
 
 export async function getVehicleSummaries(): Promise<VehicleSummary[]> {
@@ -102,7 +110,7 @@ export async function createVehicle(input: CreateVehicleRecordInput): Promise<Ve
 		};
 	} catch (cause) {
 		if (isUniqueViolation(cause)) {
-			throw new Error('A vehicle with this device ID already exists.', {
+			throw new DuplicateDeviceIdError({
 				cause
 			});
 		}
@@ -111,8 +119,29 @@ export async function createVehicle(input: CreateVehicleRecordInput): Promise<Ve
 	}
 }
 
-function isUniqueViolation(cause: unknown): cause is { code: string } {
-	return typeof cause === 'object' && cause !== null && 'code' in cause && cause.code === '23505';
+const UNIQUE_VIOLATION = '23505';
+
+/**
+ * Drizzle wraps driver failures in a `DrizzleQueryError`, so the Postgres error
+ * code sits somewhere on the cause chain rather than on the thrown error.
+ */
+function isUniqueViolation(cause: unknown): boolean {
+	let current = cause;
+
+	// Bounded so a self-referencing cause cannot spin forever.
+	for (let depth = 0; depth < 10; depth += 1) {
+		if (typeof current !== 'object' || current === null) {
+			return false;
+		}
+
+		if ('code' in current && (current as { code?: unknown }).code === UNIQUE_VIOLATION) {
+			return true;
+		}
+
+		current = (current as { cause?: unknown }).cause;
+	}
+
+	return false;
 }
 
 function normalizeLatitude(value: number | null): number | null {

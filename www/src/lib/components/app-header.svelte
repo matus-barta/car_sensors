@@ -4,13 +4,17 @@
 	import LogOut from '@lucide/svelte/icons/log-out';
 	import Plus from '@lucide/svelte/icons/plus';
 	import Check from '@lucide/svelte/icons/check';
+	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 
+	import * as Alert from '$lib/components/ui/alert';
 	import { Button } from '$lib/components/ui/button';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
+	import * as Empty from '$lib/components/ui/empty';
 	import * as Popover from '$lib/components/ui/popover';
 	import { Separator } from '$lib/components/ui/separator';
 	import type { VehicleSummary } from '$lib/vehicles/vehicle';
 	import { formatRelativeTime } from '$lib/utils/date';
+	import { getErrorMessage } from '$lib/utils/error';
 	import {
 		getVehicleStatusDotClass,
 		getVehicleStatusLabel
@@ -31,6 +35,7 @@
 		user: HeaderUser;
 		vehicles?: VehicleSummary[];
 		vehiclesLoading?: boolean;
+		vehiclesError?: string | null;
 		selectedVehicleId?: string | null;
 		onVehicleSelect?: (vehicleId: string) => void;
 		onAddVehicle?: () => void;
@@ -41,6 +46,7 @@
 		user,
 		vehicles = [],
 		vehiclesLoading = false,
+		vehiclesError = null,
 		selectedVehicleId = null,
 		onVehicleSelect,
 		onAddVehicle,
@@ -49,6 +55,7 @@
 
 	let vehicleMenuOpen = $state(false);
 	let signingOut = $state(false);
+	let signOutError = $state<string | null>(null);
 
 	const selectedVehicle = $derived(
 		vehicles.find((vehicle) => vehicle.id === selectedVehicleId) ?? null
@@ -68,9 +75,14 @@
 		if (!onSignOut || signingOut) return;
 
 		signingOut = true;
+		signOutError = null;
 
 		try {
 			await onSignOut();
+		} catch (error) {
+			console.error('Failed to sign out:', error);
+
+			signOutError = getErrorMessage(error, 'Signing out failed. Please try again.');
 		} finally {
 			signingOut = false;
 		}
@@ -109,7 +121,7 @@
 							class="h-10 max-w-[18rem] min-w-0 justify-between gap-3 px-3"
 						>
 							<span class="flex min-w-0 items-center gap-2">
-								<CarFront class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+								<CarFront class="text-muted-foreground" aria-hidden="true" />
 
 								<span class="min-w-0 truncate">
 									{selectedVehicle?.name ?? 'Select vehicle'}
@@ -126,7 +138,7 @@
 								{/if}
 							</span>
 
-							<ChevronsUpDown class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+							<ChevronsUpDown class="text-muted-foreground" aria-hidden="true" />
 						</Button>
 					{/snippet}
 				</Popover.Trigger>
@@ -140,7 +152,13 @@
 					<Separator class="my-1" />
 
 					<div class="max-h-72 overflow-y-auto p-1">
-						{#if vehicles.length > 0}
+						{#if vehiclesError}
+							<Alert.Root variant="destructive" data-testid="vehicle-list-error">
+								<TriangleAlert aria-hidden="true" />
+								<Alert.Title>The vehicle list could not be loaded.</Alert.Title>
+								<Alert.Description>{vehiclesError}</Alert.Description>
+							</Alert.Root>
+						{:else if vehicles.length > 0}
 							{#each vehicles as vehicle (vehicle.id)}
 								{@const lastSeen = formatRelativeTime(vehicle.lastSeenAt)}
 								<Button
@@ -155,7 +173,7 @@
 									<span
 										class="relative flex size-9 shrink-0 items-center justify-center rounded-md border"
 									>
-										<CarFront class="size-4 text-muted-foreground" aria-hidden="true" />
+										<CarFront class="text-muted-foreground" aria-hidden="true" />
 
 										<span
 											class={[
@@ -181,25 +199,29 @@
 									</span>
 
 									{#if vehicle.id === selectedVehicleId}
-										<Check class="size-4 shrink-0 text-primary" aria-label="Selected vehicle" />
+										<Check class="text-primary" aria-label="Selected vehicle" />
 									{/if}
 								</Button>
 							{/each}
 						{:else}
-							<div class="px-3 py-6 text-center">
-								<CarFront class="mx-auto mb-2 size-6 text-muted-foreground" aria-hidden="true" />
-								<p class="text-sm font-medium">No vehicles</p>
-								<p class="mt-1 text-xs text-muted-foreground">
-									Add your first vehicle to start tracking.
-								</p>
-							</div>
+							<Empty.Root>
+								<Empty.Header>
+									<Empty.Media variant="icon">
+										<CarFront aria-hidden="true" />
+									</Empty.Media>
+
+									<Empty.Title>No vehicles</Empty.Title>
+
+									<Empty.Description>Add your first vehicle to start tracking.</Empty.Description>
+								</Empty.Header>
+							</Empty.Root>
 						{/if}
 					</div>
 
 					<Separator class="my-1" />
 
 					<Button variant="ghost" class="w-full justify-start" onclick={addVehicle}>
-						<Plus class="size-4" aria-hidden="true" />
+						<Plus aria-hidden="true" />
 						Add vehicle
 					</Button>
 				</Popover.Content>
@@ -248,16 +270,27 @@
 			<DropdownMenu.Separator />
 
 			<DropdownMenu.Item onclick={addVehicle}>
-				<Plus class="size-4" aria-hidden="true" />
+				<Plus aria-hidden="true" />
 				Add vehicle
 			</DropdownMenu.Item>
 
 			<DropdownMenu.Separator />
 
-			<DropdownMenu.Item variant="destructive" disabled={signingOut} onclick={signOut}>
-				<LogOut class="size-4" aria-hidden="true" />
+			<DropdownMenu.Item
+				variant="destructive"
+				disabled={signingOut}
+				closeOnSelect={false}
+				onclick={signOut}
+			>
+				<LogOut aria-hidden="true" />
 				{signingOut ? 'Signing out…' : 'Sign out'}
 			</DropdownMenu.Item>
+
+			{#if signOutError}
+				<Alert.Root variant="destructive" data-testid="sign-out-error">
+					<Alert.Description>{signOutError}</Alert.Description>
+				</Alert.Root>
+			{/if}
 		</DropdownMenu.Content>
 	</DropdownMenu.Root>
 
