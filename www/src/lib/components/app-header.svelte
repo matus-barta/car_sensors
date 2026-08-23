@@ -12,7 +12,8 @@
 	import * as Empty from '$lib/components/ui/empty';
 	import * as Popover from '$lib/components/ui/popover';
 	import { Separator } from '$lib/components/ui/separator';
-	import type { VehicleSummary } from '$lib/vehicles/vehicle';
+	import type { VehicleWithStatus } from '$lib/vehicles/vehicle';
+	import { clock } from '$lib/utils/clock.svelte';
 	import { formatRelativeTime } from '$lib/utils/date';
 	import { getErrorMessage } from '$lib/utils/error';
 	import {
@@ -33,7 +34,7 @@
 
 	interface Props {
 		user: HeaderUser;
-		vehicles?: VehicleSummary[];
+		vehicles?: VehicleWithStatus[];
 		vehiclesLoading?: boolean;
 		vehiclesError?: string | null;
 		selectedVehicleId?: string | null;
@@ -160,7 +161,7 @@
 							</Alert.Root>
 						{:else if vehicles.length > 0}
 							{#each vehicles as vehicle (vehicle.id)}
-								{@const lastSeen = formatRelativeTime(vehicle.lastSeenAt)}
+								{@const lastSeen = formatRelativeTime(vehicle.lastSeenAt, clock.now)}
 								<Button
 									variant="ghost"
 									class={[

@@ -1,22 +1,24 @@
 <script lang="ts">
 	import CarFront from '@lucide/svelte/icons/car-front';
-	import Clock from '@lucide/svelte/icons/clock';
+	import ClockIcon from '@lucide/svelte/icons/clock';
 	import MapPin from '@lucide/svelte/icons/map-pin';
 	import Navigation from '@lucide/svelte/icons/navigation';
 
 	import * as Card from '$lib/components/ui/card';
 	import { Separator } from '$lib/components/ui/separator';
-	import type { VehicleSummary } from '$lib/vehicles/vehicle';
+	import type { VehicleWithStatus } from '$lib/vehicles/vehicle';
+	import { clock } from '$lib/utils/clock.svelte';
 	import { formatRelativeTime } from '$lib/utils/date';
 	import VehicleStatusBadge from '$lib/components/vehicle-status-badge.svelte';
 
 	interface Props {
-		vehicle: VehicleSummary;
+		vehicle: VehicleWithStatus;
 	}
 
 	let { vehicle }: Props = $props();
 
-	const lastSeen = $derived(formatRelativeTime(vehicle.lastSeenAt));
+	// Reading the clock is what makes this recount while the card stays open.
+	const lastSeen = $derived(formatRelativeTime(vehicle.lastSeenAt, clock.now));
 
 	const coordinates = $derived(
 		typeof vehicle.latitude === 'number' &&
@@ -67,7 +69,7 @@
 
 		<div class="grid gap-2 text-sm">
 			<div class="flex min-w-0 items-center gap-3">
-				<Clock class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+				<ClockIcon class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
 
 				<span class="shrink-0 text-muted-foreground"> Last seen </span>
 

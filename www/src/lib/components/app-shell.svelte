@@ -9,6 +9,7 @@
 	} from '$lib/components/add-vehicle-dialog.svelte';
 
 	import AppHeader, { type HeaderUser } from '$lib/components/app-header.svelte';
+	import { pollWhileVisible } from '$lib/utils/poll.svelte';
 	import { setVehicleState, VehicleState } from '$lib/vehicles/vehicle-state.svelte';
 	import { createVehicle, getVehicles } from '$lib/vehicles/vehicle.remote';
 
@@ -26,6 +27,15 @@
 	 */
 	const vehicles = getVehicles();
 	const vehicleState = setVehicleState(new VehicleState(vehicles));
+
+	/*
+	 * Positions and `lastSeenAt` only change when a device uploads, and `ingest`
+	 * writes `last_seen_at` at most once every 30 seconds per device, so polling
+	 * faster than that would return the same rows. Everything that ages between
+	 * two polls — the relative time, the status — is derived from the clock and
+	 * needs no request at all.
+	 */
+	pollWhileVisible(() => vehicleState.refresh());
 
 	let addVehicleDialogOpen = $state(false);
 

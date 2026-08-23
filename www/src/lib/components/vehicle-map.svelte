@@ -6,14 +6,14 @@
 
 	import mapLibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 
-	import type { VehicleSummary } from '$lib/vehicles/vehicle';
+	import type { VehicleWithStatus } from '$lib/vehicles/vehicle';
 	import { createOsmMapStyle } from '$lib/map/osm-map-style';
 
 	import { tick } from 'svelte';
 	import type { Attachment } from 'svelte/attachments';
 
 	interface Props {
-		vehicles?: VehicleSummary[];
+		vehicles?: VehicleWithStatus[];
 		selectedVehicleId?: string | null;
 		onVehicleSelect?: (vehicleId: string) => void;
 	}
@@ -34,7 +34,7 @@
 	const markerLayerId = 'vehicle-markers';
 	const selectedMarkerLayerId = 'selected-vehicle-marker';
 
-	function hasCoordinates(vehicle: VehicleSummary): vehicle is VehicleSummary & {
+	function hasCoordinates(vehicle: VehicleWithStatus): vehicle is VehicleWithStatus & {
 		latitude: number;
 		longitude: number;
 	} {
