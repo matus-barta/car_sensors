@@ -1,4 +1,35 @@
+import { dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
 import { defineConfig, devices } from '@playwright/test';
+import { loadEnv } from 'vite';
+
+/*
+ * `vite preview` runs in production mode and never reads `.env.test`, so the
+ * E2E environment is resolved here and handed to the server explicitly. Real
+ * environment variables win, which is how CI overrides the database URLs.
+ *
+ * Anchored to this file rather than the working directory so editors and
+ * tooling that load the config from elsewhere still find `.env.test`.
+ */
+const projectRoot = dirname(fileURLToPath(import.meta.url));
+
+const environment = loadEnv('test', projectRoot, '');
+
+function required(name: string): string {
+	const value = process.env[name] ?? environment[name];
+
+	if (!value) {
+		throw new Error(
+			`${name} is required to run the end-to-end tests. ` +
+				'Set it in the environment or in www/.env.test.'
+		);
+	}
+
+	return value;
+}
+
+const baseURL = required('ORIGIN');
 
 export default defineConfig({
 	testDir: './e2e',
@@ -7,7 +38,7 @@ export default defineConfig({
 	workers: 1,
 
 	use: {
-		baseURL: 'http://127.0.0.1:4173',
+		baseURL,
 		trace: 'on-first-retry',
 		screenshot: 'only-on-failure'
 	},
@@ -34,16 +65,17 @@ export default defineConfig({
 
 	webServer: {
 		command: 'pnpm test:e2e:server',
-		url: 'http://127.0.0.1:4173',
+		url: baseURL,
+		// Always start a fresh server so a stale process cannot serve old code.
 		reuseExistingServer: false,
 		timeout: 120_000,
 		env: {
-			DATABASE_URL: 'postgres://postgres:postgres@127.0.0.1:5432/carsensors_e2e_test',
-			POSTGRES_ADMIN_URL: 'postgres://postgres:postgres@127.0.0.1:5432/postgres',
-			ORIGIN: 'http://127.0.0.1:4173',
-			BETTER_AUTH_SECRET: 'e2e-only-better-auth-secret-not-for-production',
-			PUBLIC_OSM_VECTOR_TILE_URL: 'https://vector.openstreetmap.org/shortbread_v1/{z}/{x}/{y}.mvt',
-			PUBLIC_OSM_STYLE_URL: 'https://vector.openstreetmap.org/styles/shortbread/colorful.json'
+			DATABASE_URL: required('DATABASE_URL'),
+			POSTGRES_ADMIN_URL: required('POSTGRES_ADMIN_URL'),
+			ORIGIN: baseURL,
+			BETTER_AUTH_SECRET: required('BETTER_AUTH_SECRET'),
+			PUBLIC_OSM_VECTOR_TILE_URL: required('PUBLIC_OSM_VECTOR_TILE_URL'),
+			PUBLIC_OSM_STYLE_URL: required('PUBLIC_OSM_STYLE_URL')
 		}
 	}
 });
