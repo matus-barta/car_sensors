@@ -21,7 +21,3 @@ src/lib/server/db/generated/*.sql
 
 # Generated shadcn-svelte components
 src/lib/components/ui/
-# Agent skills (vendored). Prettier reformats them and fails to parse the
-# annotated code samples in their markdown.
-.claude/
-skills-lock.json
