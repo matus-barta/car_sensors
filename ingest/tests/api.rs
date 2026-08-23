@@ -12,8 +12,6 @@
 //!   TEST_REDIS_URL=redis://127.0.0.1:6379 cargo test -p ingest
 //! ```
 
-use std::time::{SystemTime, UNIX_EPOCH};
-
 use axum::body::Body;
 use axum::http::{Request, StatusCode, header::CONTENT_LENGTH, header::CONTENT_TYPE};
 use ingest::{AppState, build_app};
@@ -21,15 +19,13 @@ use shared::cache::init_redis;
 use shared::pg::init_pg;
 use shared::redis::AsyncTypedCommands;
 use shared::sqlx::{Pool, Postgres, query, query_scalar};
+use shared::time::{now_ms, since_epoch};
 use shared::tokio;
 use tower::ServiceExt;
 
 /// A device id nothing else in the run will use.
 fn unique_device_id(name: &str) -> String {
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_nanos();
+    let nanos = since_epoch().as_nanos();
 
     format!("test-{name}-{nanos}")
 }
@@ -142,10 +138,34 @@ fn gzipped_upload_request(device_id: &str, body: &str) -> Request<Body> {
 }
 
 fn batch(timestamp: i64) -> String {
+    batch_with(1, timestamp)
+}
+
+/// A batch whose sample id is chosen by the caller, so a second upload can
+/// carry rows the database has not already stored.
+fn batch_with(id: i64, timestamp: i64) -> String {
     format!(
-        r#"[{{"id":1,"event":"telemetry_sample","timestamp":{timestamp},
+        r#"[{{"id":{id},"event":"telemetry_sample","timestamp":{timestamp},
              "latitude":48.15,"longitude":17.11,"speedKmh":42.5,"bearing":90}}]"#
     )
+}
+
+async fn last_seen_at(state: &AppState, device_id: &str) -> Option<String> {
+    query_scalar::<_, Option<String>>(
+        "SELECT last_seen_at::text FROM known_devices WHERE device_id = $1",
+    )
+    .bind(device_id)
+    .fetch_one(&state.db_pool)
+    .await
+    .expect("the device row should be readable")
+}
+
+async fn stored_samples(state: &AppState, device_id: &str) -> i64 {
+    query_scalar::<_, i64>("SELECT COUNT(*) FROM telemetry_samples WHERE device_id = $1")
+        .bind(device_id)
+        .fetch_one(&state.db_pool)
+        .await
+        .expect("the count should be readable")
 }
 
 #[tokio::test]
@@ -238,10 +258,7 @@ async fn upload_from_a_known_device_should_be_stored_and_announced() {
 
     register_device(&state.db_pool, &device_id).await;
 
-    let timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis() as i64;
+    let timestamp = now_ms();
 
     let response = build_app(state.clone())
         .oneshot(upload_request(Some(&device_id), &batch(timestamp)))
@@ -363,4 +380,108 @@ async fn a_body_that_expands_beyond_the_memory_limit_should_be_rejected() {
     forget_device(&state, &device_id).await;
 
     assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
+}
+
+#[tokio::test]
+async fn upload_from_a_deactivated_device_should_be_forbidden() {
+    let state = state_or_skip!();
+    let device_id = unique_device_id("deactivated");
+
+    register_device(&state.db_pool, &device_id).await;
+
+    query("UPDATE known_devices SET is_active = FALSE WHERE device_id = $1")
+        .bind(&device_id)
+        .execute(&state.db_pool)
+        .await
+        .expect("the device should be deactivable");
+
+    let response = build_app(state.clone())
+        .oneshot(upload_request(Some(&device_id), &batch(now_ms())))
+        .await
+        .expect("the service should answer");
+
+    forget_device(&state, &device_id).await;
+
+    assert_eq!(
+        response.status(),
+        StatusCode::FORBIDDEN,
+        "deactivating a device is the only way to revoke it, so it has to stop uploads"
+    );
+}
+
+#[tokio::test]
+async fn a_second_upload_should_not_rewrite_last_seen_immediately() {
+    let state = state_or_skip!();
+    let device_id = unique_device_id("throttled");
+
+    register_device(&state.db_pool, &device_id).await;
+
+    build_app(state.clone())
+        .oneshot(upload_request(Some(&device_id), &batch_with(1, now_ms())))
+        .await
+        .expect("the service should answer");
+
+    let after_first = last_seen_at(&state, &device_id).await;
+
+    build_app(state.clone())
+        .oneshot(upload_request(Some(&device_id), &batch_with(2, now_ms())))
+        .await
+        .expect("the service should answer");
+
+    let after_second = last_seen_at(&state, &device_id).await;
+
+    forget_device(&state, &device_id).await;
+
+    assert!(
+        after_first.is_some(),
+        "the first upload should have stamped last_seen_at"
+    );
+
+    assert_eq!(
+        after_second, after_first,
+        "the throttle should keep a second upload from writing the column again"
+    );
+}
+
+#[tokio::test]
+async fn an_older_batch_should_not_move_the_live_snapshot_backwards() {
+    let state = state_or_skip!();
+    let device_id = unique_device_id("out-of-order");
+
+    register_device(&state.db_pool, &device_id).await;
+
+    let newest = now_ms();
+    let older = newest - 60_000;
+
+    build_app(state.clone())
+        .oneshot(upload_request(Some(&device_id), &batch_with(1, newest)))
+        .await
+        .expect("the service should answer");
+
+    // A delayed backlog upload, carrying a sample the database has not seen.
+    build_app(state.clone())
+        .oneshot(upload_request(Some(&device_id), &batch_with(2, older)))
+        .await
+        .expect("the service should answer");
+
+    let snapshot: Option<String> = state
+        .redis
+        .clone()
+        .get(format!("device:live:{device_id}"))
+        .await
+        .expect("the live key should be readable");
+
+    let stored = stored_samples(&state, &device_id).await;
+
+    forget_device(&state, &device_id).await;
+
+    assert_eq!(
+        stored, 2,
+        "both uploads must have been stored, otherwise the second never reached the announcement"
+    );
+
+    assert!(
+        snapshot.is_some_and(|snapshot| snapshot.contains(&format!(r#""timestamp":{newest}"#))),
+        "a delayed upload must not drag the live position back in time"
+    );
 }
