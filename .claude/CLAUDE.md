@@ -109,7 +109,7 @@ E2E tests run serially against a real Postgres database whose name must end in `
 
 Prettier runs only inside `www/` (tabs, single quotes, no trailing commas, 100 columns). Generated output — `src/lib/components/ui/` and `src/lib/server/db/generated/` — is excluded from it.
 
-Agent skills are vendored in `.agents/skills/` and symlinked into `.claude/skills/`, tracked by `skills-lock.json` at the repo root. `.agents/` is not in git. Their markdown contains annotated code samples that Prettier cannot parse, so keep them outside any formatter's scope.
+Agent skills are vendored in `.agents/skills/` and symlinked into `.claude/skills/`, tracked by `skills-lock.json` at the repo root. `.agents/` is not in git. Their markdown contains annotated code samples that Prettier cannot parse, so keep them outside any formatter's scope. Manage them with the `skills` CLI (`pnpm dlx skills add|remove|list|update ...`) rather than hand-editing the vendored files or `skills-lock.json` — `remove <name> -y` deletes the vendored directory, the agent symlinks, and the lock entry together.
 
 **Commit subjects open with a topic tag**, followed by a space, a colon and a space: `www : Derive vehicle status in the browser`, `ingest : Throttle the last_seen_at write`. It is a convenience for scanning a log that covers four largely independent pieces, not a rule to enforce. The topic is usually the folder the change lives in, which is usually the sub-project.
 
