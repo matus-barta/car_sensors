@@ -8,19 +8,32 @@ on:
     paths:
       - "ingest/**"
       - "shared/**"
+      # Migrations are embedded into the binary by `sqlx::migrate!`, so a change
+      # to them changes the image even when no Rust source does.
+      - "db/migrations/**"
       - "Cargo.toml"
       - "Cargo.lock"
       - ".github/workflows/ingest-build.yml"
+      - ".github/workflows/ingest-validation.yml"
       - "!ingest/*.md"
       - ".dockerignore"
       - "!docker-compose.yml"
 
 permissions:
   contents: read
-  packages: write
 
 jobs:
+  validate:
+    name: Validate before publishing
+    uses: ./.github/workflows/ingest-validation.yml
+
   build:
+    needs: validate
+
+    permissions:
+      contents: read
+      packages: write
+
     runs-on: ubuntu-latest
 
     steps:

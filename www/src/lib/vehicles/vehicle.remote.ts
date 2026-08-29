@@ -3,13 +3,14 @@ import { command, getRequestEvent, query } from '$app/server';
 import { error } from '@sveltejs/kit';
 import { z } from 'zod';
 
+import { liveTracking, type LiveSample } from '$lib/server/live-tracking';
 import {
 	createVehicle as createVehicleRecord,
 	DuplicateDeviceIdError,
 	getVehicleSummaries
 } from '$lib/server/vehicles/vehicle-service';
 
-import type { VehicleSummary } from './vehicle';
+import type { VehicleLivePosition, VehicleSummary } from './vehicle';
 
 const createVehicleSchema = z.object({
 	name: z
@@ -46,6 +47,50 @@ export const getVehicles = query(async (): Promise<VehicleSummary[]> => {
 	requireAuthenticatedUser();
 
 	return getVehicleSummaries();
+});
+
+function toLivePosition(sample: LiveSample | null): VehicleLivePosition | null {
+	if (!sample) {
+		return null;
+	}
+
+	return {
+		lastSeenAt: new Date(sample.timestamp).toISOString(),
+		latitude: sample.latitude,
+		longitude: sample.longitude,
+		bearing: sample.bearing ?? null
+	};
+}
+
+/**
+ * Streams the live position of a single device: the stored snapshot on
+ * connect, then each announcement Valkey delivers for it.
+ *
+ * The session is checked once, here, rather than on every value the stream
+ * yields - unlike a request-response query, a live connection can outlive
+ * the sign-out that would otherwise have ended it. The app shell tears the
+ * client down on sign-out, which closes the rest of the way.
+ *
+ * Yields `null` and ends the stream immediately when live tracking is
+ * disabled (`REDIS_URL` unset): there is nothing to add over the periodic
+ * poll every vehicle already gets.
+ */
+export const watchVehicle = query.live(z.string().min(1), async function* (deviceId) {
+	requireAuthenticatedUser();
+
+	if (!liveTracking) {
+		yield null;
+
+		return;
+	}
+
+	yield toLivePosition(await liveTracking.getStoredSample(deviceId));
+
+	const { request } = getRequestEvent();
+
+	for await (const sample of liveTracking.watchSamples(deviceId, request.signal)) {
+		yield toLivePosition(sample);
+	}
 });
 
 export const createVehicle = command(

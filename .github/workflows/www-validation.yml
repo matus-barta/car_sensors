@@ -39,7 +39,10 @@ jobs:
         image: postgres:18
         env:
           POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
+          # No password: the container only ever exists for this job and is
+          # not reachable outside it, so trusting every connection costs
+          # nothing and keeps no secret literal in the workflow file.
+          POSTGRES_HOST_AUTH_METHOD: trust
           POSTGRES_DB: carsensors_schema_check
         ports:
           - 5432:5432
@@ -50,9 +53,8 @@ jobs:
           --health-retries 15
 
     env:
-      DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/carsensors_schema_check
+      DATABASE_URL: postgres://postgres@127.0.0.1:5432/carsensors_schema_check
       ORIGIN: http://localhost:5173
-      BETTER_AUTH_SECRET: ci-only-better-auth-secret-not-used-in-production
       PUBLIC_OSM_VECTOR_TILE_URL: "https://vector.openstreetmap.org/shortbread_v1/{z}/{x}/{y}.mvt"
       PUBLIC_OSM_STYLE_URL: "https://vector.openstreetmap.org/styles/shortbread/colorful.json"
       CI: true
@@ -60,6 +62,11 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
+
+      # Generated per run rather than committed, same reasoning as the
+      # database password above: nothing outside this job ever needs it.
+      - name: Generate a CI-only Better Auth secret
+        run: echo "BETTER_AUTH_SECRET=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
 
       - name: Set up WWW environment
         uses: ./.github/actions/setup-www
@@ -149,7 +156,10 @@ jobs:
         image: postgres:18
         env:
           POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
+          # No password: the container only ever exists for this job and is
+          # not reachable outside it, so trusting every connection costs
+          # nothing and keeps no secret literal in the workflow file.
+          POSTGRES_HOST_AUTH_METHOD: trust
           POSTGRES_DB: postgres
         ports:
           - 5432:5432
@@ -160,15 +170,19 @@ jobs:
           --health-retries 15
 
     env:
-      DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/carsensors_e2e_test
-      POSTGRES_ADMIN_URL: postgres://postgres:postgres@127.0.0.1:5432/postgres
+      DATABASE_URL: postgres://postgres@127.0.0.1:5432/carsensors_e2e_test
+      POSTGRES_ADMIN_URL: postgres://postgres@127.0.0.1:5432/postgres
       ORIGIN: http://127.0.0.1:4173
-      BETTER_AUTH_SECRET: ci-only-better-auth-secret-not-used-in-production
       CI: true
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
+
+      # Generated per run rather than committed, same reasoning as the
+      # database password above: nothing outside this job ever needs it.
+      - name: Generate a CI-only Better Auth secret
+        run: echo "BETTER_AUTH_SECRET=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
 
       - name: Set up WWW environment
         uses: ./.github/actions/setup-www

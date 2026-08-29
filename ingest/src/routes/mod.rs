@@ -5,14 +5,11 @@ use axum::{
 
 use crate::{AppState, helpers::middleware::require_known_device};
 
-mod device;
 mod health;
 mod telemetry;
 
 pub fn router(app_state: AppState) -> Router<AppState> {
-    let public_routes = Router::new()
-        .route("/health", get(health::health_check))
-        .route("/device/add/{device_id}", get(device::add_device));
+    let public_routes = Router::new().route("/health", get(health::health_check));
 
     let protected_routes = Router::new()
         .route("/telemetry/upload", post(telemetry::upload))
