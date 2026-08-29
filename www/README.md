@@ -48,6 +48,10 @@ openssl rand -base64 32
 
 The `.env` file contains secrets and must not be committed.
 
+Optionally, set `REDIS_URL` to the same Valkey instance `ingest` uses to enable
+live tracking of the selected vehicle. Without it, the vehicle list still
+updates through its periodic poll.
+
 ## Development
 
 Start the development server:

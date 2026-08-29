@@ -1,7 +1,7 @@
 {
 	"name": "www",
 	"version": "0.0.1",
-	"packageManager": "pnpm@11.22.0",
+	"packageManager": "pnpm@11.24.0",
 	"engines": {
 		"node": ">=24",
 		"pnpm": ">=11"
@@ -79,6 +79,7 @@
 		"drizzle-orm": "^0.45.2",
 		"maplibre-gl": "^6.3.0",
 		"postgres": "^3.4.9",
+		"redis": "^6.2.1",
 		"zod": "^4.4.3"
 	}
 }

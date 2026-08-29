@@ -11,7 +11,7 @@
 	import AppHeader, { type HeaderUser } from '$lib/components/app-header.svelte';
 	import { pollWhileVisible } from '$lib/utils/poll.svelte';
 	import { setVehicleState, VehicleState } from '$lib/vehicles/vehicle-state.svelte';
-	import { createVehicle, getVehicles } from '$lib/vehicles/vehicle.remote';
+	import { createVehicle, getVehicles, watchVehicle } from '$lib/vehicles/vehicle.remote';
 
 	interface Props {
 		user: HeaderUser;
@@ -26,7 +26,7 @@
 	 * instead of reusing the previous session's list.
 	 */
 	const vehicles = getVehicles();
-	const vehicleState = setVehicleState(new VehicleState(vehicles));
+	const vehicleState = setVehicleState(new VehicleState(vehicles, watchVehicle));
 
 	/*
 	 * Positions and `lastSeenAt` only change when a device uploads, and `ingest`

@@ -1,0 +1,101 @@
+name: Ingest - validation
+
+on:
+  pull_request:
+    paths:
+      - "ingest/**"
+      - "shared/**"
+      - "db/migrations/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/ingest-validation.yml"
+
+  # Called by "Ingest - build" on main rather than triggering on the push
+  # itself, so the image is only built once these checks have passed.
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ingest-validation-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate ingest and shared crates
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: postgres
+          # No password: the container only ever exists for this job and is
+          # not reachable outside it, so trusting every connection costs
+          # nothing and keeps no secret literal in the workflow file.
+          POSTGRES_HOST_AUTH_METHOD: trust
+          POSTGRES_DB: ingest_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d ingest_test"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 15
+
+      valkey:
+        image: valkey/valkey:9-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping | grep PONG"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 15
+
+    env:
+      # The integration tests run only when these are set, and the step after
+      # them fails the job if they were not picked up.
+      TEST_DATABASE_URL: postgres://postgres@127.0.0.1:5432/ingest_test
+      TEST_REDIS_URL: redis://127.0.0.1:6379
+      CARGO_TERM_COLOR: always
+      CI: true
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Check formatting
+        run: cargo fmt --all --check
+
+      - name: Run clippy
+        run: cargo clippy --all-targets --all-features --locked -- -D warnings
+
+      - name: Run tests
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo test --workspace --locked -- --nocapture | tee cargo-test-output.txt
+
+      - name: Verify the integration tests were not skipped
+        shell: bash
+        run: |
+          if grep -q "skipped: set TEST_" cargo-test-output.txt; then
+            echo "ERROR: integration tests skipped their assertions."
+            echo
+            echo "They run only when TEST_DATABASE_URL and TEST_REDIS_URL point"
+            echo "at a reachable database and cache. A green run that skipped"
+            echo "them proves nothing, so the job fails instead."
+            echo
+            grep "skipped: set TEST_" cargo-test-output.txt | sort -u
+            exit 1
+          fi
