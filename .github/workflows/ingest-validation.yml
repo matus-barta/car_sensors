@@ -31,7 +31,10 @@ jobs:
         image: postgres:18
         env:
           POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
+          # No password: the container only ever exists for this job and is
+          # not reachable outside it, so trusting every connection costs
+          # nothing and keeps no secret literal in the workflow file.
+          POSTGRES_HOST_AUTH_METHOD: trust
           POSTGRES_DB: ingest_test
         ports:
           - 5432:5432
@@ -54,7 +57,7 @@ jobs:
     env:
       # The integration tests run only when these are set, and the step after
       # them fails the job if they were not picked up.
-      TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/ingest_test
+      TEST_DATABASE_URL: postgres://postgres@127.0.0.1:5432/ingest_test
       TEST_REDIS_URL: redis://127.0.0.1:6379
       CARGO_TERM_COLOR: always
       CI: true
