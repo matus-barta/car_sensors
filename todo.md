@@ -4,56 +4,97 @@ Work that is understood but not scheduled yet.
 
 ## Web application
 
-### Live-track the selected vehicle
+### Expand the vehicle info card, grouped into tabs
 
-`ingest` already publishes the newest position of a device to Valkey: the JSON
-snapshot is stored at `device:live:{device_id}` with a fifteen minute expiry and
-announced on the `telemetry:live` channel, carrying `deviceId`, `timestamp`,
-`latitude`, `longitude`, `altitude`, `speedKmh`, `bearing`, `accuracyM`,
-`charging` and `powerSource`. Nothing consumes it yet.
+`vehicle-info-card.svelte` shows only name, id, status, last seen, coordinates
+and bearing - a small slice of what is already being collected. A telemetry
+row persists the full sensor suite (power and charging state, GPS speed,
+altitude, accuracy and provider, plus accelerometer, gyroscope, magnetometer
+and barometer readings - see `telemetry_samples` in
+`20260614151604_init_telemetry.sql`), and `LiveSample` already carries speed,
+altitude, accuracy, charging and power source over the live stream - none of
+it reaches the card today, since `VehicleSummary`/`VehicleLivePosition` only
+carry lastSeenAt, latitude, longitude and bearing.
 
-The transport on the `www` side is `query.live`, which the installed SvelteKit
-ships as part of the remote functions this project already enables. It streams
-values from an async generator to the browser over server-sent events, with
-reconnection and backoff built in, so it needs no WebSocket, no custom Node
-server and no separate endpoint to authenticate. A live query is the natural
-shape here because the browser never sends anything back - writes already go
-through commands.
+Worth growing the card to show more of this, and grouping it into tabs rather
+than one long stacked list once it does - an "Overview" tab for identity,
+status and location, a "Telemetry" or "Sensors" tab for the rest. `Tabs` is
+not vendored yet (`pnpm dlx shadcn-svelte@latest add tabs`), so this would be
+the first shadcn-svelte component added since the ones already in
+`src/lib/components/ui/`.
 
-What has to be built:
+Two things to carry over deliberately rather than lose along the way: the card
+is absolutely positioned over the map at a width capped by the viewport
+(`w-[min(24rem,calc(100vw-2rem))]`), so it needs to keep behaving on narrow
+screens once there is more inside it; and surfacing more live fields means
+growing `VehicleLivePosition` and the merge in `vehicle-state.svelte.ts`
+beyond the four fields it carries now.
 
-- One Valkey subscriber per `www` process. A subscribed connection cannot issue
-  other commands, so it is a dedicated one, and it must fan out in memory to the
-  live queries rather than opening a connection per browser tab.
-- A `watchVehicle` live query beside `getVehicles`, guarded by the same
-  authentication check, yielding the stored snapshot on connect and then each
-  announcement for that device.
-- Merging the live sample over that vehicle's summary, so the info card and the
-  map marker follow it. Status needs no special handling: it is already derived
-  from `lastSeenAt` against the shared clock.
-- Keeping the existing thirty second poll for the rest of the fleet - only the
-  selected vehicle is streamed.
+### Let the map be panned away from the selected vehicle without losing it
 
-Decisions worth making deliberately:
+`vehicle-map.svelte`'s `focusSelectedVehicle()` runs inside an `$effect` that
+reads `selectedVehicleId` and `vehicles`, and re-centers the map with
+`easeTo()` on every change to either. That means any update to the selected
+vehicle's position re-centers the map, even if someone had just panned or
+zoomed away to look at something else - the view snaps back underneath them.
+Live tracking makes this a lot more noticeable than it used to be: the
+selected vehicle's position can now update every few seconds instead of every
+poll, so the map fights a manual pan far more often than before.
 
-- `REDIS_URL` should be optional in `www`'s validated environment, with live
-  tracking degrading to the existing poll when it is absent. Making it required
-  would give development, CI and the whole end-to-end suite a hard dependency on
-  Valkey, which today they do not have.
-- The session is checked when the stream opens and not again, so a long-lived
-  stream outlives a sign-out on the server side. The app shell already tears the
-  client down; a lifetime cap or a periodic re-check would close the rest.
-- SvelteKit's documentation warns that a live query response must never be
-  cached by a service worker, since the cloned response keeps streaming after
-  the page closes. This application has no service worker today.
-- A reverse proxy must not buffer the response. Traefik does not by default and
-  ignores its flush interval for streaming responses, so this only matters if
-  someone puts a buffering middleware in front of the application.
+The fix is a "follow" state, separate from "selected": panning, zooming or
+rotating the map by hand should disengage follow without deselecting the
+vehicle - the info card stays, the marker stays highlighted, but position
+updates stop forcing the camera back. A small button near the existing map
+controls, in the spirit of the "recenter on my location" button in most map
+apps, re-engages follow and jumps back to the vehicle; it could be a toggle
+that also shows whether follow is currently on.
 
-Note that the Android app uploads only over unmetered networks and in batches,
-so live updates will arrive in bursts until that changes. The plumbing is
-correct either way, but it will not look live on the road until the device
-pushes over mobile data.
+The main implementation question is telling a user gesture apart from the
+component's own `easeTo()`/`jumpTo()` calls, since both fire the same camera
+events. MapLibre's `movestart`/`dragstart`/`zoomstart`/`rotatestart` events
+carry a real `originalEvent` (the underlying DOM event) only when a user
+triggered them; a call to `easeTo()` that does not explicitly pass its own
+`originalEvent` fires with `originalEvent: undefined`, which is what should
+distinguish "the user moved the map" from "the map moved because a vehicle
+did" without needing a manual flag around every future place code moves the
+camera.
+
+### Do not flash a skeleton for a vehicle info card that is never coming
+
+`+page.svelte` shows `VehicleInfoCardSkeleton` while `vehicleState.loading`,
+then `VehicleInfoCard` if `vehicleState.selectedVehicle`, otherwise nothing.
+`loading` is only ever true once - the very first fetch of the vehicle list,
+before `VehicleState` has resolved whether there is anything to select - so
+whenever that first load ends with no selection (an empty fleet, today; any
+other reason there is no selection, in the future), the skeleton has already
+promised a card that then just disappears once loading finishes. The correct
+first frame for "there is nothing to select" is no card at all, not a skeleton
+that flashes and vanishes.
+
+Since there is no way to know in advance, while that first fetch is still in
+flight, whether it will end in a selection, the skeleton cannot be conditioned
+on the eventual answer - it has to go. Showing nothing until
+`vehicleState.selectedVehicle` actually resolves removes the flash entirely;
+the map already carries its own "Loading map…" indicator, so the page is not
+left silent while data loads. `vehicle-info-card-skeleton.svelte` has no other
+consumer, so this would remove that component along with the branch in
+`+page.svelte` that renders it.
+
+### Validate vehicle summary rows with a zod schema
+
+`getVehicleSummaries()` in `vehicle-service.ts` reads a raw SQL join and casts
+the driver's rows to `VehicleSummaryRow` by assertion, then defends the
+numeric fields with three hand-rolled `normalizeLatitude`, `normalizeLongitude`
+and `normalizeBearing` functions that each repeat the same "finite and in
+range, otherwise null" shape. `parseLiveSample` in `live-tracking.ts` does the
+equivalent job with a zod schema instead, for data arriving from Valkey rather
+than Postgres - the two would read the same way if the SQL row were validated
+the same way.
+
+This is not a correctness fix - the normalizers already reject the same bad
+values a schema would - so it is worth doing for consistency, one validation
+approach for data that crosses a boundary rather than two, not because
+anything is broken today.
 
 ## Continuous integration
 
@@ -154,6 +195,25 @@ deployment is a reasonable answer, as long as it is a decision rather than an
 oversight. If it should change, the options in increasing order of effort are a
 per-device bearer token stored as a hash and issued at registration, HMAC-signed
 uploads carrying a timestamp and nonce, which also stops replay, and mutual TLS.
+
+### Give pairing a real workflow instead of copy-by-eye
+
+Registering a real device today means reading its UUID off the phone's screen -
+`MainActivity` displays it as plain text, with no copy button, QR code or share
+action - and retyping it into `www`'s "Add vehicle" dialog, whose `deviceId`
+field accepts any string from 1 to 255 characters with no check that it looks
+like a UUID at all. A typo registers a device that will never match what the
+phone actually uploads, and nothing surfaces that mistake until telemetry
+silently never arrives for it.
+
+Came up while writing `tools/scripts/simulate-telemetry.js` to exercise live
+tracking: the script deliberately does not register devices itself (that is
+the web app's job), which makes the manual transcription step, and its lack of
+validation, obvious. Worth deciding deliberately: validating the shape at
+registration so a mistyped ID is rejected immediately rather than failing
+silently later; giving the Android app a copy button or QR code for its device
+ID; or reversing the flow so the phone requests to be added and an
+administrator approves a pending device by name, transcribing nothing.
 
 ## Android app
 
