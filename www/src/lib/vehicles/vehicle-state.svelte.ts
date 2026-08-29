@@ -1,13 +1,14 @@
 import { createContext } from 'svelte';
 
-import type { RemoteQuery } from '@sveltejs/kit';
+import type { RemoteLiveQuery, RemoteLiveQueryFunction, RemoteQuery } from '@sveltejs/kit';
 
 import { clock } from '$lib/utils/clock.svelte';
 import { getErrorMessage } from '$lib/utils/error';
 
+import { mergeLivePosition } from './vehicle-live-position';
 import { calculateVehicleStatus } from './vehicle-status';
 
-import type { VehicleSummary, VehicleWithStatus } from './vehicle';
+import type { VehicleLivePosition, VehicleSummary, VehicleWithStatus } from './vehicle';
 
 /**
  * Presents a vehicle query to the UI.
@@ -23,19 +24,65 @@ import type { VehicleSummary, VehicleWithStatus } from './vehicle';
  */
 export class VehicleState {
 	#query: RemoteQuery<VehicleSummary[]>;
+	#watchVehicle: RemoteLiveQueryFunction<string, VehicleLivePosition | null>;
 	#requestedVehicleId = $state<string | null>(null);
+
+	/*
+	 * Resolved against the raw query rather than `this.vehicles`: the latter
+	 * is itself derived from this selection (to know which vehicle the live
+	 * position belongs to), and reading it here would make the two circular.
+	 */
+	#resolvedVehicleId: string | null = $derived.by(() => {
+		const vehicles = this.#query.current ?? [];
+		const requested = this.#requestedVehicleId;
+
+		if (requested !== null && vehicles.some((vehicle) => vehicle.id === requested)) {
+			return requested;
+		}
+
+		return vehicles[0]?.id ?? null;
+	});
+
+	/*
+	 * Held here — not just read for its `.current` and discarded — because
+	 * SvelteKit reference-counts a live query's connection against how long
+	 * something keeps its resource object reachable; a call whose result is
+	 * never retained would be eligible for cleanup as soon as it's made,
+	 * tearing the stream down right after opening it. Storing it as this
+	 * derived's value is what keeps it alive for as long as this vehicle
+	 * stays selected, and lets the previous vehicle's connection close once
+	 * this one replaces it.
+	 */
+	#liveQuery: RemoteLiveQuery<VehicleLivePosition | null> | null = $derived.by(() => {
+		const vehicleId = this.#resolvedVehicleId;
+
+		return vehicleId ? this.#watchVehicle(vehicleId) : null;
+	});
+
+	#livePosition: VehicleLivePosition | null = $derived.by(() => this.#liveQuery?.current ?? null);
 
 	#vehicles: VehicleWithStatus[] = $derived.by(() => {
 		const now = clock.now;
+		const selectedVehicleId = this.#resolvedVehicleId;
+		const livePosition = this.#livePosition;
 
-		return (this.#query.current ?? []).map((vehicle) => ({
-			...vehicle,
-			status: calculateVehicleStatus(vehicle.lastSeenAt, now)
-		}));
+		return (this.#query.current ?? []).map((vehicle) => {
+			const merged =
+				vehicle.id === selectedVehicleId ? mergeLivePosition(vehicle, livePosition) : vehicle;
+
+			return {
+				...merged,
+				status: calculateVehicleStatus(merged.lastSeenAt, now)
+			};
+		});
 	});
 
-	constructor(query: RemoteQuery<VehicleSummary[]>) {
+	constructor(
+		query: RemoteQuery<VehicleSummary[]>,
+		watchVehicle: RemoteLiveQueryFunction<string, VehicleLivePosition | null>
+	) {
 		this.#query = query;
+		this.#watchVehicle = watchVehicle;
 	}
 
 	get vehicles(): VehicleWithStatus[] {
@@ -62,13 +109,7 @@ export class VehicleState {
 	}
 
 	get selectedVehicleId(): string | null {
-		const requested = this.#requestedVehicleId;
-
-		if (requested !== null && this.vehicles.some((vehicle) => vehicle.id === requested)) {
-			return requested;
-		}
-
-		return this.vehicles[0]?.id ?? null;
+		return this.#resolvedVehicleId;
 	}
 
 	get selectedVehicle(): VehicleWithStatus | null {

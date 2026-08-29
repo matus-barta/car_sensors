@@ -20,3 +20,14 @@ export interface VehicleSummary {
 export interface VehicleWithStatus extends VehicleSummary {
 	status: VehicleStatus;
 }
+
+/**
+ * The newest position `watchVehicle` has for a device, streamed from Valkey
+ * rather than read from the periodic vehicle poll.
+ */
+export interface VehicleLivePosition {
+	lastSeenAt: string;
+	latitude: number;
+	longitude: number;
+	bearing: number | null;
+}
