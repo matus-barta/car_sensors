@@ -1,0 +1,231 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 3,
+    "identityHash": "d37060e813e0e2f7f8e8982cfb3b21b5",
+    "entities": [
+      {
+        "tableName": "telemetry_samples",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `event` TEXT NOT NULL, `timestamp` INTEGER NOT NULL, `payload` TEXT, `charging` INTEGER NOT NULL, `powerSource` TEXT, `latitude` REAL, `longitude` REAL, `altitude` REAL, `speedMps` REAL, `speedKmh` REAL, `bearing` REAL, `accuracyM` REAL, `provider` TEXT, `accelX` REAL, `accelY` REAL, `accelZ` REAL, `accelAccuracy` INTEGER, `accelAccuracyLabel` TEXT, `gyroX` REAL, `gyroY` REAL, `gyroZ` REAL, `gyroAccuracy` INTEGER, `gyroAccuracyLabel` TEXT, `magX` REAL, `magY` REAL, `magZ` REAL, `magnetAccuracy` INTEGER, `magnetAccuracyLabel` TEXT, `headingDeg` REAL, `pressureHpa` REAL, `pressureAccuracy` INTEGER, `pressureAccuracyLabel` TEXT, `uploaded` INTEGER NOT NULL, `uploadedAt` INTEGER, `uploadAttemptCount` INTEGER NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "event",
+            "columnName": "event",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "timestamp",
+            "columnName": "timestamp",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "payload",
+            "columnName": "payload",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "charging",
+            "columnName": "charging",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "powerSource",
+            "columnName": "powerSource",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "latitude",
+            "columnName": "latitude",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "longitude",
+            "columnName": "longitude",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "altitude",
+            "columnName": "altitude",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "speedMps",
+            "columnName": "speedMps",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "speedKmh",
+            "columnName": "speedKmh",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "bearing",
+            "columnName": "bearing",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "accuracyM",
+            "columnName": "accuracyM",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "provider",
+            "columnName": "provider",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "accelX",
+            "columnName": "accelX",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "accelY",
+            "columnName": "accelY",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "accelZ",
+            "columnName": "accelZ",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "accelAccuracy",
+            "columnName": "accelAccuracy",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "accelAccuracyLabel",
+            "columnName": "accelAccuracyLabel",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "gyroX",
+            "columnName": "gyroX",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "gyroY",
+            "columnName": "gyroY",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "gyroZ",
+            "columnName": "gyroZ",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "gyroAccuracy",
+            "columnName": "gyroAccuracy",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "gyroAccuracyLabel",
+            "columnName": "gyroAccuracyLabel",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "magX",
+            "columnName": "magX",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "magY",
+            "columnName": "magY",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "magZ",
+            "columnName": "magZ",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "magnetAccuracy",
+            "columnName": "magnetAccuracy",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "magnetAccuracyLabel",
+            "columnName": "magnetAccuracyLabel",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "headingDeg",
+            "columnName": "headingDeg",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "pressureHpa",
+            "columnName": "pressureHpa",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "pressureAccuracy",
+            "columnName": "pressureAccuracy",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "pressureAccuracyLabel",
+            "columnName": "pressureAccuracyLabel",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "uploaded",
+            "columnName": "uploaded",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "uploadedAt",
+            "columnName": "uploadedAt",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "uploadAttemptCount",
+            "columnName": "uploadAttemptCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_telemetry_samples_timestamp",
+            "unique": false,
+            "columnNames": [
+              "timestamp"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_telemetry_samples_timestamp` ON `${TABLE_NAME}` (`timestamp`)"
+          },
+          {
+            "name": "index_telemetry_samples_uploaded",
+            "unique": false,
+            "columnNames": [
+              "uploaded"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_telemetry_samples_uploaded` ON `${TABLE_NAME}` (`uploaded`)"
+          }
+        ]
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'd37060e813e0e2f7f8e8982cfb3b21b5')"
+    ]
+  }
+}
