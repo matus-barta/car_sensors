@@ -1,0 +1,71 @@
+name: Android - migration tests
+
+on:
+  # Only when a migration could have changed. An emulator costs minutes rather
+  # than seconds, and a Room migration is the one thing here that cannot be
+  # decided without one - everything else is tested on the JVM by
+  # "Android - validation".
+  pull_request:
+    paths:
+      - "android/app/schemas/**"
+      - "android/app/src/main/java/com/anonymus09/carsensors/data/AppDatabase.kt"
+      - "android/app/src/androidTest/**"
+      - ".github/workflows/android-migration.yml"
+
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-migration-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  migration:
+    name: Run the migration tests on an emulator
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: android
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Install JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      # Without this the emulator falls back to software emulation and takes
+      # long enough to be worth avoiding. The runners have KVM; the device node
+      # just is not readable by the job's user by default.
+      - name: Enable KVM
+        working-directory: .
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      # The device is declared in build.gradle.kts rather than here, so this is
+      # the same command a developer runs, and Gradle can skip it entirely when
+      # nothing it depends on has changed.
+      - name: Run migration tests
+        run: >-
+          ./gradlew api30atdDebugAndroidTest
+          -Pandroid.testoptions.manageddevices.emulator.gpu=swiftshader_indirect
+
+      - name: Upload the test report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-migration-report
+          path: android/app/build/reports/androidTests/
+          retention-days: 7
