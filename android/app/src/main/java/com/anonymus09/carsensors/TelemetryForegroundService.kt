@@ -1,5 +1,6 @@
 package com.anonymus09.carsensors
 
+import android.annotation.SuppressLint
 import android.Manifest
 import android.app.Notification
 import android.app.NotificationChannel
@@ -14,23 +15,34 @@ import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
+import android.hardware.TriggerEvent
+import android.hardware.TriggerEventListener
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
-import android.os.BatteryManager
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.os.Handler
 import android.os.HandlerThread
+import android.os.SystemClock
 import android.os.IBinder
+import android.os.PowerManager
 import android.os.Looper
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
-import androidx.core.content.edit
 import com.anonymus09.carsensors.data.AppDatabase
+import com.anonymus09.carsensors.data.PowerState
+import com.anonymus09.carsensors.data.PowerTier
+import com.anonymus09.carsensors.data.PowerStateProvider
+import com.anonymus09.carsensors.data.SettingsRepository
+import com.anonymus09.carsensors.data.TelemetryUploader
+import com.anonymus09.carsensors.data.UploadOutcome
 import com.anonymus09.carsensors.data.TelemetrySampleEntity
 import com.anonymus09.carsensors.work.WifiUploadScheduler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -38,14 +50,36 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import org.json.JSONObject
-import java.io.File
-import java.text.SimpleDateFormat
-import java.util.Date
 import java.util.Locale
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
+import kotlin.coroutines.EmptyCoroutineContext
 import kotlin.math.roundToInt
+import com.anonymus09.carsensors.util.AppConfig.BATTERY_REDUCED_RATE_FACTOR
 import com.anonymus09.carsensors.util.AppConfig.FLUSH_INTERVAL_MS
+import com.anonymus09.carsensors.util.AppConfig.LIVE_PUSH_MAX_ROWS
+import com.anonymus09.carsensors.util.AppConfig.MAX_LOCATION_AGE_MS
+import com.anonymus09.carsensors.util.AppConfig.MOTION_CONFIRM_WINDOW_MS
+import com.anonymus09.carsensors.util.AppConfig.MOTION_IDLE_TIMEOUT_MS
+import com.anonymus09.carsensors.util.AppConfig.MOVEMENT_SPEED_MPS
+import com.anonymus09.carsensors.util.AppConfig.LIVE_PUSH_MIN_INTERVAL_MS
 import com.anonymus09.carsensors.util.AppConfig.SENSOR_SAMPLING_US
+import com.anonymus09.carsensors.util.AppConfig.UPLOAD_CHECK_EVERY_N_SAMPLES
+import com.anonymus09.carsensors.util.AppConfig.UPLOAD_MAX_ATTEMPTS
+import com.anonymus09.carsensors.util.GpsClock
+import com.anonymus09.carsensors.util.ageMs
+import com.anonymus09.carsensors.util.AppConfig.UPLOAD_TRIGGER_PENDING_ROWS
+
+/**
+ * What the logger is doing.
+ *
+ * [ARMED] is the parked state: the service stays alive so that nothing has to
+ * wake it, but the sensors and GPS are unregistered and only the hardware
+ * significant-motion trigger is listening. It costs almost nothing and is what
+ * lets a phone live in a car unattended without either recording a stationary
+ * vehicle around the clock or needing to be restarted by hand.
+ */
+enum class LoggerState { OFF, ARMED, RECORDING }
 
 data class TelemetryLocationStatus(
     val hasFix: Boolean = false,
@@ -63,99 +97,41 @@ class TelemetryForegroundService : Service(), SensorEventListener {
         private const val NOTIFICATION_ID = 1001
         private const val SENSOR_THREAD_NAME = "TelemetryLoggerThread"
 
-        // SharedPreferences
-        const val PREFS_NAME = "car_sensors_prefs"
-        const val PREF_AUTO_START_ON_BOOT = "auto_start_on_boot"
-        const val PREF_STOP_WHEN_UNPLUGGED = "stop_when_unplugged"
-        const val PREF_UPLOAD_ONLY_WHEN_CHARGING = "upload_only_when_charging"
-
+        /*
+         * Recorded here rather than in the service's own lifecycle, because it
+         * is the user's intent that should survive a reboot - not whether the
+         * process happened to be alive. A service restarted by START_STICKY
+         * must not be able to change the answer.
+         */
         fun startService(context: Context) {
+            SettingsRepository(context).setLoggerEnabled(true)
+
             val intent = Intent(context, TelemetryForegroundService::class.java)
             ContextCompat.startForegroundService(context, intent)
         }
 
         fun stopService(context: Context) {
+            SettingsRepository(context).setLoggerEnabled(false)
+
             val intent = Intent(context, TelemetryForegroundService::class.java)
             context.stopService(intent)
         }
 
-        fun isAutoStartOnBootEnabled(context: Context): Boolean {
-            val prefs = context.getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
-            return prefs.getBoolean(PREF_AUTO_START_ON_BOOT, true)
-        }
+        /** Asks a running service to tear its listeners down and re-register them. */
+        const val ACTION_RESTART = "com.anonymus09.carsensors.action.RESTART"
 
-        fun isStopWhenUnpluggedEnabled(context: Context): Boolean {
-            val prefs = context.getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
-            return prefs.getBoolean(PREF_STOP_WHEN_UNPLUGGED, true)
-        }
+        private const val WAKE_LOCK_TAG = "CarSensors::Telemetry"
 
-        fun setAutoStartOnBoot(context: Context, enabled: Boolean) {
-            context.getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit {
-                putBoolean(PREF_AUTO_START_ON_BOOT, enabled)
+        fun restartService(context: Context) {
+            val intent = Intent(context, TelemetryForegroundService::class.java).apply {
+                action = ACTION_RESTART
             }
+
+            ContextCompat.startForegroundService(context, intent)
         }
 
-        fun setStopWhenUnplugged(context: Context, enabled: Boolean) {
-            context.getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit {
-                putBoolean(PREF_STOP_WHEN_UNPLUGGED, enabled)
-            }
-        }
-
-        fun isUploadOnlyWhenChargingEnabled(context: Context): Boolean {
-            return context.getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
-                .getBoolean(PREF_UPLOAD_ONLY_WHEN_CHARGING, true)
-        }
-
-        fun setUploadOnlyWhenCharging(context: Context, enabled: Boolean) {
-            context.getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
-                .edit {
-                    putBoolean(PREF_UPLOAD_ONLY_WHEN_CHARGING, enabled)
-                }
-        }
-
-        fun isDeviceCharging(context: Context): Boolean {
-            val batteryStatus: Intent? = context.registerReceiver(
-                null, IntentFilter(Intent.ACTION_BATTERY_CHANGED)
-            )
-
-            val status = batteryStatus?.getIntExtra(BatteryManager.EXTRA_STATUS, -1) ?: -1
-            return status == BatteryManager.BATTERY_STATUS_CHARGING || status == BatteryManager.BATTERY_STATUS_FULL
-        }
-
-        fun getChargePlugLabel(context: Context): String {
-            val batteryStatus: Intent? = context.registerReceiver(
-                null, IntentFilter(Intent.ACTION_BATTERY_CHANGED)
-            )
-
-            val plugged = batteryStatus?.getIntExtra(BatteryManager.EXTRA_PLUGGED, -1) ?: -1
-            return when (plugged) {
-                BatteryManager.BATTERY_PLUGGED_AC -> "AC"
-                BatteryManager.BATTERY_PLUGGED_USB -> "USB"
-                BatteryManager.BATTERY_PLUGGED_WIRELESS -> "WIRELESS"
-                else -> "NOT_CHARGING"
-            }
-        }
-
-        fun getLogDir(context: Context): File? {
-            return context.getExternalFilesDir(null)
-        }
-
-        fun getCurrentLogFile(context: Context): File {
-            val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
-            val fileName = "telemetry_${sdf.format(Date())}.ndjson"
-            return File(getLogDir(context), fileName)
-        }
-
-        fun getRecentLogFiles(context: Context, limit: Int = 5): List<File> {
-            val dir = getLogDir(context) ?: return emptyList()
-
-            return dir.listFiles { file ->
-                file.name.startsWith("telemetry_") && file.name.endsWith(".ndjson")
-            }?.sortedByDescending { it.lastModified() }?.take(limit) ?: emptyList()
-        }
-
-        private val _isRunningFlow = MutableStateFlow(false)
-        val isRunningFlow: StateFlow<Boolean> = _isRunningFlow.asStateFlow()
+        private val _loggerState = MutableStateFlow(LoggerState.OFF)
+        val loggerState: StateFlow<LoggerState> = _loggerState.asStateFlow()
 
         private val _locationStatus = MutableStateFlow(TelemetryLocationStatus())
         val locationStatus: StateFlow<TelemetryLocationStatus> = _locationStatus.asStateFlow()
@@ -174,6 +150,26 @@ class TelemetryForegroundService : Service(), SensorEventListener {
 
     private val isRunning = AtomicBoolean(false)
 
+    /** Samples written since the upload backlog was last measured. */
+    private val samplesSinceUploadCheck = AtomicInteger(0)
+
+    /*
+     * Every row is stamped from here rather than from System.currentTimeMillis,
+     * which Android takes from the network and never from GPS.
+     */
+    private val gpsClock = GpsClock()
+
+    private val settings by lazy { SettingsRepository(this) }
+    private val uploader by lazy { TelemetryUploader.create(this) }
+
+    /** Fix already announced live, as a monotonic clock reading. */
+    @Volatile
+    private var lastPushedFixNanos: Long = 0
+
+    @Volatile
+    private var lastLivePushAt: Long = 0
+    private val powerStateProvider by lazy { PowerStateProvider(this) }
+
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val telemetryDao by lazy {
         AppDatabase.getInstance(this).telemetryDao()
@@ -183,15 +179,30 @@ class TelemetryForegroundService : Service(), SensorEventListener {
     @Volatile
     private var latestLocation: Location? = null
 
-    // Latest sensor values
+    /*
+     * Latest sensor values, null until the sensor has actually reported. These
+     * started life as FloatArray(3), whose zeroes read back as a genuine
+     * reading of zero: every sample written before a sensor woke up claimed the
+     * device was perfectly still and unmagnetised, rather than saying nothing.
+     */
     @Volatile
-    private var accelValues = FloatArray(3)
+    private var accelValues: FloatArray? = null
 
     @Volatile
-    private var gyroValues = FloatArray(3)
+    private var gyroValues: FloatArray? = null
 
     @Volatile
-    private var magnetValues = FloatArray(3)
+    private var magnetValues: FloatArray? = null
+
+    /*
+     * Scratch space for recomputeHeading, which runs on every accelerometer and
+     * magnetometer event - twenty times a second between them, allocating three
+     * arrays on each. Only the sensor thread touches them, and that is the same
+     * thread workerHandler runs, so they need no synchronisation.
+     */
+    private val rotationMatrix = FloatArray(9)
+    private val inclinationMatrix = FloatArray(9)
+    private val orientationAngles = FloatArray(3)
 
     @Volatile
     private var headingDegrees: Float? = null
@@ -211,10 +222,59 @@ class TelemetryForegroundService : Service(), SensorEventListener {
     private var isCurrentlyCharging: Boolean = false
 
     @Volatile
-    private var currentPowerSource: String = "UNKNOWN"
+    private var currentPowerSource: String = PowerState.SOURCE_UNKNOWN
 
     // Latest pressure data
     private var pressureSensor: Sensor? = null
+
+    private var significantMotion: Sensor? = null
+
+    /*
+     * Held only while recording. Handler.postDelayed runs on uptimeMillis,
+     * which does not advance in deep sleep, so without this the flush loop
+     * stalls whenever the device suspends - which is exactly what a phone left
+     * in a parked car does.
+     */
+    private var wakeLock: PowerManager.WakeLock? = null
+
+    /** How much of itself the logger is currently doing. */
+    @Volatile
+    private var powerTier: PowerTier = PowerTier.FULL
+
+    /** Last time the vehicle was seen moving, on the monotonic clock. */
+    @Volatile
+    private var lastMovementAt: Long = 0
+
+    /**
+     * Whether GPS has seconded the motion sensor's opinion this session.
+     *
+     * Significant motion is a cheap first gate but an indiscriminate one - it
+     * fires for a door closing or the phone being picked up. Until a fix shows
+     * the vehicle actually travelling, a session is treated as unproven and
+     * given up quickly.
+     */
+    @Volatile
+    private var movementConfirmed: Boolean = false
+
+    /**
+     * Fires once when the device starts moving, then unregisters itself.
+     *
+     * Hardware-backed and cheap, which is the whole point: it is what stands in
+     * for keeping the sensors and GPS running while the car is parked.
+     */
+    private val motionTrigger = object : TriggerEventListener() {
+        override fun onTrigger(event: TriggerEvent?) {
+            workerHandler?.post {
+                if (canRecordNow()) {
+                    Log.i("Telemetry", "Significant motion - starting to record")
+                    enterRecording()
+                } else {
+                    Log.i("Telemetry", "Motion while on battery - staying parked")
+                    rearmMotionTrigger()
+                }
+            }
+        }
+    }
 
     @Volatile
     private var pressureHpa: Float? = null
@@ -224,7 +284,26 @@ class TelemetryForegroundService : Service(), SensorEventListener {
 
     private val locationListener = object : LocationListener {
         override fun onLocationChanged(location: Location) {
+            val wasDisciplined = gpsClock.isDisciplined
+            gpsClock.discipline(location)
+
+            /*
+             * Recorded once, when satellite time first becomes available. The
+             * offset is how wrong the phone's own clock was, which is the whole
+             * reason for not stamping samples with it.
+             */
+            if (!wasDisciplined && gpsClock.isDisciplined) {
+                writeSimpleEvent("gps_clock_disciplined", JSONObject().apply {
+                    put("systemClockOffsetMs", gpsClock.nowMs() - System.currentTimeMillis())
+                })
+            }
+
             latestLocation = location
+
+            if (location.speed >= MOVEMENT_SPEED_MPS) {
+                lastMovementAt = SystemClock.elapsedRealtime()
+                movementConfirmed = true
+            }
 
             _locationStatus.value = TelemetryLocationStatus(
                 hasFix = true,
@@ -275,26 +354,42 @@ class TelemetryForegroundService : Service(), SensorEventListener {
             when (intent?.action) {
                 Intent.ACTION_POWER_CONNECTED -> {
                     isCurrentlyCharging = true
-                    currentPowerSource = getChargePlugLabel(context)
+                    currentPowerSource = powerStateProvider.current().source
 
                     writeSimpleEvent("power_connected", JSONObject().apply {
                         put("powerSource", currentPowerSource)
                     })
 
                     updateNotification()
+
+                    /*
+                     * Power is the other thing that can end a wait. If waiting
+                     * was only ever about being on battery, recording can start
+                     * now; if movement is also being waited for, it cannot.
+                     */
+                    if (_loggerState.value == LoggerState.ARMED && !shouldWaitForMotion()) {
+                        enterRecording()
+                    }
                 }
 
                 Intent.ACTION_POWER_DISCONNECTED -> {
                     isCurrentlyCharging = false
-                    currentPowerSource = "NOT_CHARGING"
+                    currentPowerSource = PowerState.SOURCE_NOT_CHARGING
 
                     writeSimpleEvent("power_disconnected", JSONObject())
 
                     updateNotification()
 
-                    if (isStopWhenUnpluggedEnabled(context)) {
-                        writeSimpleEvent("service_stopping_due_to_unplug", JSONObject())
-                        stopSelf()
+                    /*
+                     * Parked rather than stopped. Stopping took the power
+                     * receiver down with the service, so nothing was left
+                     * listening for the power coming back and the logger stayed
+                     * down until someone opened the app - which, for a phone
+                     * that lives in a car, was never.
+                     */
+                    if (!settings.current().recordOnBattery) {
+                        writeSimpleEvent("recording_stopped_on_unplug", JSONObject())
+                        enterArmed()
                     }
                 }
             }
@@ -303,8 +398,20 @@ class TelemetryForegroundService : Service(), SensorEventListener {
 
     private val flushRunnable = object : Runnable {
         override fun run() {
-            Log.i("Telemetry", "Flush tick")
             if (!isRunning.get()) return
+
+            if (shouldReturnToArmed()) {
+                Log.i(
+                    "Telemetry",
+                    if (movementConfirmed) {
+                        "Stationary; going back to waiting for movement"
+                    } else {
+                        "Motion was not the vehicle moving; going back to waiting"
+                    }
+                )
+                enterArmed()
+                return
+            }
 
             try {
                 writeMergedSample()
@@ -312,7 +419,13 @@ class TelemetryForegroundService : Service(), SensorEventListener {
                 e.printStackTrace()
             }
 
-            workerHandler?.postDelayed(this, FLUSH_INTERVAL_MS)
+            val interval = if (powerTier >= PowerTier.REDUCED_RATE) {
+                FLUSH_INTERVAL_MS * BATTERY_REDUCED_RATE_FACTOR
+            } else {
+                FLUSH_INTERVAL_MS
+            }
+
+            workerHandler?.postDelayed(this, interval)
         }
     }
 
@@ -331,12 +444,14 @@ class TelemetryForegroundService : Service(), SensorEventListener {
         magnetometer = sensorManager.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD)
 
         pressureSensor = sensorManager.getDefaultSensor(Sensor.TYPE_PRESSURE)
+        significantMotion = sensorManager.getDefaultSensor(Sensor.TYPE_SIGNIFICANT_MOTION)
 
         workerThread = HandlerThread(SENSOR_THREAD_NAME).apply { start() }
         workerHandler = Handler(workerThread!!.looper)
 
-        isCurrentlyCharging = isDeviceCharging(this)
-        currentPowerSource = getChargePlugLabel(this)
+        val power = powerStateProvider.current()
+        isCurrentlyCharging = power.charging
+        currentPowerSource = power.source
 
         createNotificationChannel()
         startForeground(
@@ -344,35 +459,237 @@ class TelemetryForegroundService : Service(), SensorEventListener {
         )
 
         isRunning.set(true)
-        _isRunningFlow.value = true
 
         registerPowerReceiver()
-        registerSensors()
-        requestLocationUpdates()
+        watchPowerState()
 
         writeSimpleEvent("service_started", JSONObject().apply {
             put("charging", isCurrentlyCharging)
             put("powerSource", currentPowerSource)
-            put("autoStartOnBootEnabled", isAutoStartOnBootEnabled(this@TelemetryForegroundService))
-            put(
-                "stopWhenUnpluggedEnabled",
-                isStopWhenUnpluggedEnabled(this@TelemetryForegroundService)
-            )
+            put("autoStartOnBootEnabled", settings.current().autoStartOnBoot)
+            put("wakeOnMotionEnabled", settings.current().wakeOnMotion)
+            put("recordOnBattery", settings.current().recordOnBattery)
+            put("hasMotionSensor", significantMotion != null)
         })
 
+        enterInitialState()
+    }
+
+    // ----------------------------------------------------
+    // Armed / recording
+    // ----------------------------------------------------
+
+    /**
+     * Follows the battery as well as the plug.
+     *
+     * The broadcast receiver hears the moment power is connected or lost, which
+     * is what the transitions hang off; this hears the level, which is what
+     * decides how much of the logger keeps running.
+     */
+    private fun watchPowerState() {
+        serviceScope.launch {
+            powerStateProvider.observe().collect { power ->
+                isCurrentlyCharging = power.charging
+                currentPowerSource = power.source
+                applyPowerTier(power.tier)
+            }
+        }
+    }
+
+    @Synchronized
+    private fun applyPowerTier(tier: PowerTier) {
+        if (tier == powerTier) return
+
+        val previous = powerTier
+        powerTier = tier
+
+        writeSimpleEvent("power_tier_changed", JSONObject().apply {
+            put("from", previous.name)
+            put("to", tier.name)
+        })
+
+        updateNotification()
+
+        when {
+            // Nothing left to spend: back to waiting until there is power again.
+            tier == PowerTier.PAUSED -> enterArmed()
+
+            // Recovered enough to record, and nothing else says to wait.
+            previous == PowerTier.PAUSED && canRecordNow() && !shouldWaitForMotion() ->
+                enterRecording()
+
+            // The set of sensors worth running has changed under a live session.
+            _loggerState.value == LoggerState.RECORDING -> {
+                try {
+                    sensorManager.unregisterListener(this@TelemetryForegroundService)
+                } catch (_: Exception) {
+                }
+
+                registerSensors()
+            }
+        }
+    }
+
+    private fun enterInitialState() {
+        when {
+            // Parked because the power settings forbid recording right now.
+            !canRecordNow() -> enterArmed()
+
+            // Parked because the vehicle is not known to be moving.
+            shouldWaitForMotion() -> enterArmed()
+
+            else -> enterRecording()
+        }
+    }
+
+    /** Whether the power settings allow recording at this moment. */
+    private fun canRecordNow(): Boolean =
+        isCurrentlyCharging || settings.current().recordOnBattery
+
+    /**
+     * Whether the vehicle standing still should mean waiting rather than
+     * recording.
+     *
+     * Without the hardware trigger nothing would ever end the wait, so a device
+     * that lacks one records continuously instead - the old behaviour, which is
+     * worse but at least keeps working.
+     */
+    private fun shouldWaitForMotion(): Boolean {
+        if (!settings.current().wakeOnMotion) return false
+
+        if (significantMotion == null) {
+            Log.w("Telemetry", "No significant motion sensor; recording continuously")
+            return false
+        }
+
+        return true
+    }
+
+    /** Parked: everything expensive off, only the motion trigger listening. */
+    @Synchronized
+    private fun enterArmed() {
+        /*
+         * The trigger is one-shot and has unregistered itself by the time it is
+         * handled, so an already-parked logger still needs it put back.
+         */
+        if (_loggerState.value == LoggerState.ARMED) {
+            rearmMotionTrigger()
+            return
+        }
+
+        stopRecordingHardware()
+        rearmMotionTrigger()
+
+        _loggerState.value = LoggerState.ARMED
+        _locationStatus.value = TelemetryLocationStatus(hasFix = false)
+
+        writeSimpleEvent("logger_armed", JSONObject().apply {
+            put("movementWasConfirmed", movementConfirmed)
+            put("onPower", isCurrentlyCharging)
+        })
+        updateNotification()
+    }
+
+    /**
+     * Puts the one-shot motion trigger back, if there is one to put back.
+     *
+     * False means nothing will wake the logger by movement - no such sensor, or
+     * the setting is off - and only power can promote it out of waiting.
+     */
+    private fun rearmMotionTrigger(): Boolean {
+        if (!settings.current().wakeOnMotion) return false
+
+        val sensor = significantMotion ?: return false
+
+        return sensorManager.requestTriggerSensor(motionTrigger, sensor)
+    }
+
+    /** Moving: sensors, GPS and the flush loop, with the CPU held awake. */
+    @Synchronized
+    private fun enterRecording() {
+        if (_loggerState.value == LoggerState.RECORDING) return
+
+        significantMotion?.let { sensorManager.cancelTriggerSensor(motionTrigger, it) }
+
+        acquireWakeLock()
+        registerSensors()
+        requestLocationUpdates()
+
+        // Assumed moving until proven otherwise, or it would re-arm at once.
+        lastMovementAt = SystemClock.elapsedRealtime()
+        movementConfirmed = false
+        _loggerState.value = LoggerState.RECORDING
+
+        writeSimpleEvent("logger_recording", JSONObject())
+
+        workerHandler?.removeCallbacks(flushRunnable)
         workerHandler?.post(flushRunnable)
         updateNotification()
     }
 
+    private fun stopRecordingHardware() {
+        workerHandler?.removeCallbacks(flushRunnable)
+
+        try {
+            sensorManager.unregisterListener(this)
+        } catch (_: Exception) {
+        }
+
+        try {
+            locationManager.removeUpdates(locationListener)
+        } catch (_: Exception) {
+        }
+
+        releaseWakeLock()
+    }
+
+    /*
+     * No timeout on purpose: the lock lasts exactly as long as recording does,
+     * which is a journey, and releasing it early is the failure this exists to
+     * prevent.
+     */
+    @SuppressLint("WakelockTimeout")
+    private fun acquireWakeLock() {
+        if (wakeLock?.isHeld == true) return
+
+        val powerManager = getSystemService(POWER_SERVICE) as PowerManager
+
+        wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, WAKE_LOCK_TAG).apply {
+            setReferenceCounted(false)
+            acquire()
+        }
+    }
+
+    private fun releaseWakeLock() {
+        wakeLock?.takeIf { it.isHeld }?.release()
+        wakeLock = null
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == ACTION_RESTART) {
+            Log.i("Telemetry", "Restart requested")
+            writeSimpleEvent("service_restarted", JSONObject())
+
+            stopRecordingHardware()
+            significantMotion?.let { sensorManager.cancelTriggerSensor(motionTrigger, it) }
+
+            // Momentary, and only so the guards in enterArmed/enterRecording do
+            // not mistake the current state for the one being asked for.
+            _loggerState.value = LoggerState.OFF
+
+            enterInitialState()
+        }
+
         // Good for a long-running logger service
         return START_STICKY
     }
 
     override fun onDestroy() {
         isRunning.set(false)
-        _isRunningFlow.value = false
-        serviceScope.cancel()
+        _loggerState.value = LoggerState.OFF
+
+        significantMotion?.let { sensorManager.cancelTriggerSensor(motionTrigger, it) }
+        releaseWakeLock()
 
         try {
             unregisterReceiver(powerReceiver)
@@ -392,7 +709,14 @@ class TelemetryForegroundService : Service(), SensorEventListener {
         workerHandler?.removeCallbacksAndMessages(null)
         workerThread?.quitSafely()
 
-        writeSimpleEvent("service_stopped", JSONObject())
+        /*
+         * Cancelling the scope first, as this did before, cancelled the write
+         * below along with it: every run of the service ended without a
+         * service_stopped row, so the log simply stopped mid-stream.
+         */
+        writeSimpleEvent("service_stopped", JSONObject(), detached = true)
+        serviceScope.cancel()
+
         super.onDestroy()
     }
 
@@ -410,6 +734,14 @@ class TelemetryForegroundService : Service(), SensorEventListener {
         registerReceiver(powerReceiver, filter)
     }
 
+    /**
+     * Registers what this power tier still justifies.
+     *
+     * The accelerometer stays to the end because it is what a heading and any
+     * sense of movement rest on; the barometer, magnetometer and gyroscope
+     * describe a position rather than establish it, so they are the first to
+     * go.
+     */
     private fun registerSensors() {
         accelerometer?.let {
             sensorManager.registerListener(
@@ -417,19 +749,19 @@ class TelemetryForegroundService : Service(), SensorEventListener {
             )
         }
 
-        gyroscope?.let {
+        gyroscope?.takeIf { runsDecorativeSensors() }?.let {
             sensorManager.registerListener(
                 this, it, SENSOR_SAMPLING_US, SENSOR_SAMPLING_US * 5, workerHandler
             )
         }
 
-        magnetometer?.let {
+        magnetometer?.takeIf { runsDecorativeSensors() }?.let {
             sensorManager.registerListener(
                 this, it, SENSOR_SAMPLING_US, SENSOR_SAMPLING_US * 5, workerHandler
             )
         }
 
-        pressureSensor?.let {
+        pressureSensor?.takeIf { runsDecorativeSensors() }?.let {
             sensorManager.registerListener(
                 this,
                 it,
@@ -440,6 +772,9 @@ class TelemetryForegroundService : Service(), SensorEventListener {
         }
 
     }
+
+    /** Whether this tier still runs the sensors that merely decorate a fix. */
+    private fun runsDecorativeSensors(): Boolean = powerTier < PowerTier.LOCATION_ONLY
 
     private fun requestLocationUpdates() {
         val fineGranted = ContextCompat.checkSelfPermission(
@@ -526,18 +861,16 @@ class TelemetryForegroundService : Service(), SensorEventListener {
     }
 
     private fun recomputeHeading() {
-        val rotationMatrix = FloatArray(9)
-        val inclinationMatrix = FloatArray(9)
+        val accel = accelValues ?: return
+        val magnet = magnetValues ?: return
 
         val success = SensorManager.getRotationMatrix(
-            rotationMatrix, inclinationMatrix, accelValues, magnetValues
+            rotationMatrix, inclinationMatrix, accel, magnet
         )
 
         if (success) {
-            val orientation = FloatArray(3)
-            SensorManager.getOrientation(rotationMatrix, orientation)
-            val azimuthRad = orientation[0]
-            val azimuthDeg = Math.toDegrees(azimuthRad.toDouble()).toFloat()
+            SensorManager.getOrientation(rotationMatrix, orientationAngles)
+            val azimuthDeg = Math.toDegrees(orientationAngles[0].toDouble()).toFloat()
             headingDegrees = (azimuthDeg + 360f) % 360f
         }
     }
@@ -549,11 +882,29 @@ class TelemetryForegroundService : Service(), SensorEventListener {
     private fun writeMergedSample() {
         Log.i("Telemetry", "Writing sample!")
 
-        val location = latestLocation
+        /*
+         * A fix older than this is no longer where the vehicle is. The last
+         * known one goes on being returned after GPS drops out, so writing it
+         * with a fresh timestamp is how a phone in a tunnel came to look like a
+         * vehicle reporting live from a position it left long ago. Dropping it
+         * says "no position" instead, which is the truth, and the position
+         * itself is already recorded in the rows written while it was current.
+         */
+        val location = latestLocation?.takeIf { it.ageMs() <= MAX_LOCATION_AGE_MS }
+
+        if (location == null && _locationStatus.value.hasFix) {
+            _locationStatus.value = _locationStatus.value.copy(hasFix = false)
+            updateNotification()
+        }
+
         val heading = headingDegrees
+        val accel = accelValues
+        val gyro = gyroValues
+        val magnet = magnetValues
+        val pressure = pressureHpa
 
         val sample = TelemetrySampleEntity(
-            timestamp = System.currentTimeMillis(),
+            timestamp = gpsClock.nowMs(),
             event = "telemetry_sample",
 
             charging = isCurrentlyCharging,
@@ -570,27 +921,27 @@ class TelemetryForegroundService : Service(), SensorEventListener {
             accuracyM = location?.accuracy,
             provider = location?.provider,
 
-            accelX = accelValues.getOrNull(0),
-            accelY = accelValues.getOrNull(1),
-            accelZ = accelValues.getOrNull(2),
-            accelAccuracy = accelAccuracy,
-            accelAccuracyLabel = accuracyToLabel(accelAccuracy),
+            accelX = accel?.getOrNull(0),
+            accelY = accel?.getOrNull(1),
+            accelZ = accel?.getOrNull(2),
+            accelAccuracy = accel?.let { accelAccuracy },
+            accelAccuracyLabel = accel?.let { accuracyToLabel(accelAccuracy) },
 
-            gyroX = gyroValues.getOrNull(0),
-            gyroY = gyroValues.getOrNull(1),
-            gyroZ = gyroValues.getOrNull(2),
-            gyroAccuracy = gyroAccuracy,
-            gyroAccuracyLabel = accuracyToLabel(gyroAccuracy),
+            gyroX = gyro?.getOrNull(0),
+            gyroY = gyro?.getOrNull(1),
+            gyroZ = gyro?.getOrNull(2),
+            gyroAccuracy = gyro?.let { gyroAccuracy },
+            gyroAccuracyLabel = gyro?.let { accuracyToLabel(gyroAccuracy) },
 
-            magX = magnetValues.getOrNull(0),
-            magY = magnetValues.getOrNull(1),
-            magZ = magnetValues.getOrNull(2),
-            magnetAccuracy = magnetAccuracy,
-            magnetAccuracyLabel = accuracyToLabel(magnetAccuracy),
+            magX = magnet?.getOrNull(0),
+            magY = magnet?.getOrNull(1),
+            magZ = magnet?.getOrNull(2),
+            magnetAccuracy = magnet?.let { magnetAccuracy },
+            magnetAccuracyLabel = magnet?.let { accuracyToLabel(magnetAccuracy) },
 
-            pressureHpa = pressureHpa,
-            pressureAccuracy = pressureAccuracy,
-            pressureAccuracyLabel = accuracyToLabel(pressureAccuracy),
+            pressureHpa = pressure,
+            pressureAccuracy = pressure?.let { pressureAccuracy },
+            pressureAccuracyLabel = pressure?.let { accuracyToLabel(pressureAccuracy) },
 
             headingDeg = heading
         )
@@ -599,19 +950,123 @@ class TelemetryForegroundService : Service(), SensorEventListener {
             try {
                 telemetryDao.insert(sample)
 
-                val pending = telemetryDao.getPendingUploadCount()
-                if (pending >= 200) {
-                    WifiUploadScheduler.enqueue(this@TelemetryForegroundService)
+                maybePushLive(location)
+
+                /*
+                 * Both counts used to run on every write: two scans of a table
+                 * that grows by 172,800 rows a day, twice a second, one of them
+                 * only to log its own result. The backlog size still decides
+                 * when to wake the uploader, so that one stays - measured once
+                 * every UPLOAD_CHECK_EVERY_N_SAMPLES instead of every time.
+                 */
+                if (samplesSinceUploadCheck.incrementAndGet() >= UPLOAD_CHECK_EVERY_N_SAMPLES) {
+                    samplesSinceUploadCheck.set(0)
+
+                    val pending = telemetryDao.getPendingUploadCount(UPLOAD_MAX_ATTEMPTS)
+                    if (pending >= UPLOAD_TRIGGER_PENDING_ROWS) {
+                        WifiUploadScheduler.enqueue(this@TelemetryForegroundService)
+                    }
                 }
-
-                val count = telemetryDao.getCount()
-                Log.i("Telemetry", "DB rows: $count")
-
             } catch (e: Exception) {
                 Log.e("Telemetry", "Room insert failed", e)
             }
         }
 
+    }
+
+    /**
+     * Announces the newest position as soon as there is a new one.
+     *
+     * Always after the row is written, never instead of it: a push that is
+     * skipped, fails, or never happens because the phone is on its own battery
+     * costs nothing, because the same row is already stored and the batch
+     * upload carries it in the ordinary way.
+     *
+     * What drives this is the position changing. Sensor readings change on
+     * every sample and would turn a drive into one request per sample, while
+     * telling the map nothing it does not already show.
+     */
+    private suspend fun maybePushLive(location: Location?) {
+        if (location == null) return
+        val settings = settings.current()
+
+        if (!settings.liveUploadEnabled) return
+
+        /*
+         * Only on power. A live push keeps the radio awake for the length of a
+         * drive, which is not something to do to a phone running on its own
+         * battery unless it was asked for.
+         */
+        if (!isCurrentlyCharging) return
+
+        /*
+         * The batch uploader gets its network rule from WorkManager's
+         * constraints; a live push is a plain HTTP call and had none, so it
+         * would happily spend mobile data while the batch path was refusing to.
+         */
+        if (settings.wifiOnly && !isOnUnmeteredNetwork()) return
+
+        /*
+         * elapsedRealtimeNanos rather than the fix's wall clock: it is
+         * monotonic, so a clock correction mid-drive cannot make an old fix
+         * look new or a new one look stale.
+         */
+        if (location.elapsedRealtimeNanos <= lastPushedFixNanos) return
+
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastLivePushAt < LIVE_PUSH_MIN_INTERVAL_MS) return
+
+        val attempted = uploader.ifIdle {
+            val rows = telemetryDao.getNewestLocatedPending(
+                LIVE_PUSH_MAX_ROWS,
+                UPLOAD_MAX_ATTEMPTS
+            )
+
+            when (uploader.send(rows)) {
+                UploadOutcome.STORED -> {
+                    lastPushedFixNanos = location.elapsedRealtimeNanos
+                    lastLivePushAt = now
+                    Log.i("Telemetry", "Live push sent ${rows.size} row(s)")
+                }
+
+                else -> Log.w(
+                    "Telemetry",
+                    "Live push did not land; the batch upload will carry these rows"
+                )
+            }
+        }
+
+        if (!attempted) {
+            Log.d("Telemetry", "Live push skipped, a batch upload is in flight")
+        }
+    }
+
+    /**
+     * Whether the vehicle has been still long enough to stop recording it.
+     *
+     * Only meaningful while recording, and only when something is able to start
+     * it again.
+     */
+    private fun shouldReturnToArmed(): Boolean {
+        if (_loggerState.value != LoggerState.RECORDING) return false
+        if (!shouldWaitForMotion()) return false
+
+        /*
+         * An unproven session gets the short window: something shook the phone,
+         * and if GPS has not seen it travelling by now it very likely was not
+         * the car pulling away. A confirmed journey gets the long one, so
+         * traffic lights and level crossings do not end it.
+         */
+        val timeout = if (movementConfirmed) MOTION_IDLE_TIMEOUT_MS else MOTION_CONFIRM_WINDOW_MS
+
+        return SystemClock.elapsedRealtime() - lastMovementAt > timeout
+    }
+
+    private fun isOnUnmeteredNetwork(): Boolean {
+        val manager = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
+        val capabilities = manager.getNetworkCapabilities(manager.activeNetwork) ?: return false
+
+        return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED)
     }
 
     private fun writeAccuracyChangeEvent(sensor: Sensor, accuracy: Int) {
@@ -632,7 +1087,7 @@ class TelemetryForegroundService : Service(), SensorEventListener {
 
         val sample = TelemetrySampleEntity(
             event = "sensor_accuracy_changed",
-            timestamp = System.currentTimeMillis(),
+            timestamp = gpsClock.nowMs(),
             payload = payload.toString(),
 
             charging = isCurrentlyCharging,
@@ -678,12 +1133,23 @@ class TelemetryForegroundService : Service(), SensorEventListener {
 
     }
 
-    private fun writeSimpleEvent(eventName: String, payload: JSONObject) {
+    /**
+     * Records an event row.
+     *
+     * Pass [detached] for events on the shutdown path. Those are written as the
+     * service is being torn down, and a coroutine started on [serviceScope]
+     * there is cancelled before Room ever sees it.
+     */
+    private fun writeSimpleEvent(
+        eventName: String,
+        payload: JSONObject,
+        detached: Boolean = false
+    ) {
         Log.i("Telemetry", "Event: $eventName payload=$payload")
 
         val sample = TelemetrySampleEntity(
             event = eventName,
-            timestamp = System.currentTimeMillis(),
+            timestamp = gpsClock.nowMs(),
             payload = payload.toString(),
 
             charging = isCurrentlyCharging,
@@ -725,29 +1191,17 @@ class TelemetryForegroundService : Service(), SensorEventListener {
             headingDeg = null
         )
 
-        serviceScope.launch {
+        /*
+         * NonCancellable takes the place of the scope's job as the parent, so a
+         * detached write is no longer a child of serviceScope and survives its
+         * cancellation. What it touches - the DAO - is an application singleton,
+         * so the coroutine outlives the service without outliving its
+         * dependencies.
+         */
+        serviceScope.launch(if (detached) NonCancellable else EmptyCoroutineContext) {
             telemetryDao.insert(sample)
         }
 
-    }
-
-    private fun appendJsonLine(json: JSONObject) {
-        val file = currentLogFile()
-        file.appendText(json.toString() + "\n")
-    }
-
-    private fun currentLogFile(): File {
-        val fileName = "telemetry_${currentDateString()}.ndjson"
-        val dir = getExternalFilesDir(null)
-
-        //val dir = filesDir <--- private data storage
-
-        return File(dir, fileName)
-    }
-
-    private fun currentDateString(): String {
-        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
-        return sdf.format(Date())
     }
 
     private fun accuracyToLabel(accuracy: Int): String {
@@ -801,7 +1255,8 @@ class TelemetryForegroundService : Service(), SensorEventListener {
     }
 
     private fun updateNotification() {
-        val loc = latestLocation
+        // Same staleness rule as a sample: a fix this old is not a position.
+        val loc = latestLocation?.takeIf { it.ageMs() <= MAX_LOCATION_AGE_MS }
 
         val gpsPart = if (loc == null) {
             "GPS: waiting"
@@ -829,10 +1284,23 @@ class TelemetryForegroundService : Service(), SensorEventListener {
     }
 
     private fun updateNotificationText(gpsPart: String, powerPart: String, headingPart: String) {
+        val base = when (_loggerState.value) {
+            LoggerState.RECORDING -> "Logging active"
+            LoggerState.ARMED -> "Waiting for movement"
+            LoggerState.OFF -> "Stopped"
+        }
+
+        // Being cut back looks identical to being broken unless it is said.
+        val status = if (powerTier == PowerTier.FULL) {
+            base
+        } else {
+            "$base (battery saving: ${powerTier.name.lowercase().replace('_', ' ')})"
+        }
+
         val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
         manager.notify(
             NOTIFICATION_ID,
-            buildNotification("Logging Active", gpsPart, powerPart, headingPart)
+            buildNotification(status, gpsPart, powerPart, headingPart)
         )
     }
 }

@@ -5,18 +5,23 @@ import android.util.Log
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.anonymus09.carsensors.data.AppDatabase
-import com.anonymus09.carsensors.data.TelemetrySampleEntity
+import com.anonymus09.carsensors.data.PowerStateProvider
+import com.anonymus09.carsensors.data.PowerTier
+import com.anonymus09.carsensors.data.TelemetryUploader
+import com.anonymus09.carsensors.data.UploadOutcome
 import com.anonymus09.carsensors.util.AppConfig.BATCH_SIZE
-import com.anonymus09.carsensors.util.AppConfig.TELEMETRY_UPLOAD_URL
-import com.anonymus09.carsensors.util.DeviceIdProvider
-import org.json.JSONArray
-import org.json.JSONObject
-import java.io.ByteArrayOutputStream
-import java.net.HttpURLConnection
-import java.net.URL
-import java.util.zip.GZIPOutputStream
+import com.anonymus09.carsensors.util.AppConfig.UPLOADED_ROW_RETENTION_MS
+import com.anonymus09.carsensors.util.AppConfig.UPLOAD_MAX_ATTEMPTS
+import com.anonymus09.carsensors.util.AppConfig.UPLOAD_MAX_BATCHES_PER_RUN
+import com.anonymus09.carsensors.util.AppConfig.UPLOAD_MIN_BATCH_SIZE
 
-
+/**
+ * Drains the backlog oldest first, under WorkManager's constraints.
+ *
+ * The live push in the foreground service sends the newest position instead,
+ * and the two share [TelemetryUploader] for everything between building a body
+ * and reading the response.
+ */
 class UploadWorker(
     context: Context,
     params: WorkerParameters
@@ -27,137 +32,93 @@ class UploadWorker(
     }
 
     private val dao = AppDatabase.getInstance(context).telemetryDao()
+    private val uploader = TelemetryUploader.create(context)
+
+    private val powerStateProvider = PowerStateProvider(context)
 
     override suspend fun doWork(): Result {
-        val batch = dao.getPendingBatch(BATCH_SIZE)
-
-        if (batch.isEmpty()) {
-            Log.i(TAG, "No pending rows to upload")
-            return Result.success()
+        /*
+         * WorkManager's charging constraint covers "only upload on power", but
+         * not the case where uploading on battery is allowed and the battery is
+         * nearly gone. The radio is the most expensive thing this app does, and
+         * nothing is lost by waiting for a charge.
+         */
+        if (powerStateProvider.current().tier >= PowerTier.NO_UPLOAD) {
+            Log.i(TAG, "Battery too low to upload; deferring")
+            return Result.retry()
         }
 
-        return try {
-            val ids = batch.map { it.id }
-            dao.incrementUploadAttempts(ids)
-
-            val payload = buildJsonPayload(batch)
-            val uploadOk = uploadToServer(payload)
-
-            if (uploadOk) {
-                dao.markUploaded(ids, System.currentTimeMillis())
-
-                // optional cleanup: keep uploaded rows only for 7 days
-                val sevenDaysAgo = System.currentTimeMillis() - 7L * 24 * 60 * 60 * 1000
-                dao.deleteUploadedOlderThan(sevenDaysAgo)
-
-                Log.i(TAG, "Uploaded ${ids.size} rows successfully")
-                Result.success()
-            } else {
-                Log.w(TAG, "Upload failed, retry requested")
-                Result.retry()
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Upload worker exception", e)
-            Result.retry()
-        }
+        return uploader.exclusively { drain() }
     }
 
-    private fun buildJsonPayload(batch: List<TelemetrySampleEntity>): String {
-        Log.i(TAG, "Building Payload")
-        val array = JSONArray()
+    private suspend fun drain(): Result {
+        var batchSize = BATCH_SIZE
+        var batchesUploaded = 0
 
-        batch.forEach { item ->
-            val obj = JSONObject().apply {
-                put("id", item.id)
-                put("event", item.event)
-                put("timestamp", item.timestamp)
-                put("payload", item.payload)
+        while (batchesUploaded < UPLOAD_MAX_BATCHES_PER_RUN) {
+            val batch = dao.getPendingBatch(batchSize, UPLOAD_MAX_ATTEMPTS)
 
-                put("charging", item.charging)
-                put("powerSource", item.powerSource)
-
-                put("latitude", item.latitude)
-                put("longitude", item.longitude)
-                put("altitude", item.altitude)
-                put("speedMps", item.speedMps)
-                put("speedKmh", item.speedKmh)
-                put("bearing", item.bearing)
-                put("accuracyM", item.accuracyM)
-                put("provider", item.provider)
-
-                put("accelX", item.accelX)
-                put("accelY", item.accelY)
-                put("accelZ", item.accelZ)
-                put("accelAccuracy", item.accelAccuracy)
-                put("accelAccuracyLabel", item.accelAccuracyLabel)
-
-                put("gyroX", item.gyroX)
-                put("gyroY", item.gyroY)
-                put("gyroZ", item.gyroZ)
-                put("gyroAccuracy", item.gyroAccuracy)
-                put("gyroAccuracyLabel", item.gyroAccuracyLabel)
-
-                put("magX", item.magX)
-                put("magY", item.magY)
-                put("magZ", item.magZ)
-                put("magnetAccuracy", item.magnetAccuracy)
-                put("magnetAccuracyLabel", item.magnetAccuracyLabel)
-
-                put("pressureHpa", item.pressureHpa)
-                put("pressureAccuracy", item.pressureAccuracy)
-                put("pressureAccuracyLabel", item.pressureAccuracyLabel)
-
-                put("headingDeg", item.headingDeg)
-            }
-            array.put(obj)
-        }
-
-        return array.toString()
-    }
-
-    private fun uploadToServer(payload: String): Boolean {
-        Log.i(TAG, "Uploading to: $TELEMETRY_UPLOAD_URL")
-        val url = URL(TELEMETRY_UPLOAD_URL)
-
-        val connection = (url.openConnection() as HttpURLConnection).apply {
-            requestMethod = "POST"
-            connectTimeout = 15000
-            readTimeout = 15000
-            doOutput = true
-            setRequestProperty("Content-Type", "application/json; charset=UTF-8")
-            setRequestProperty("Content-Encoding", "gzip")
-            setRequestProperty("User-Agent", "CarSensors/1.0")
-            setRequestProperty(
-                "X-Device-ID",
-                DeviceIdProvider.getOrCreateDeviceId(applicationContext)
-            )
-        }
-
-        return try {
-            connection.outputStream.use { output ->
-                output.write(gzipCompress(payload))
-                output.flush()
+            if (batch.isEmpty()) {
+                Log.i(TAG, "Backlog cleared after $batchesUploaded batch(es)")
+                return finish(batchesUploaded)
             }
 
-            val code = connection.responseCode
-            code in 200..299
-        } finally {
-            connection.disconnect()
+            when (uploader.send(batch)) {
+                UploadOutcome.STORED -> {
+                    batchesUploaded++
+                    Log.i(TAG, "Uploaded ${batch.size} rows")
+                }
+
+                UploadOutcome.TOO_LARGE -> {
+                    if (batchSize <= UPLOAD_MIN_BATCH_SIZE) {
+                        /*
+                         * Not the size, then. Counting it lets these rows
+                         * eventually stop blocking the ones behind them.
+                         */
+                        dao.incrementUploadAttempts(batch.map { it.id })
+                        Log.e(TAG, "Server rejects even $batchSize rows as too large")
+                        return Result.failure()
+                    }
+
+                    batchSize /= 2
+                    Log.w(TAG, "Batch too large, retrying with $batchSize rows")
+                }
+
+                UploadOutcome.TRANSIENT -> {
+                    Log.w(TAG, "Upload deferred, will retry with backoff")
+                    return Result.retry()
+                }
+
+                UploadOutcome.MALFORMED -> {
+                    Log.e(TAG, "Server could not parse the batch, giving up this run")
+                    return Result.failure()
+                }
+
+                UploadOutcome.REFUSED -> {
+                    Log.e(
+                        TAG,
+                        "Server refused the request - check the endpoint and that " +
+                            "this device is registered"
+                    )
+                    return Result.failure()
+                }
+            }
         }
+
+        /*
+         * The backlog outlasted this run. Stopping here keeps one pass inside
+         * WorkManager's execution window; whatever remains is picked up by the
+         * next enqueue, which the service raises once the backlog rebuilds.
+         */
+        Log.i(TAG, "Stopped after $batchesUploaded batches, more rows still pending")
+        return finish(batchesUploaded)
     }
 
-    private fun gzipCompress(input: String): ByteArray {
-        val bos = ByteArrayOutputStream()
-        GZIPOutputStream(bos).use { gzip ->
-            gzip.write(input.toByteArray(Charsets.UTF_8))
+    private suspend fun finish(batchesUploaded: Int): Result {
+        if (batchesUploaded > 0) {
+            dao.deleteUploadedOlderThan(System.currentTimeMillis() - UPLOADED_ROW_RETENTION_MS)
         }
-        return bos.toByteArray()
 
+        return Result.success()
     }
-
-    private fun plainPayload(input: String): ByteArray {
-        return input.toByteArray(Charsets.UTF_8)
-    }
-
-
 }
