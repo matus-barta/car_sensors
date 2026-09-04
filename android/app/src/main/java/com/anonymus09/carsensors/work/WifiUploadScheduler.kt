@@ -15,13 +15,18 @@ object WifiUploadScheduler {
     private const val UNIQUE_WORK_NAME = "telemetry_wifi_upload"
 
     fun enqueue(context: Context) {
-        val requiresCharging =
-            SettingsRepository(context).current().uploadOnlyWhenCharging
+        val settings = SettingsRepository(context).current()
 
+        /*
+         * The network requirement used to be UNMETERED unconditionally, with no
+         * way to allow mobile data for a device that never sees Wi-Fi.
+         */
         val constraints = Constraints.Builder()
-            .setRequiredNetworkType(NetworkType.UNMETERED)
+            .setRequiredNetworkType(
+                if (settings.wifiOnly) NetworkType.UNMETERED else NetworkType.CONNECTED
+            )
             .apply {
-                if (requiresCharging) setRequiresCharging(true)
+                if (!settings.uploadOnBattery) setRequiresCharging(true)
             }
             .build()
 

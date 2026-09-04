@@ -24,7 +24,7 @@ data class MainUiState(
     val settings: TelemetrySettings = TelemetrySettings(),
     val power: PowerState = PowerState(),
     val storage: TelemetryStorage = TelemetryStorage(),
-    val isLogging: Boolean = false
+    val loggerState: LoggerState = LoggerState.OFF
 )
 
 class MainViewModel(
@@ -57,14 +57,14 @@ class MainViewModel(
         settingsRepository.observe(),
         powerStateProvider.observe(),
         telemetryRepository.observeStorage(DB_STATS_REFRESH_RATE.seconds),
-        TelemetryForegroundService.isRunningFlow
-    ) { deviceId, settings, power, storage, isLogging ->
+        TelemetryForegroundService.loggerState
+    ) { deviceId, settings, power, storage, loggerState ->
         MainUiState(
             deviceId = deviceId,
             settings = settings,
             power = power,
             storage = storage,
-            isLogging = isLogging
+            loggerState = loggerState
         )
     }.stateIn(
         scope = viewModelScope,
@@ -79,12 +79,15 @@ class MainViewModel(
     val locationStatus: StateFlow<TelemetryLocationStatus> =
         TelemetryForegroundService.locationStatus
 
+    fun setWakeOnMotion(enabled: Boolean) = settingsRepository.setWakeOnMotion(enabled)
+
     fun setAutoStartOnBoot(enabled: Boolean) = settingsRepository.setAutoStartOnBoot(enabled)
 
-    fun setStopWhenUnplugged(enabled: Boolean) = settingsRepository.setStopWhenUnplugged(enabled)
+    fun setRecordOnBattery(enabled: Boolean) = settingsRepository.setRecordOnBattery(enabled)
 
-    fun setUploadOnlyWhenCharging(enabled: Boolean) =
-        settingsRepository.setUploadOnlyWhenCharging(enabled)
+    fun setWifiOnly(enabled: Boolean) = settingsRepository.setWifiOnly(enabled)
+
+    fun setUploadOnBattery(enabled: Boolean) = settingsRepository.setUploadOnBattery(enabled)
 
     fun setLiveUploadEnabled(enabled: Boolean) =
         settingsRepository.setLiveUploadEnabled(enabled)

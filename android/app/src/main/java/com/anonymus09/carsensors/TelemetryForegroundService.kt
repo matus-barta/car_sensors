@@ -1,5 +1,6 @@
 package com.anonymus09.carsensors
 
+import android.annotation.SuppressLint
 import android.Manifest
 import android.app.Notification
 import android.app.NotificationChannel
@@ -14,13 +15,18 @@ import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
+import android.hardware.TriggerEvent
+import android.hardware.TriggerEventListener
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.SystemClock
 import android.os.IBinder
+import android.os.PowerManager
 import android.os.Looper
 import android.util.Log
 import androidx.core.app.NotificationCompat
@@ -50,6 +56,9 @@ import kotlin.math.roundToInt
 import com.anonymus09.carsensors.util.AppConfig.FLUSH_INTERVAL_MS
 import com.anonymus09.carsensors.util.AppConfig.LIVE_PUSH_MAX_ROWS
 import com.anonymus09.carsensors.util.AppConfig.MAX_LOCATION_AGE_MS
+import com.anonymus09.carsensors.util.AppConfig.MOTION_CONFIRM_WINDOW_MS
+import com.anonymus09.carsensors.util.AppConfig.MOTION_IDLE_TIMEOUT_MS
+import com.anonymus09.carsensors.util.AppConfig.MOVEMENT_SPEED_MPS
 import com.anonymus09.carsensors.util.AppConfig.LIVE_PUSH_MIN_INTERVAL_MS
 import com.anonymus09.carsensors.util.AppConfig.SENSOR_SAMPLING_US
 import com.anonymus09.carsensors.util.AppConfig.UPLOAD_CHECK_EVERY_N_SAMPLES
@@ -57,6 +66,17 @@ import com.anonymus09.carsensors.util.AppConfig.UPLOAD_MAX_ATTEMPTS
 import com.anonymus09.carsensors.util.GpsClock
 import com.anonymus09.carsensors.util.ageMs
 import com.anonymus09.carsensors.util.AppConfig.UPLOAD_TRIGGER_PENDING_ROWS
+
+/**
+ * What the logger is doing.
+ *
+ * [ARMED] is the parked state: the service stays alive so that nothing has to
+ * wake it, but the sensors and GPS are unregistered and only the hardware
+ * significant-motion trigger is listening. It costs almost nothing and is what
+ * lets a phone live in a car unattended without either recording a stationary
+ * vehicle around the clock or needing to be restarted by hand.
+ */
+enum class LoggerState { OFF, ARMED, RECORDING }
 
 data class TelemetryLocationStatus(
     val hasFix: Boolean = false,
@@ -74,18 +94,41 @@ class TelemetryForegroundService : Service(), SensorEventListener {
         private const val NOTIFICATION_ID = 1001
         private const val SENSOR_THREAD_NAME = "TelemetryLoggerThread"
 
+        /*
+         * Recorded here rather than in the service's own lifecycle, because it
+         * is the user's intent that should survive a reboot - not whether the
+         * process happened to be alive. A service restarted by START_STICKY
+         * must not be able to change the answer.
+         */
         fun startService(context: Context) {
+            SettingsRepository(context).setLoggerEnabled(true)
+
             val intent = Intent(context, TelemetryForegroundService::class.java)
             ContextCompat.startForegroundService(context, intent)
         }
 
         fun stopService(context: Context) {
+            SettingsRepository(context).setLoggerEnabled(false)
+
             val intent = Intent(context, TelemetryForegroundService::class.java)
             context.stopService(intent)
         }
 
-        private val _isRunningFlow = MutableStateFlow(false)
-        val isRunningFlow: StateFlow<Boolean> = _isRunningFlow.asStateFlow()
+        /** Asks a running service to tear its listeners down and re-register them. */
+        const val ACTION_RESTART = "com.anonymus09.carsensors.action.RESTART"
+
+        private const val WAKE_LOCK_TAG = "CarSensors::Telemetry"
+
+        fun restartService(context: Context) {
+            val intent = Intent(context, TelemetryForegroundService::class.java).apply {
+                action = ACTION_RESTART
+            }
+
+            ContextCompat.startForegroundService(context, intent)
+        }
+
+        private val _loggerState = MutableStateFlow(LoggerState.OFF)
+        val loggerState: StateFlow<LoggerState> = _loggerState.asStateFlow()
 
         private val _locationStatus = MutableStateFlow(TelemetryLocationStatus())
         val locationStatus: StateFlow<TelemetryLocationStatus> = _locationStatus.asStateFlow()
@@ -181,6 +224,51 @@ class TelemetryForegroundService : Service(), SensorEventListener {
     // Latest pressure data
     private var pressureSensor: Sensor? = null
 
+    private var significantMotion: Sensor? = null
+
+    /*
+     * Held only while recording. Handler.postDelayed runs on uptimeMillis,
+     * which does not advance in deep sleep, so without this the flush loop
+     * stalls whenever the device suspends - which is exactly what a phone left
+     * in a parked car does.
+     */
+    private var wakeLock: PowerManager.WakeLock? = null
+
+    /** Last time the vehicle was seen moving, on the monotonic clock. */
+    @Volatile
+    private var lastMovementAt: Long = 0
+
+    /**
+     * Whether GPS has seconded the motion sensor's opinion this session.
+     *
+     * Significant motion is a cheap first gate but an indiscriminate one - it
+     * fires for a door closing or the phone being picked up. Until a fix shows
+     * the vehicle actually travelling, a session is treated as unproven and
+     * given up quickly.
+     */
+    @Volatile
+    private var movementConfirmed: Boolean = false
+
+    /**
+     * Fires once when the device starts moving, then unregisters itself.
+     *
+     * Hardware-backed and cheap, which is the whole point: it is what stands in
+     * for keeping the sensors and GPS running while the car is parked.
+     */
+    private val motionTrigger = object : TriggerEventListener() {
+        override fun onTrigger(event: TriggerEvent?) {
+            workerHandler?.post {
+                if (canRecordNow()) {
+                    Log.i("Telemetry", "Significant motion - starting to record")
+                    enterRecording()
+                } else {
+                    Log.i("Telemetry", "Motion while on battery - staying parked")
+                    rearmMotionTrigger()
+                }
+            }
+        }
+    }
+
     @Volatile
     private var pressureHpa: Float? = null
 
@@ -204,6 +292,11 @@ class TelemetryForegroundService : Service(), SensorEventListener {
             }
 
             latestLocation = location
+
+            if (location.speed >= MOVEMENT_SPEED_MPS) {
+                lastMovementAt = SystemClock.elapsedRealtime()
+                movementConfirmed = true
+            }
 
             _locationStatus.value = TelemetryLocationStatus(
                 hasFix = true,
@@ -261,23 +354,35 @@ class TelemetryForegroundService : Service(), SensorEventListener {
                     })
 
                     updateNotification()
+
+                    /*
+                     * Power is the other thing that can end a wait. If waiting
+                     * was only ever about being on battery, recording can start
+                     * now; if movement is also being waited for, it cannot.
+                     */
+                    if (_loggerState.value == LoggerState.ARMED && !shouldWaitForMotion()) {
+                        enterRecording()
+                    }
                 }
 
                 Intent.ACTION_POWER_DISCONNECTED -> {
                     isCurrentlyCharging = false
                     currentPowerSource = PowerState.SOURCE_NOT_CHARGING
 
-                    writeSimpleEvent("power_disconnected", JSONObject(), detached = true)
+                    writeSimpleEvent("power_disconnected", JSONObject())
 
                     updateNotification()
 
-                    if (settings.current().stopWhenUnplugged) {
-                        writeSimpleEvent(
-                            "service_stopping_due_to_unplug",
-                            JSONObject(),
-                            detached = true
-                        )
-                        stopSelf()
+                    /*
+                     * Parked rather than stopped. Stopping took the power
+                     * receiver down with the service, so nothing was left
+                     * listening for the power coming back and the logger stayed
+                     * down until someone opened the app - which, for a phone
+                     * that lives in a car, was never.
+                     */
+                    if (!settings.current().recordOnBattery) {
+                        writeSimpleEvent("recording_stopped_on_unplug", JSONObject())
+                        enterArmed()
                     }
                 }
             }
@@ -286,8 +391,20 @@ class TelemetryForegroundService : Service(), SensorEventListener {
 
     private val flushRunnable = object : Runnable {
         override fun run() {
-            Log.i("Telemetry", "Flush tick")
             if (!isRunning.get()) return
+
+            if (shouldReturnToArmed()) {
+                Log.i(
+                    "Telemetry",
+                    if (movementConfirmed) {
+                        "Stationary; going back to waiting for movement"
+                    } else {
+                        "Motion was not the vehicle moving; going back to waiting"
+                    }
+                )
+                enterArmed()
+                return
+            }
 
             try {
                 writeMergedSample()
@@ -314,6 +431,7 @@ class TelemetryForegroundService : Service(), SensorEventListener {
         magnetometer = sensorManager.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD)
 
         pressureSensor = sensorManager.getDefaultSensor(Sensor.TYPE_PRESSURE)
+        significantMotion = sensorManager.getDefaultSensor(Sensor.TYPE_SIGNIFICANT_MOTION)
 
         workerThread = HandlerThread(SENSOR_THREAD_NAME).apply { start() }
         workerHandler = Handler(workerThread!!.looper)
@@ -328,31 +446,185 @@ class TelemetryForegroundService : Service(), SensorEventListener {
         )
 
         isRunning.set(true)
-        _isRunningFlow.value = true
 
         registerPowerReceiver()
-        registerSensors()
-        requestLocationUpdates()
 
         writeSimpleEvent("service_started", JSONObject().apply {
             put("charging", isCurrentlyCharging)
             put("powerSource", currentPowerSource)
             put("autoStartOnBootEnabled", settings.current().autoStartOnBoot)
-            put("stopWhenUnpluggedEnabled", settings.current().stopWhenUnplugged)
+            put("wakeOnMotionEnabled", settings.current().wakeOnMotion)
+            put("recordOnBattery", settings.current().recordOnBattery)
+            put("hasMotionSensor", significantMotion != null)
         })
 
+        enterInitialState()
+    }
+
+    // ----------------------------------------------------
+    // Armed / recording
+    // ----------------------------------------------------
+
+    private fun enterInitialState() {
+        when {
+            // Parked because the power settings forbid recording right now.
+            !canRecordNow() -> enterArmed()
+
+            // Parked because the vehicle is not known to be moving.
+            shouldWaitForMotion() -> enterArmed()
+
+            else -> enterRecording()
+        }
+    }
+
+    /** Whether the power settings allow recording at this moment. */
+    private fun canRecordNow(): Boolean =
+        isCurrentlyCharging || settings.current().recordOnBattery
+
+    /**
+     * Whether the vehicle standing still should mean waiting rather than
+     * recording.
+     *
+     * Without the hardware trigger nothing would ever end the wait, so a device
+     * that lacks one records continuously instead - the old behaviour, which is
+     * worse but at least keeps working.
+     */
+    private fun shouldWaitForMotion(): Boolean {
+        if (!settings.current().wakeOnMotion) return false
+
+        if (significantMotion == null) {
+            Log.w("Telemetry", "No significant motion sensor; recording continuously")
+            return false
+        }
+
+        return true
+    }
+
+    /** Parked: everything expensive off, only the motion trigger listening. */
+    @Synchronized
+    private fun enterArmed() {
+        /*
+         * The trigger is one-shot and has unregistered itself by the time it is
+         * handled, so an already-parked logger still needs it put back.
+         */
+        if (_loggerState.value == LoggerState.ARMED) {
+            rearmMotionTrigger()
+            return
+        }
+
+        stopRecordingHardware()
+        rearmMotionTrigger()
+
+        _loggerState.value = LoggerState.ARMED
+        _locationStatus.value = TelemetryLocationStatus(hasFix = false)
+
+        writeSimpleEvent("logger_armed", JSONObject().apply {
+            put("movementWasConfirmed", movementConfirmed)
+            put("onPower", isCurrentlyCharging)
+        })
+        updateNotification()
+    }
+
+    /**
+     * Puts the one-shot motion trigger back, if there is one to put back.
+     *
+     * False means nothing will wake the logger by movement - no such sensor, or
+     * the setting is off - and only power can promote it out of waiting.
+     */
+    private fun rearmMotionTrigger(): Boolean {
+        if (!settings.current().wakeOnMotion) return false
+
+        val sensor = significantMotion ?: return false
+
+        return sensorManager.requestTriggerSensor(motionTrigger, sensor)
+    }
+
+    /** Moving: sensors, GPS and the flush loop, with the CPU held awake. */
+    @Synchronized
+    private fun enterRecording() {
+        if (_loggerState.value == LoggerState.RECORDING) return
+
+        significantMotion?.let { sensorManager.cancelTriggerSensor(motionTrigger, it) }
+
+        acquireWakeLock()
+        registerSensors()
+        requestLocationUpdates()
+
+        // Assumed moving until proven otherwise, or it would re-arm at once.
+        lastMovementAt = SystemClock.elapsedRealtime()
+        movementConfirmed = false
+        _loggerState.value = LoggerState.RECORDING
+
+        writeSimpleEvent("logger_recording", JSONObject())
+
+        workerHandler?.removeCallbacks(flushRunnable)
         workerHandler?.post(flushRunnable)
         updateNotification()
     }
 
+    private fun stopRecordingHardware() {
+        workerHandler?.removeCallbacks(flushRunnable)
+
+        try {
+            sensorManager.unregisterListener(this)
+        } catch (_: Exception) {
+        }
+
+        try {
+            locationManager.removeUpdates(locationListener)
+        } catch (_: Exception) {
+        }
+
+        releaseWakeLock()
+    }
+
+    /*
+     * No timeout on purpose: the lock lasts exactly as long as recording does,
+     * which is a journey, and releasing it early is the failure this exists to
+     * prevent.
+     */
+    @SuppressLint("WakelockTimeout")
+    private fun acquireWakeLock() {
+        if (wakeLock?.isHeld == true) return
+
+        val powerManager = getSystemService(POWER_SERVICE) as PowerManager
+
+        wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, WAKE_LOCK_TAG).apply {
+            setReferenceCounted(false)
+            acquire()
+        }
+    }
+
+    private fun releaseWakeLock() {
+        wakeLock?.takeIf { it.isHeld }?.release()
+        wakeLock = null
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == ACTION_RESTART) {
+            Log.i("Telemetry", "Restart requested")
+            writeSimpleEvent("service_restarted", JSONObject())
+
+            stopRecordingHardware()
+            significantMotion?.let { sensorManager.cancelTriggerSensor(motionTrigger, it) }
+
+            // Momentary, and only so the guards in enterArmed/enterRecording do
+            // not mistake the current state for the one being asked for.
+            _loggerState.value = LoggerState.OFF
+
+            enterInitialState()
+        }
+
         // Good for a long-running logger service
         return START_STICKY
     }
 
     override fun onDestroy() {
         isRunning.set(false)
-        _isRunningFlow.value = false
+        _loggerState.value = LoggerState.OFF
+
+        significantMotion?.let { sensorManager.cancelTriggerSensor(motionTrigger, it) }
+        releaseWakeLock()
 
         try {
             unregisterReceiver(powerReceiver)
@@ -640,7 +912,9 @@ class TelemetryForegroundService : Service(), SensorEventListener {
      */
     private suspend fun maybePushLive(location: Location?) {
         if (location == null) return
-        if (!settings.current().liveUploadEnabled) return
+        val settings = settings.current()
+
+        if (!settings.liveUploadEnabled) return
 
         /*
          * Only on power. A live push keeps the radio awake for the length of a
@@ -648,6 +922,13 @@ class TelemetryForegroundService : Service(), SensorEventListener {
          * battery unless it was asked for.
          */
         if (!isCurrentlyCharging) return
+
+        /*
+         * The batch uploader gets its network rule from WorkManager's
+         * constraints; a live push is a plain HTTP call and had none, so it
+         * would happily spend mobile data while the batch path was refusing to.
+         */
+        if (settings.wifiOnly && !isOnUnmeteredNetwork()) return
 
         /*
          * elapsedRealtimeNanos rather than the fix's wall clock: it is
@@ -682,6 +963,34 @@ class TelemetryForegroundService : Service(), SensorEventListener {
         if (!attempted) {
             Log.d("Telemetry", "Live push skipped, a batch upload is in flight")
         }
+    }
+
+    /**
+     * Whether the vehicle has been still long enough to stop recording it.
+     *
+     * Only meaningful while recording, and only when something is able to start
+     * it again.
+     */
+    private fun shouldReturnToArmed(): Boolean {
+        if (_loggerState.value != LoggerState.RECORDING) return false
+        if (!shouldWaitForMotion()) return false
+
+        /*
+         * An unproven session gets the short window: something shook the phone,
+         * and if GPS has not seen it travelling by now it very likely was not
+         * the car pulling away. A confirmed journey gets the long one, so
+         * traffic lights and level crossings do not end it.
+         */
+        val timeout = if (movementConfirmed) MOTION_IDLE_TIMEOUT_MS else MOTION_CONFIRM_WINDOW_MS
+
+        return SystemClock.elapsedRealtime() - lastMovementAt > timeout
+    }
+
+    private fun isOnUnmeteredNetwork(): Boolean {
+        val manager = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
+        val capabilities = manager.getNetworkCapabilities(manager.activeNetwork) ?: return false
+
+        return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED)
     }
 
     private fun writeAccuracyChangeEvent(sensor: Sensor, accuracy: Int) {
@@ -899,10 +1208,16 @@ class TelemetryForegroundService : Service(), SensorEventListener {
     }
 
     private fun updateNotificationText(gpsPart: String, powerPart: String, headingPart: String) {
+        val status = when (_loggerState.value) {
+            LoggerState.RECORDING -> "Logging active"
+            LoggerState.ARMED -> "Waiting for movement"
+            LoggerState.OFF -> "Stopped"
+        }
+
         val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
         manager.notify(
             NOTIFICATION_ID,
-            buildNotification("Logging Active", gpsPart, powerPart, headingPart)
+            buildNotification(status, gpsPart, powerPart, headingPart)
         )
     }
 }

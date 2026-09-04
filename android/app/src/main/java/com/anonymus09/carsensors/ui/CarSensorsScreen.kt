@@ -28,6 +28,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.anonymus09.carsensors.LoggerState
 import com.anonymus09.carsensors.MainUiState
 import com.anonymus09.carsensors.TelemetryLocationStatus
 import com.anonymus09.carsensors.data.PowerState
@@ -47,11 +48,14 @@ fun CarSensorsScreen(
     state: MainUiState,
     locationStatus: TelemetryLocationStatus,
     onAutoStartOnBootChange: (Boolean) -> Unit,
-    onStopWhenUnpluggedChange: (Boolean) -> Unit,
-    onUploadOnlyWhenChargingChange: (Boolean) -> Unit,
+    onRecordOnBatteryChange: (Boolean) -> Unit,
+    onUploadOnBatteryChange: (Boolean) -> Unit,
+    onWifiOnlyChange: (Boolean) -> Unit,
     onLiveUploadChange: (Boolean) -> Unit,
     onToggleLogging: () -> Unit,
+    onWakeOnMotionChange: (Boolean) -> Unit,
     onForceUpload: () -> Unit,
+    onRestartService: () -> Unit,
     onServerBaseUrlSave: (String) -> Unit,
     allowCleartext: Boolean,
     modifier: Modifier = Modifier
@@ -80,37 +84,65 @@ fun CarSensorsScreen(
         Spacer(modifier = Modifier.height(8.dp))
 
         SettingRow(
+            title = "Wake on motion",
+            description = "Waits while the vehicle is parked and starts recording " +
+                "when it moves. GPS then has to confirm it is really travelling, so " +
+                "picking the phone up does not start a journey.",
+            checked = state.settings.wakeOnMotion,
+            onCheckedChange = onWakeOnMotionChange
+        )
+
+        SettingRow(
             title = "Auto-start on boot",
+            description = "Puts the logger back the way you left it after the phone " +
+                "reboots, so a phone living in the car recovers on its own.",
             checked = state.settings.autoStartOnBoot,
             onCheckedChange = onAutoStartOnBootChange
         )
 
         SettingRow(
-            title = "Stop when unplugged",
-            checked = state.settings.stopWhenUnplugged,
-            onCheckedChange = onStopWhenUnpluggedChange
+            title = "Record on battery",
+            description = "Keeps recording after the car's power is cut. Off means " +
+                "it goes back to waiting instead, so a parked car cannot flatten " +
+                "the phone.",
+            checked = state.settings.recordOnBattery,
+            onCheckedChange = onRecordOnBatteryChange
         )
 
         SettingRow(
-            title = "Upload only when charging",
-            checked = state.settings.uploadOnlyWhenCharging,
-            onCheckedChange = onUploadOnlyWhenChargingChange
+            title = "Upload on battery",
+            description = "Lets batched uploads run when the phone is not on power. " +
+                "Live upload never does, whatever this says.",
+            checked = state.settings.uploadOnBattery,
+            onCheckedChange = onUploadOnBatteryChange
+        )
+
+        SettingRow(
+            title = "Wi-Fi only",
+            description = "Uploads only over an unmetered network. Off allows mobile " +
+                "data, for a car that never parks near Wi-Fi. Applies to live and " +
+                "batched uploads alike.",
+            checked = state.settings.wifiOnly,
+            onCheckedChange = onWifiOnlyChange
         )
 
         SettingRow(
             title = "Live upload",
+            description = "Sends each new position the moment it changes, instead of " +
+                "waiting for a batch. Only runs while on power.",
             checked = state.settings.liveUploadEnabled,
             onCheckedChange = onLiveUploadChange
         )
 
         LiveUploadNote(
             enabled = state.settings.liveUploadEnabled,
-            charging = state.power.charging
+            charging = state.power.charging,
+            wifiOnly = state.settings.wifiOnly
         )
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        LoggingSection(isLogging = state.isLogging, onToggleLogging = onToggleLogging)
+        LoggingSection(loggerState = state.loggerState, onToggleLogging = onToggleLogging)
 
         GpsSection(locationStatus = locationStatus)
 
@@ -134,27 +166,33 @@ fun CarSensorsScreen(
         Spacer(modifier = Modifier.height(8.dp))
 
         UploadSection(storage = state.storage, onForceUpload = onForceUpload)
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        MaintenanceSection(onRestartService = onRestartService)
     }
 }
 
 /**
- * Says what live upload will do and, when it is on but idle, why.
+ * Whether live upload is actually running right now.
  *
- * The power condition is the part that is not visible from the switch: someone
- * who turns this on in a stationary car would otherwise see nothing happen and
- * have no way to tell whether it was broken.
+ * What the setting *does* is on the switch itself; this is the part that
+ * changes underneath it, so that someone who turns it on in an unplugged car
+ * can tell the difference between waiting and broken.
  */
 @Composable
-private fun LiveUploadNote(enabled: Boolean, charging: Boolean) {
+private fun LiveUploadNote(enabled: Boolean, charging: Boolean, wifiOnly: Boolean) {
+    if (!enabled) return
+
     val (message, highlighted) = when {
-        !enabled -> "Sends each new position as it changes. Runs only while on power." to false
+        charging && wifiOnly ->
+            "Active on Wi-Fi - sending each new position as it changes." to true
 
         charging -> "Active - sending each new position as it changes." to true
 
         else -> (
-            "Waiting for power. Live upload runs only while charging so it " +
-                "cannot flatten the battery unattended; everything is still " +
-                "recorded and uploaded in batches meanwhile."
+            "Waiting for power. Everything is still recorded and uploaded in " +
+                "batches meanwhile."
             ) to false
     }
 
@@ -169,25 +207,48 @@ private fun LiveUploadNote(enabled: Boolean, charging: Boolean) {
     )
 }
 
+/**
+ * The button switches the logger on and off; what it does once on is the
+ * logger's own business.
+ *
+ * Showing all three states matters more than it looks. With "wake on motion"
+ * on, pressing start in a parked car leads to ARMED and nothing is recorded
+ * until it moves - which reads as a broken app unless the screen says so.
+ */
 @Composable
-private fun LoggingSection(isLogging: Boolean, onToggleLogging: () -> Unit) {
+private fun LoggingSection(loggerState: LoggerState, onToggleLogging: () -> Unit) {
+    val running = loggerState != LoggerState.OFF
+
     Text(
-        text = "Logging state: ${if (isLogging) "ACTIVE" else "STOPPED"}",
+        text = "Logging state: " + when (loggerState) {
+            LoggerState.OFF -> "STOPPED"
+            LoggerState.ARMED -> "WAITING FOR MOVEMENT"
+            LoggerState.RECORDING -> "RECORDING"
+        },
         style = MaterialTheme.typography.titleMedium
     )
+
+    if (loggerState == LoggerState.ARMED) {
+        Text(
+            text = "Parked. Sensors and GPS are off; the motion sensor will start " +
+                "recording as soon as the vehicle moves.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
 
     Button(
         onClick = onToggleLogging,
         modifier = Modifier.fillMaxWidth(),
         colors = ButtonDefaults.buttonColors(
-            containerColor = if (isLogging) {
+            containerColor = if (running) {
                 MaterialTheme.colorScheme.error
             } else {
                 MaterialTheme.colorScheme.primary
             }
         )
     ) {
-        Text(text = if (isLogging) "Stop logging" else "Start logging")
+        Text(text = if (running) "Stop logging" else "Start logging")
     }
 }
 
@@ -289,6 +350,28 @@ private fun UploadSection(storage: TelemetryStorage, onForceUpload: () -> Unit) 
 }
 
 /**
+ * A way out of a state the app should never have reached.
+ *
+ * Deliberately always enabled, unlike "Force upload now": a service wedged
+ * badly enough to need this is not to be trusted about its own state.
+ */
+@Composable
+private fun MaintenanceSection(onRestartService: () -> Unit) {
+    Text(text = "Maintenance", style = MaterialTheme.typography.titleMedium)
+
+    Text(
+        text = "Tears the sensor, location and power listeners down and registers " +
+            "them again, without losing anything already recorded.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
+
+    Button(onClick = onRestartService, modifier = Modifier.fillMaxWidth()) {
+        Text("Restart logging service")
+    }
+}
+
+/**
  * Where telemetry is sent.
  *
  * The draft is local until saved so that a half-typed address is never stored,
@@ -356,9 +439,17 @@ private fun LabelledValue(label: String, value: String, valueIsPath: Boolean = f
     )
 }
 
+/**
+ * A switch with the sentence that says what it does.
+ *
+ * The description is required rather than optional on purpose: these options
+ * interact - motion, power and network all gate each other - and a bare label
+ * is not enough to remember which does what.
+ */
 @Composable
 private fun SettingRow(
     title: String,
+    description: String,
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit
 ) {
@@ -366,11 +457,15 @@ private fun SettingRow(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(
-            text = title,
-            modifier = Modifier.weight(1f),
-            style = MaterialTheme.typography.bodyLarge
-        )
+        Column(modifier = Modifier.weight(1f)) {
+            Text(text = title, style = MaterialTheme.typography.bodyLarge)
+            Text(
+                text = description,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
         Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
 }
