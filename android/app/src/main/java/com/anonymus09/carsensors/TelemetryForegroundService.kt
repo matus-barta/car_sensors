@@ -31,6 +31,7 @@ import com.anonymus09.carsensors.data.TelemetrySampleEntity
 import com.anonymus09.carsensors.work.WifiUploadScheduler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -38,14 +39,15 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import org.json.JSONObject
-import java.io.File
-import java.text.SimpleDateFormat
-import java.util.Date
 import java.util.Locale
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
+import kotlin.coroutines.EmptyCoroutineContext
 import kotlin.math.roundToInt
 import com.anonymus09.carsensors.util.AppConfig.FLUSH_INTERVAL_MS
 import com.anonymus09.carsensors.util.AppConfig.SENSOR_SAMPLING_US
+import com.anonymus09.carsensors.util.AppConfig.UPLOAD_CHECK_EVERY_N_SAMPLES
+import com.anonymus09.carsensors.util.AppConfig.UPLOAD_TRIGGER_PENDING_ROWS
 
 data class TelemetryLocationStatus(
     val hasFix: Boolean = false,
@@ -136,24 +138,6 @@ class TelemetryForegroundService : Service(), SensorEventListener {
             }
         }
 
-        fun getLogDir(context: Context): File? {
-            return context.getExternalFilesDir(null)
-        }
-
-        fun getCurrentLogFile(context: Context): File {
-            val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
-            val fileName = "telemetry_${sdf.format(Date())}.ndjson"
-            return File(getLogDir(context), fileName)
-        }
-
-        fun getRecentLogFiles(context: Context, limit: Int = 5): List<File> {
-            val dir = getLogDir(context) ?: return emptyList()
-
-            return dir.listFiles { file ->
-                file.name.startsWith("telemetry_") && file.name.endsWith(".ndjson")
-            }?.sortedByDescending { it.lastModified() }?.take(limit) ?: emptyList()
-        }
-
         private val _isRunningFlow = MutableStateFlow(false)
         val isRunningFlow: StateFlow<Boolean> = _isRunningFlow.asStateFlow()
 
@@ -173,6 +157,9 @@ class TelemetryForegroundService : Service(), SensorEventListener {
     private var workerHandler: Handler? = null
 
     private val isRunning = AtomicBoolean(false)
+
+    /** Samples written since the upload backlog was last measured. */
+    private val samplesSinceUploadCheck = AtomicInteger(0)
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val telemetryDao by lazy {
@@ -288,12 +275,16 @@ class TelemetryForegroundService : Service(), SensorEventListener {
                     isCurrentlyCharging = false
                     currentPowerSource = "NOT_CHARGING"
 
-                    writeSimpleEvent("power_disconnected", JSONObject())
+                    writeSimpleEvent("power_disconnected", JSONObject(), detached = true)
 
                     updateNotification()
 
                     if (isStopWhenUnpluggedEnabled(context)) {
-                        writeSimpleEvent("service_stopping_due_to_unplug", JSONObject())
+                        writeSimpleEvent(
+                            "service_stopping_due_to_unplug",
+                            JSONObject(),
+                            detached = true
+                        )
                         stopSelf()
                     }
                 }
@@ -372,7 +363,6 @@ class TelemetryForegroundService : Service(), SensorEventListener {
     override fun onDestroy() {
         isRunning.set(false)
         _isRunningFlow.value = false
-        serviceScope.cancel()
 
         try {
             unregisterReceiver(powerReceiver)
@@ -392,7 +382,14 @@ class TelemetryForegroundService : Service(), SensorEventListener {
         workerHandler?.removeCallbacksAndMessages(null)
         workerThread?.quitSafely()
 
-        writeSimpleEvent("service_stopped", JSONObject())
+        /*
+         * Cancelling the scope first, as this did before, cancelled the write
+         * below along with it: every run of the service ended without a
+         * service_stopped row, so the log simply stopped mid-stream.
+         */
+        writeSimpleEvent("service_stopped", JSONObject(), detached = true)
+        serviceScope.cancel()
+
         super.onDestroy()
     }
 
@@ -599,14 +596,20 @@ class TelemetryForegroundService : Service(), SensorEventListener {
             try {
                 telemetryDao.insert(sample)
 
-                val pending = telemetryDao.getPendingUploadCount()
-                if (pending >= 200) {
-                    WifiUploadScheduler.enqueue(this@TelemetryForegroundService)
+                /*
+                 * Both counts used to run on every write: two scans of a table
+                 * that grows by 172,800 rows a day, twice a second, one of them
+                 * only to log its own result. The backlog size still decides
+                 * when to wake the uploader, so that one stays - measured once
+                 * every UPLOAD_CHECK_EVERY_N_SAMPLES instead of every time.
+                 */
+                if (samplesSinceUploadCheck.incrementAndGet() >= UPLOAD_CHECK_EVERY_N_SAMPLES) {
+                    samplesSinceUploadCheck.set(0)
+
+                    if (telemetryDao.getPendingUploadCount() >= UPLOAD_TRIGGER_PENDING_ROWS) {
+                        WifiUploadScheduler.enqueue(this@TelemetryForegroundService)
+                    }
                 }
-
-                val count = telemetryDao.getCount()
-                Log.i("Telemetry", "DB rows: $count")
-
             } catch (e: Exception) {
                 Log.e("Telemetry", "Room insert failed", e)
             }
@@ -678,7 +681,18 @@ class TelemetryForegroundService : Service(), SensorEventListener {
 
     }
 
-    private fun writeSimpleEvent(eventName: String, payload: JSONObject) {
+    /**
+     * Records an event row.
+     *
+     * Pass [detached] for events on the shutdown path. Those are written as the
+     * service is being torn down, and a coroutine started on [serviceScope]
+     * there is cancelled before Room ever sees it.
+     */
+    private fun writeSimpleEvent(
+        eventName: String,
+        payload: JSONObject,
+        detached: Boolean = false
+    ) {
         Log.i("Telemetry", "Event: $eventName payload=$payload")
 
         val sample = TelemetrySampleEntity(
@@ -725,29 +739,17 @@ class TelemetryForegroundService : Service(), SensorEventListener {
             headingDeg = null
         )
 
-        serviceScope.launch {
+        /*
+         * NonCancellable takes the place of the scope's job as the parent, so a
+         * detached write is no longer a child of serviceScope and survives its
+         * cancellation. What it touches - the DAO - is an application singleton,
+         * so the coroutine outlives the service without outliving its
+         * dependencies.
+         */
+        serviceScope.launch(if (detached) NonCancellable else EmptyCoroutineContext) {
             telemetryDao.insert(sample)
         }
 
-    }
-
-    private fun appendJsonLine(json: JSONObject) {
-        val file = currentLogFile()
-        file.appendText(json.toString() + "\n")
-    }
-
-    private fun currentLogFile(): File {
-        val fileName = "telemetry_${currentDateString()}.ndjson"
-        val dir = getExternalFilesDir(null)
-
-        //val dir = filesDir <--- private data storage
-
-        return File(dir, fileName)
-    }
-
-    private fun currentDateString(): String {
-        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
-        return sdf.format(Date())
     }
 
     private fun accuracyToLabel(accuracy: Int): String {
