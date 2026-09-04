@@ -1,0 +1,50 @@
+# Only what differs from detekt's defaults. Everything unlisted keeps them.
+#
+# Most of what is turned down here is detekt having no knowledge of Compose:
+# it reads a composable as a badly named function and a `16.dp` padding as a
+# magic number. The rest is where this project has a deliberate style detekt
+# has an opinion about.
+
+complexity:
+  # The screen's composables take one callback per action, which is what state
+  # hoisting looks like when done properly rather than a smell.
+  LongParameterList:
+    ignoreAnnotated: ["Composable"]
+  LongMethod:
+    ignoreAnnotated: ["Composable"]
+  TooManyFunctions:
+    # A file of small private composables is the point, not a warning.
+    ignoreAnnotatedFunctions: ["Composable"]
+    thresholdInFiles: 20
+    thresholdInClasses: 20
+
+style:
+  # Guard clauses. Returning early four times reads better than nesting four
+  # times, and the service is full of "not applicable, stop" conditions.
+  ReturnCount:
+    max: 8
+  MagicNumber:
+    # dp, sp and colour literals are the vocabulary of a Compose file.
+    ignoreAnnotated: ["Composable"]
+    ignorePropertyDeclaration: true
+    # `code in 200..299` says what it means; naming it would say less.
+    ignoreRanges: true
+    ignoreCompanionObjectPropertyDeclaration: true
+    excludes: ["**/ui/**", "**/test/**", "**/androidTest/**"]
+naming:
+  FunctionNaming:
+    # Composables are capitalised by convention, which detekt does not know.
+    ignoreAnnotated: ["Composable"]
+
+exceptions:
+  # Unregistering a receiver or a sensor listener that was never registered
+  # throws, and which exception depends on the platform version. Catching
+  # broadly there is deliberate; the alternative is a crash on teardown.
+  # The same reasoning covers the two that make network calls: any failure
+  # whatsoever means "could not reach the server", and enumerating the ways a
+  # connection can fail would not change what is done about it.
+  TooGenericExceptionCaught:
+    excludes:
+      - "**/TelemetryForegroundService.kt"
+      - "**/ServerHealth.kt"
+      - "**/TelemetryUploader.kt"

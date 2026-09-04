@@ -33,17 +33,22 @@ class TelemetryDaoTest {
         charging = true, powerSource = "USB",
         latitude = latitude, longitude = latitude?.let { 17.1 }, altitude = null,
         speedMps = null, speedKmh = null, bearing = null, accuracyM = null, provider = "gps",
-        accelX = null, accelY = null, accelZ = null, accelAccuracy = null, accelAccuracyLabel = null,
+        accelX = null, accelY = null, accelZ = null,
+        accelAccuracy = null, accelAccuracyLabel = null,
         gyroX = null, gyroY = null, gyroZ = null, gyroAccuracy = null, gyroAccuracyLabel = null,
         magX = null, magY = null, magZ = null, magnetAccuracy = null, magnetAccuracyLabel = null,
-        headingDeg = null, pressureHpa = null, pressureAccuracy = null, pressureAccuracyLabel = null,
+        headingDeg = null, pressureHpa = null,
+        pressureAccuracy = null, pressureAccuracyLabel = null,
         uploaded = uploaded, uploadedAt = if (uploaded) timestamp else null,
         uploadAttemptCount = attempts
     )
 
     @Before
     fun setUp() {
-        db = Room.inMemoryDatabaseBuilder(RuntimeEnvironment.getApplication(), AppDatabase::class.java)
+        db = Room.inMemoryDatabaseBuilder(
+            RuntimeEnvironment.getApplication(),
+            AppDatabase::class.java
+        )
             .allowMainThreadQueries()
             .build()
         dao = db.telemetryDao()

@@ -57,6 +57,10 @@ import kotlin.coroutines.EmptyCoroutineContext
 import kotlin.math.roundToInt
 import com.anonymus09.carsensors.util.AppConfig.BATTERY_REDUCED_RATE_FACTOR
 import com.anonymus09.carsensors.util.AppConfig.FLUSH_INTERVAL_MS
+import com.anonymus09.carsensors.util.AppConfig.GPS_UPDATE_INTERVAL_MS
+import com.anonymus09.carsensors.util.AppConfig.MPS_TO_KMH
+import com.anonymus09.carsensors.util.AppConfig.NETWORK_UPDATE_INTERVAL_MS
+import com.anonymus09.carsensors.util.AppConfig.SENSOR_BATCH_LATENCY_FACTOR
 import com.anonymus09.carsensors.util.AppConfig.LIVE_PUSH_MAX_ROWS
 import com.anonymus09.carsensors.util.AppConfig.MAX_LOCATION_AGE_MS
 import com.anonymus09.carsensors.util.AppConfig.MOTION_CONFIRM_WINDOW_MS
@@ -121,6 +125,9 @@ class TelemetryForegroundService : Service(), SensorEventListener {
         const val ACTION_RESTART = "com.anonymus09.carsensors.action.RESTART"
 
         private const val WAKE_LOCK_TAG = "CarSensors::Telemetry"
+
+        /** Normalises an azimuth that came back negative into 0..360. */
+        private const val FULL_TURN_DEGREES = 360f
 
         fun restartService(context: Context) {
             val intent = Intent(context, TelemetryForegroundService::class.java).apply {
@@ -309,7 +316,7 @@ class TelemetryForegroundService : Service(), SensorEventListener {
                 hasFix = true,
                 latitude = location.latitude,
                 longitude = location.longitude,
-                speedKmh = (location.speed * 3.6f).toInt(),
+                speedKmh = (location.speed * MPS_TO_KMH).toInt(),
                 provider = location.provider,
                 accuracy = location.accuracy
             )
@@ -416,7 +423,7 @@ class TelemetryForegroundService : Service(), SensorEventListener {
             try {
                 writeMergedSample()
             } catch (e: Exception) {
-                e.printStackTrace()
+                Log.e("Telemetry", "Could not write a sample", e)
             }
 
             val interval = if (powerTier >= PowerTier.REDUCED_RATE) {
@@ -745,19 +752,31 @@ class TelemetryForegroundService : Service(), SensorEventListener {
     private fun registerSensors() {
         accelerometer?.let {
             sensorManager.registerListener(
-                this, it, SENSOR_SAMPLING_US, SENSOR_SAMPLING_US * 5, workerHandler
+                this,
+                it,
+                SENSOR_SAMPLING_US,
+                SENSOR_SAMPLING_US * SENSOR_BATCH_LATENCY_FACTOR,
+                workerHandler
             )
         }
 
         gyroscope?.takeIf { runsDecorativeSensors() }?.let {
             sensorManager.registerListener(
-                this, it, SENSOR_SAMPLING_US, SENSOR_SAMPLING_US * 5, workerHandler
+                this,
+                it,
+                SENSOR_SAMPLING_US,
+                SENSOR_SAMPLING_US * SENSOR_BATCH_LATENCY_FACTOR,
+                workerHandler
             )
         }
 
         magnetometer?.takeIf { runsDecorativeSensors() }?.let {
             sensorManager.registerListener(
-                this, it, SENSOR_SAMPLING_US, SENSOR_SAMPLING_US * 5, workerHandler
+                this,
+                it,
+                SENSOR_SAMPLING_US,
+                SENSOR_SAMPLING_US * SENSOR_BATCH_LATENCY_FACTOR,
+                workerHandler
             )
         }
 
@@ -766,7 +785,7 @@ class TelemetryForegroundService : Service(), SensorEventListener {
                 this,
                 it,
                 SENSOR_SAMPLING_US,
-                SENSOR_SAMPLING_US * 5,
+                SENSOR_SAMPLING_US * SENSOR_BATCH_LATENCY_FACTOR,
                 workerHandler
             )
         }
@@ -795,7 +814,7 @@ class TelemetryForegroundService : Service(), SensorEventListener {
             if (locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
                 locationManager.requestLocationUpdates(
                     LocationManager.GPS_PROVIDER,
-                    1000L,
+                    GPS_UPDATE_INTERVAL_MS,
                     0f,
                     locationListener,
                     Looper.getMainLooper()
@@ -805,14 +824,14 @@ class TelemetryForegroundService : Service(), SensorEventListener {
             if (locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
                 locationManager.requestLocationUpdates(
                     LocationManager.NETWORK_PROVIDER,
-                    2000L,
+                    NETWORK_UPDATE_INTERVAL_MS,
                     0f,
                     locationListener,
                     Looper.getMainLooper()
                 )
             }
         } catch (e: SecurityException) {
-            e.printStackTrace()
+            Log.e("Telemetry", "Location permission was revoked underneath us", e)
             writeSimpleEvent("location_security_exception", JSONObject().apply {
                 put("message", e.message)
             })
@@ -871,7 +890,7 @@ class TelemetryForegroundService : Service(), SensorEventListener {
         if (success) {
             SensorManager.getOrientation(rotationMatrix, orientationAngles)
             val azimuthDeg = Math.toDegrees(orientationAngles[0].toDouble()).toFloat()
-            headingDegrees = (azimuthDeg + 360f) % 360f
+            headingDegrees = (azimuthDeg + FULL_TURN_DEGREES) % FULL_TURN_DEGREES
         }
     }
 
@@ -916,7 +935,7 @@ class TelemetryForegroundService : Service(), SensorEventListener {
             longitude = location?.longitude,
             altitude = location?.altitude,
             speedMps = location?.speed,
-            speedKmh = location?.speed?.times(3.6f),
+            speedKmh = location?.speed?.times(MPS_TO_KMH),
             bearing = location?.bearing,
             accuracyM = location?.accuracy,
             provider = location?.provider,
@@ -1261,7 +1280,7 @@ class TelemetryForegroundService : Service(), SensorEventListener {
         val gpsPart = if (loc == null) {
             "GPS: waiting"
         } else {
-            val speedKmh = (loc.speed * 3.6f).roundToInt()
+            val speedKmh = (loc.speed * MPS_TO_KMH).roundToInt()
             "GPS: ${"%.5f".format(Locale.US, loc.latitude)}, " + "${
                 "%.5f".format(
                     Locale.US,

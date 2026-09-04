@@ -4,6 +4,8 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.ksp)
+    alias(libs.plugins.ktlint)
+    alias(libs.plugins.detekt)
 }
 
 android {
@@ -29,7 +31,7 @@ android {
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro"
+                "proguard-rules.pro",
             )
         }
     }
@@ -42,6 +44,17 @@ android {
             isIncludeAndroidResources = true
         }
     }
+    lint {
+        // A warning nobody has to act on is a warning nobody reads, and there
+        // are currently none to act on.
+        warningsAsErrors = true
+        abortOnError = true
+
+        // Reports what has been published since, not anything about this code,
+        // so it would turn a passing build red without a commit being made.
+        disable += "NewerVersionAvailable"
+    }
+
     buildFeatures {
         compose = true
         // BuildConfig.DEBUG gates whether the address field accepts http://.
@@ -57,6 +70,14 @@ android {
 ksp {
     // Exported schemas are what make a future migration writable and testable.
     arg("room.schemaLocation", "$projectDir/schemas")
+}
+
+detekt {
+    config.setFrom(files("$rootDir/config/detekt/detekt.yml"))
+    // Adds to the defaults rather than replacing them, so only the rules named
+    // in that file differ and everything else stays as detekt ships it.
+    buildUponDefaultConfig = true
+    baseline = file("$rootDir/config/detekt/baseline.xml")
 }
 
 kotlin {
@@ -90,5 +111,4 @@ dependencies {
     ksp(libs.room.compiler)
 
     implementation(libs.work.runtime)
-
 }

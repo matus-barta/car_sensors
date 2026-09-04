@@ -1,0 +1,10 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>CyclomaticComplexMethod:CarSensorsScreen.kt$@Composable private fun StatusSection( state: MainUiState, locationStatus: TelemetryLocationStatus, onToggleLogging: () -&gt; Unit )</ID>
+    <ID>LargeClass:TelemetryForegroundService.kt$TelemetryForegroundService : ServiceSensorEventListener</ID>
+    <ID>LongMethod:TelemetryForegroundService.kt$TelemetryForegroundService$private fun writeMergedSample()</ID>
+    <ID>TooManyFunctions:TelemetryForegroundService.kt$TelemetryForegroundService : ServiceSensorEventListener</ID>
+  </CurrentIssues>
+</SmellBaseline>
