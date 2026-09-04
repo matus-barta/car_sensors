@@ -116,6 +116,24 @@ setup inside `setup-www` should stay where it is: it exists to install the SQLx
 CLI and wants neither the components nor the workspace cache, so merging the two
 would produce one action with flags selecting between unrelated behaviours.
 
+### Validate the Android app in CI
+
+Nothing builds or tests the app automatically. `ingest-validation.yml` and
+`www-validation.yml` cover the other two, and the app is the piece most likely
+to break unnoticed, because it is the one nobody compiles except when working
+on it.
+
+A workflow running `assembleDebug` and the JVM unit tests would catch most of
+it. The Android SDK is preinstalled on the GitHub-hosted Ubuntu runners, so
+`local.properties` is not needed - `ANDROID_HOME` is already set - and Gradle
+wants its caches restored the way `Swatinem/rust-cache` does for the Rust side.
+Instrumented tests need an emulator and are slow enough to be worth leaving out
+until there is something that genuinely needs one.
+
+This would also be the second job with a Rust-free setup of its own, which does
+not change the `setup-rust` argument above but is worth noticing when deciding
+how much of the workflow scaffolding to share.
+
 ## Telemetry upload protocol
 
 ### Stream uploads as NDJSON instead of one JSON array
@@ -136,43 +154,555 @@ server-only change.
 
 ## Device authentication
 
-### Decide whether the device id stays the credential
+### Issue a per-device token instead of using the id as the credential
 
-`X-Device-ID` both names a device and authorises it: the middleware checks that
-the value matches an active row in `known_devices`, and nothing else is proven.
-The id is a random UUIDv4 generated per installation, so it cannot be guessed,
-and TLS is terminated by the reverse proxy, so it is not exposed in transit on
-the public side.
-
-What remains is that the identifier is the secret. It is visible to the phone's
-user and to anyone signed in to the web application, it appears in the database
-and in service logs, and if it leaks, whoever holds it can post telemetry
-indistinguishable from the real device - fake positions on the live map, junk in
-the history. Revoking it means deactivating the device, which locks out the
+`X-Device-ID` both names a device and authorises it: the middleware checks the
+value against an active row in `known_devices`, and nothing else is proven. The
+id is a random UUIDv4, so it cannot be guessed, but it is the secret - visible on
+the phone's screen, to anyone signed in to `www`, in the database and in service
+logs. If it leaks, whoever holds it can post telemetry indistinguishable from the
+real device, and revoking it means deactivating the device, which locks out the
 genuine phone too.
 
-This was not worth deciding while the registration endpoint was open to anyone;
-that endpoint is gone, so it is now the weakest link. Accepting it for a private
-deployment is a reasonable answer, as long as it is a decision rather than an
-oversight. If it should change, the options in increasing order of effort are a
-per-device bearer token stored as a hash and issued at registration, HMAC-signed
-uploads carrying a timestamp and nonce, which also stops replay, and mutual TLS.
+Decided: the device should carry a real token, separate from the identity that
+names it. Pairing is being rebuilt anyway, and the code that hands out an
+identity is the code that would hand out a token, so doing this later means
+writing that flow twice.
 
-### Give pairing a real workflow instead of copy-by-eye
+The scheme should be dull on purpose. `www` generates 32 random bytes, shows
+them once and stores only their SHA-256 hash on the `known_devices` row; the
+device sends the token and `ingest` hashes what it receives and compares in
+constant time, inside the lookup the middleware already performs. That adds no
+round trip and no measurable time to the upload path.
 
-Registering a real device today means reading its UUID off the phone's screen -
-`MainActivity` displays it as plain text, with no copy button, QR code or share
-action - and retyping it into `www`'s "Add vehicle" dialog, whose `deviceId`
-field accepts any string from 1 to 255 characters with no check that it looks
-like a UUID at all. A typo registers a device that will never match what the
-phone actually uploads, and nothing surfaces that mistake until telemetry
-silently never arrives for it.
+A password hash - Argon2, bcrypt - would be the wrong tool despite being the
+usual advice. Those are deliberately slow because passwords have little entropy;
+a 256-bit random token has plenty, and the slowness would land on every upload.
+SHA-256 is also in the standard library of both languages involved, which
+matters because `www` is TypeScript and `ingest` is Rust and anything more
+exotic gets implemented twice.
 
-Came up while writing `tools/scripts/simulate-telemetry.js` to exercise live
-tracking: the script deliberately does not register devices itself (that is
-the web app's job), which makes the manual transcription step, and its lack of
-validation, obvious. Worth deciding deliberately: validating the shape at
-registration so a mistyped ID is rejected immediately rather than failing
-silently later; giving the Android app a copy button or QR code for its device
-ID; or reversing the flow so the phone requests to be added and an
-administrator approves a pending device by name, transcribing nothing.
+The alternatives, for the record. A signed token - JWT or PASETO, via `jose` and
+`josekit` - would let `ingest` verify without touching the database, but
+revocation then needs a denylist that gives the statelessness back, expiry is
+awkward for a device that may be offline for weeks, and `ingest` reads
+`known_devices` regardless. Better Auth's API key plugin is already in the stack
+for user authentication, but `ingest` would be depending on another framework's
+storage format from another language, which is a poor trade for a hash
+comparison. Mutual TLS remains the strongest answer and the most operational
+work.
+
+Worth being explicit that this stays shared state rather than becoming a
+service. What multiple pieces need is the stored hash, not centrally executed
+behaviour, and `db/migrations` already owns that contract - whereas an
+authentication service would put a network dependency in the one path that must
+never lose data.
+
+### Let the server issue the identity and the phone scan it
+
+The phone invents its own UUID on first run, and registering it means reading it
+off the screen and retyping it into `www`'s "Add vehicle" dialog, whose
+`deviceId` field takes any string from 1 to 255 characters without checking that
+it even looks like a UUID. A typo registers a device that will never match what
+the phone uploads, and nothing surfaces that until telemetry silently never
+arrives.
+
+The authority moves to the server. `www` generates the identity and the token
+from the entry above, stores them in `known_devices` and shows both as a QR code
+and as copyable text. The phone starts with nothing and offers to scan; typing
+or pasting stays the fallback for when the camera will not cooperate.
+`DeviceIdProvider` stops generating anything, which is a real behavioural change
+- an unpaired app has no identity rather than an unregistered one, and every
+screen that assumes one exists has to cope with its absence.
+
+ZXing (`zxing-android-embedded`) reads the code without dragging in Play
+Services, which is the better trade on the old handset this runs on.
+
+Pairing has to be repeatable, not a one-off. A phone moves between cars, a token
+is rotated, an app is reinstalled - the flow that assigns an identity is the
+flow that reassigns one, and it should be reachable from the screen at any time
+rather than only when there is no identity.
+
+Until an identity is present the app is not set up and should say so, at the top
+of the screen alongside the logging state. It should still record - someone who
+drives before pairing should not lose that - but it must not upload, because an
+upload with no identity is a guaranteed rejection that would only burn attempts
+against rows which have done nothing wrong.
+
+An App Link that opens the app straight from `www` would be a nicer path than
+scanning when the browser is on the phone itself, but it is worth less than it
+looks: App Links need `assetlinks.json` served over HTTPS from the domain, which
+a LAN address over plain HTTP cannot do, and a custom scheme any application can
+claim would put a token into browser history. A convenience to add after the QR
+flow works, not an alternative to it.
+
+### Cover the four ways a phone and a car come together
+
+Pairing is not a one-off, and the flow has to answer all four of these rather
+than only the first.
+
+**A new phone for a new car.** `www` creates the vehicle, mints its identity and
+token, shows the QR once. The phone scans it and starts recording. Nothing
+special.
+
+**A new phone for a car that already exists.** Replacing, wiping or reinstalling
+a handset is ordinary, and the vehicle should survive it with its identity and
+its whole history. This collides with showing a token once and storing only its
+hash, which is otherwise the right way to keep one: nobody can read it again, so
+a wiped phone could never rejoin its car. Rotation resolves it. `www` gains a
+"pair a new phone" action on the vehicle that mints a fresh token against the
+same `device_id`, shows the new QR and invalidates the old hash. The car keeps
+everything; only the credential changes. Locking the previous handset out is the
+point, not a side effect.
+
+**An existing phone moving to a different car.** The phone is holding rows that
+belong to the car it is leaving, and they must not arrive under the name of the
+car it is joining. This is the case the entry below exists for, and it needs
+nothing from the server: `ingest` authenticates each request on its own, so
+draining the old car's backlog with the old car's token while recording for the
+new one is simply two uploads with two credentials.
+
+**Banning a compromised identity.** Worth splitting, because the two halves want
+different things. A phone that was lost while its car stays in service needs the
+*credential* revoked, which is the rotation above - and that is the answer to the
+long-standing complaint that revoking a device locks out the genuine phone too,
+because with a token there is now something to revoke that is not the identity.
+Only a vehicle genuinely being retired needs the `known_devices` row deactivated,
+and `ingest` already answers 403 for that today.
+
+What the phone does about that 403 is unfinished. It classifies the response as
+`REFUSED` and deliberately does not count it against the rows, which is right
+for a mistyped address and wrong for a device that has been banned for good: the
+backlog then grows until the storage ceiling with no prospect of ever being
+accepted. The state deserves saying plainly on screen, and the user deserves the
+choice between discarding the rows and keeping them for export.
+
+### Keep every sample with the identity it was recorded under
+
+`TelemetrySampleEntity` has no device column. The identity is only ever an
+`X-Device-ID` header applied at the moment of upload, so the rows waiting in the
+database belong to nobody in particular - they belong to whoever the phone is
+paired with when they finally go up. Move the phone to a second car and the
+first car's unsent journey silently arrives as the second car's.
+
+Stamping the row when it is written is what makes the third case above
+answerable. A local `pairings` table - identity, token, when it was paired, a
+label - and a nullable `pairing_id` on `telemetry_samples` pointing at it. An
+integer rather than the UUID itself, because at two rows a second a
+thirty-six-character string would cost several megabytes a day to repeat the
+same fact.
+
+Keeping the old *token*, and not merely the old identity, is what stops "do not
+lose the data" and "do not misattribute the data" being a choice between two
+losses. A phone that has moved can still prove it is the car it came from, so
+that backlog goes where it belongs while the phone records for its new one. Once
+a retired pairing has nothing left pending it has no further use, and offering
+to forget it keeps the phone from hoarding credentials for cars it left long
+ago.
+
+What follows:
+
+- Upload sends only rows whose pairing the phone still holds, so misattribution
+  stops being possible rather than being avoided by care.
+- Rotating a token leaves `device_id` alone, so existing rows still match their
+  pairing and a replaced handset needs no questions asked.
+- Rows recorded before any pairing carry none, and the moment worth asking about
+  them is when an identity is finally assigned, since the user knows which car
+  the phone was sitting in and nothing else does.
+
+This is a Room migration on a table that already holds the only copy of
+unuploaded telemetry, so it wants the same care as the last one: rows written
+before it lands have no pairing and are indistinguishable from rows recorded
+unpaired.
+
+## Database
+
+### Consider moving the existing tables into schemas of their own
+
+Everything except the geocoder's cache lives in `public`. Nothing is wrong with
+that today, and this is worth recording as an option rather than a fault to fix:
+the value is in what it prevents later, not in anything it repairs now.
+
+Postgres schemas are namespaces rather than walls, which is exactly why they
+suit an arrangement of small services over one database. Joins, foreign keys and
+transactions all work across them unchanged - it is still one database and the
+planner does not care - so none of what makes a shared database pleasant is
+given up. What is gained is a name for each boundary and, if it is wanted,
+enforcement: privileges are granted per schema, so with each service connecting
+as its own role, who may read what stops being a convention that has to be
+remembered.
+
+Naming them after domains rather than services would age better, since services
+get renamed and split while domains do not:
+
+| Schema      | Holds                     | Written by    |
+| ----------- | ------------------------- | ------------- |
+| `auth`      | the Better Auth tables    | `www`         |
+| `fleet`     | devices, ownership        | `www`         |
+| `telemetry` | samples                   | `ingest`      |
+| `trips`     | trips                     | trip service  |
+| `geocoder`  | the place cache           | geocoder      |
+
+That also puts the one-writer rule into the structure instead of leaving it in
+prose.
+
+If users are ever associated with vehicles rather than only with sessions, the
+relationship belongs on the domain side - `fleet.devices.owner_id` referencing
+`auth."user"`, or a join table in `fleet` if it becomes many to many - so that
+the dependency runs one way. The domain may reference `auth`; `auth` should know
+nothing about vehicles, which keeps it a leaf that could be replaced without
+disturbing anything pointing out of it. The friction to expect is that a foreign
+key into Better Auth's `user` table makes a later upgrade that alters or
+recreates it a coordinated change rather than a local one. Those migrations are
+already written by hand here rather than by Better Auth's own migrator, so the
+timing is under control, but it stops being free.
+
+The move itself is cheap - `ALTER TABLE ... SET SCHEMA` is metadata only, with
+no rewrite - but it is not free downstream. The generated Drizzle schema has to
+be regenerated through `./tools/scripts/sync-www-db-schema.sh`, `pnpm db:check`
+fails on drift, and any raw SQL in `www` needs its names qualified, so the
+migration and the generated output have to land together. Drizzle itself copes
+perfectly well by way of `pgSchema`.
+
+One honest trade. Schemas make a future split into separate databases easier,
+because moving `geocoder.*` elsewhere is far simpler than extracting it from a
+shared `public`. A foreign key across schemas is precisely what would have to be
+broken to do that. Referential integrity and splittability pull against each
+other here, and at this size integrity is the better buy - but it is a choice
+rather than a free lunch.
+
+## Trips
+
+### Derive trips on the server from the uploaded track
+
+`www` sees an undifferentiated stream of samples and cannot answer "show me
+yesterday's drive". The device knows more than it says - the armed and recording
+states bracket a journey almost exactly - but deriving this on the server
+instead means it also works for data already collected, and for a device whose
+motion detection misfired.
+
+A separate service reading `telemetry_samples` and writing a `trips` table fits
+how the pieces here already talk to each other: through Postgres, with
+`db/migrations` owning the schema.
+
+"Trip" over "drive" or "journey" - it is the ordinary term in vehicle telematics,
+and `trips` and `trip_id` read naturally as columns.
+
+The shape of the algorithm is a departure, an arrival, and a test of whether
+what lies between them was worth calling a trip. Departure is movement past some
+distance from where the vehicle had been resting; arrival is having stayed still
+for long enough; and a candidate qualifies on a minimum duration and distance,
+which is what stops a shuffle across a car park becoming a trip. Every one of
+those four numbers wants choosing deliberately and writing down.
+
+Three things the data will do that a first attempt usually does not expect. A
+parked car's position drifts, so `accuracy_m` and the speed have to be
+consulted or the drift invents trips that never happened. A stale fix now
+produces a row with no position at all, so gaps are explicit and must not read
+as arrivals. And uploads are store and forward, so samples arrive late and out
+of order and a trip may only become computable days after it happened - which
+means recomputing over a window rather than streaming forward, with upserts
+keyed so that reprocessing the same span twice changes nothing.
+
+### Name a trip after where it started and ended
+
+A trip named by its endpoints is far easier to find than one named by a
+timestamp. Within a town that means the street it started on and the street it
+ended on; between towns, their names; between countries, the countries as well.
+
+The lookups themselves belong to the geocoding service below rather than here.
+What stays with trips is the rule: which component to use at which scale, and
+what to fall back on. Store the structured pieces the service returns - road,
+town, country for each end - rather than only the rendered name, because the
+rule is presentation and will be adjusted, and keeping the components means
+adjusting it without asking anybody to resolve the same place twice.
+
+Worth deciding what a trip is called when the rule cannot be applied: a motorway
+slip road with no street name, a geocoder that is down, coordinates in the
+middle of nowhere. A trip with no name is worse than a trip named after its
+coordinates.
+
+## Geocoding
+
+### Put reverse geocoding behind a service of its own
+
+Trips need to know what to call their endpoints, and that will not be the only
+thing that does. Showing a vehicle's current position as a street rather than a
+pair of coordinates is an obvious second consumer, and it sits in `www` - which
+is TypeScript, where the trip service is Rust.
+
+That language boundary is what settles the shape. Ordinarily this would be a
+module inside the trip service, extracted if a second caller ever appeared; here
+"extracted later" is not available, because the second caller cannot import
+Rust. Its choices would be to call a service or to write the client, the cache,
+the rate limiting and the User-Agent a second time in another language. Sharing
+the cache table instead does not rescue it either: a second consumer needs to
+resolve points nobody has looked up yet, and shared state only works when the
+state is already complete.
+
+Worth naming what this changes. It would be the first service here whose
+contract is an API rather than a table - `ingest` and `www` deliberately never
+call each other - and it introduces a runtime dependency where there was none.
+That is acceptable precisely because geocoding is enrichment rather than
+gating: if it is down, a trip is named later and the web application shows
+coordinates, where an outage in the upload path would lose data instead. The
+same argument would not justify, say, an authentication service.
+
+Scope it tightly or it will grow into a general "location service". It owns the
+cache, the rate limiting, the User-Agent, retry and backoff, and which provider
+is in use. It does not own how a trip is named, which is presentation belonging
+to trips. Its contract is the HTTP interface and not its tables: callers reading
+the cache directly would couple to the schema and still be unable to resolve
+anything new. And it should answer with structured components shaped closely on
+what the provider returns, so that changing provider does not change the
+contract.
+
+Its tables belong in a Postgres schema of their own - `geocoder` - from the
+first migration rather than in `public` alongside everything else. That is
+cheap when there is nothing to move and awkward afterwards, and it is what makes
+"the contract is the API, not the tables" something more than an intention: with
+each service connecting as its own role, a `GRANT` on that schema decides who
+may read the cache rather than a note asking politely that nobody does. It also
+means this piece could be lifted into a database of its own later without first
+being disentangled from the others.
+
+Note that a bare `CREATE TABLE` in a migration lands wherever `search_path`
+points, which is normally `public`. Qualify the name, or set the search path at
+the top of the migration, or the tables quietly appear in the wrong place.
+
+### Meet the Nominatim usage policy in one place
+
+Concentrating this in the geocoding service is most of the reason to have one -
+every obligation lands once instead of in every consumer.
+
+The public Nominatim instance is very likely the right provider rather than the
+one to avoid. Its policy allows one request a second in general, and four a
+minute for a script that runs repeatedly or longer than a day, which is the
+bucket this falls into. Two lookups per trip and perhaps ten trips a day is
+twenty requests against a budget of 5,760 - room for a few hundred vehicles
+before the limit comes into view, before any cache hits at all. Nor is this what
+the policy objects to: it forbids auto-complete, systematic queries such as
+grids and complete listings, scraping and reselling. Asking where the two ends
+of a journey happen to be is the sparse, occasional lookup the service exists to
+answer.
+
+The obligations, which are obligations and not suggestions. Caching, which the
+policy requires outright, since repeating a query is grounds for being blocked.
+Attribution wherever results are shown, under ODbL. A provider that can be
+changed on request *without a software update*, so it belongs in configuration
+rather than in the source. And a User-Agent identifying the application, because
+an HTTP library's default explicitly will not do.
+
+That last one wants care, because this is software other people can run.
+Nominatim can block on address or on User-Agent; an address is one operator's
+problem, but a User-Agent shared by every deployment is everybody's - one
+careless instance would take the rest down and nobody could tell themselves
+apart. So the header should name the software and its version, and carry a
+contact belonging to whoever runs that copy:
+
+    car-sensors-geocoder/0.1.0 (+https://example.org/contact)
+
+The mechanism matters more than the format: the contact should be required
+configuration that the service refuses to start without, rather than a default
+that quietly works, because a default that works is a default nobody replaces.
+The convention for redistributable software talking to Nominatim is exactly this
+- force the operator to set their own, and point them at the policy - and the
+reward is that a contactable operator receives an email where an anonymous one
+receives a block. It only helps if the address is theirs. The policy is explicit
+that a User-Agent is required and silent on whether it should distinguish
+deployments; that reasoning follows from how blocking works rather than from a
+written rule.
+
+Self-hosting stays the answer if the fleet grows by orders of magnitude or
+depending on a free service becomes uncomfortable. Photon is the lighter thing
+to host - Nominatim wants a region extract and a great deal of memory - and
+Komoot's public Photon instance is a middle option, though it publishes no
+numbers, only a request to be fair. Keeping the provider configurable makes that
+a later decision rather than a rewrite.
+
+On the cache itself: there is no established project worth depending on. The one
+purpose-built thing that exists has no users to speak of, and the generic answer
+- nginx `proxy_cache` with `limit_req`, or Varnish - only caches identical URLs,
+which reverse geocoding rarely produces. Since the results are being stored
+anyway, for the structured components trips keep, the cache is that table rather
+than a component in front of it. Matching on proximity rather than exact
+coordinates would hit far more often, since a car never parks in quite the same
+spot twice, but at this volume that is an optimisation rather than a
+requirement.
+
+## Android app
+
+### Confirm the server address against the API
+
+The address is a setting now, but nothing checks it. Getting it wrong is not
+hypothetical: uploads went to a path that did not exist for two months, and the
+only symptom was a backlog that quietly grew to 22,866 rows.
+
+Two checks, because there are two distinct failures. `GET /api/health` is public
+and proves the server is reachable at all - that is the class of mistake the
+missing `/api` prefix was. Whether *this* device may upload is a separate
+question, and posting an empty array to `/api/telemetry/upload` answers it: 401
+for an unknown device, 403 for a deactivated one, 200 otherwise, storing nothing
+either way. "Reachable but not registered" is a state worth being able to show.
+
+Worth running when the address is saved and when the app opens, with the result
+beside the address field.
+
+### Allow cleartext to a private address, and only to a private address
+
+Release builds refuse `http://` outright, which was the right instinct and the
+wrong rule. The ordinary way this is used is a phone on the same network as the
+server - parked on the drive within reach of the house Wi-Fi, or carried indoors
+- uploading to a machine that has no certificate and no name on the public
+internet. Demanding HTTPS there asks someone to run a certificate authority for
+a server only they can reach.
+
+The relaxation should be an advanced option, and it should relax the rule rather
+than remove it: `https://` anywhere, `http://` only to an address that cannot
+leave the local network. Public addresses stay refused whatever the option says,
+so the setting cannot be turned into "send my credential to anyone".
+
+Judging that by the *destination* is what makes it sound. Asking whether the
+device itself holds a public address answers a different question and answers it
+wrongly - behind a hotspot, behind carrier-grade NAT, on a guest network, the
+device has a private address and a perfectly good route to the internet. A
+destination in 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 127.0.0.0/8 or
+169.254.0.0/16, or their IPv6 counterparts `::1`, `fc00::/7` and `fe80::/10`, is
+unroutable across the public internet as a matter of fact rather than of
+configuration.
+
+A hostname should be allowed for the sake of not typing an address, but it has
+to be judged on what it resolves to rather than how it is spelled, and resolved
+again when the upload is actually made rather than only when the setting is
+saved. A name that resolved privately yesterday can resolve publicly today. That
+gap cannot be closed completely without connecting by address and carrying the
+name in a header, which is more than this is worth - but the check belongs at
+the point of use, not only at the point of entry.
+
+The awkward part is that Android's control over cleartext is app-wide.
+`usesCleartextTraffic` sits in the manifest, and while a network security
+configuration can permit cleartext for named domains, those names are static
+resources compiled into the package and cannot express a range, let alone one
+the user chooses at runtime. So the platform's own backstop has to come off and
+the rule has to live in `ServerUrl` instead. That is a real loss of a guarantee
+and worth being deliberate about: what stops a credential going out in clear is
+then the app's own arithmetic and nothing beneath it.
+
+Worth doing after the per-device token rather than before. What travels over
+cleartext today is the device id, which is also the identity and cannot be
+changed without abandoning the vehicle's history; what would travel afterwards
+is a token that can be rotated the moment it is suspected. The same relaxation
+costs considerably less once there is something revocable to lose.
+
+### Clear the paired identity from the app
+
+A small button next to the identity, behind a confirmation dialog.
+`DeviceIdProvider.resetDeviceId()` already exists and has no caller.
+
+With the server issuing identities, this no longer regenerates anything - it
+returns the app to being unpaired, and it can only be undone by scanning or
+entering a new identity from `www`. The dialog should say that, because
+"reset" reads like something recoverable.
+
+It also has to say what happens to data. `TelemetrySampleEntity` carries no
+device id: the identity is only ever an `X-Device-ID` header applied at upload
+time. So every row still waiting to be uploaded would go up under whatever
+identity is paired next - arriving on the server attributed to the wrong
+vehicle, or refused outright. Either refuse while rows are pending, or say so
+plainly first.
+
+### Put the state and the setup at the top of the screen
+
+The screen is one long scroll in the order it was written: identity, then six
+switches, then the logging state, then storage and upload figures. The state -
+the one thing that answers "is this thing recording?" - sits below three
+screens of settings, which is how a phone that recorded nothing goes unnoticed
+until someone goes looking for the data.
+
+Three blocks on one screen, no navigation, in this order. **Status** first:
+logger state, and when armed the sentence explaining that this is deliberate,
+plus GPS fix and power. **Setup** next: server address with the health result
+above, identity with its reset button, then the switches, which already carry
+their own descriptions. **Diagnostics** last, collapsed behind a disclosure -
+database counts, upload figures, file paths, the restart button. That keeps the
+developer information without letting it dominate, and avoids adding
+navigation-compose to a single-screen app.
+
+### Keep unuploaded data until the storage runs out, and say so first
+
+`deleteUploadedOlderThan` bounds only the rows that have been uploaded. Nothing
+bounds the rest, and the rest is the part that matters: the `/api` bug alone
+built up 22,866 rows, and a month of driving with no reachable server would be
+far larger. A phone that fills its storage stops being a logger.
+
+The policy that follows from what the data is worth. Postgres is the record once
+a row has arrived there, so an uploaded row has no reason to stay on the phone
+at all and can go promptly rather than after seven days. An unuploaded row is
+the only copy in existence and should survive as long as there is room for it.
+Only under real storage pressure should any be dropped, and then the oldest
+first, because the recent ones describe where the vehicle is now.
+
+Deleting the only copy of something should never be the first the user hears of
+it. The warning belongs well before the threshold - see the entry below - not at
+the moment data is discarded.
+
+### Give way gradually as the battery drains
+
+`PowerState` reports whether the device is charging but not how full it is, and
+"record on battery" is now a switch that can be left on. A phone left recording
+in a parked car discharges until it dies, and a dead phone neither records nor
+answers when someone wonders why.
+
+`BatteryManager.EXTRA_LEVEL` and `EXTRA_SCALE` arrive on the sticky broadcast
+`PowerStateProvider` already reads, so the reading costs nothing.
+
+Rather than one cliff, the app should give things up in the order of what they
+cost against what they are worth. Uploading goes first: it wakes the radio,
+which is the most expensive thing here, and the data is not lost by waiting.
+Then the sample rate drops, since a coarser track is far better than none. Then
+the sensors that only decorate a position - barometer, magnetometer, gyroscope -
+leaving location alone. Recording stops last, and the logger returns to waiting.
+
+The thresholds are worth choosing deliberately and naming in `AppConfig`, and
+whichever tier is in force should be visible where the state is shown, or the
+app will look broken in exactly the way the arming state did.
+
+### Warn when nothing has reached the server
+
+Nothing tells the user that uploads have stopped. The `/api` bug ran for two
+months and the only evidence was a number on a diagnostics panel nobody had
+reason to look at.
+
+A notification once the newest successful upload is older than some threshold,
+and a second, more insistent one as the unuploaded backlog approaches the
+storage ceiling above, so that discarding data is never the first notice of a
+problem. The figures are already to hand: `TelemetryStats` carries
+`lastUploadTime` and `pendingUpload`, and the service already measures the
+backlog on a throttle.
+
+The wording should distinguish the two cases the health check draws apart -
+unreachable server against unregistered device - because what the user has to do
+about them is different.
+
+## Distribution
+
+### Publish signed builds to GitHub Releases for Obtainium
+
+Every install so far has been `adb install` from a workstation, which does not
+scale past one phone and gives no way to notice that an update exists.
+
+CI publishes a signed APK to a GitHub release and Obtainium on the phone watches
+the repository and offers the update. It needs no server work, and it makes the
+app installable by anyone who wants it without anything being pushed on them -
+they point Obtainium at the repository or they do not.
+
+One prerequisite regardless: the release build type has no signing configuration
+and everything installed so far is debug-signed. Moving to a release key means
+the first such install cannot upgrade what is there and has to replace it, which
+deletes the database - so the backlog has to be uploaded before that switch, not
+after. The keystore then lives as a CI secret, and losing it means no existing
+install can ever be upgraded again.
+
+Worth noting that staying off Play is what keeps `targetSdk = 28` tenable at
+all, since Play enforces a minimum target version and nothing else does. That is
+an argument for this route rather than a consequence of it.

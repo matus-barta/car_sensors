@@ -15,7 +15,13 @@ An open-source GPS tracking platform. Four independent pieces share one PostgreS
 | `db/migrations/` | SQLx migrations: the authoritative schema for everything  |
 | `tools/`         | Local infrastructure Compose file and sync scripts        |
 
-`ingest` and `www` never call each other. They communicate only through the database: `ingest` writes `telemetry_samples` and touches `known_devices.last_seen_at`; `www` reads both.
+The pieces share one PostgreSQL database on purpose, rather than one per service. They are small, and the coupling that buys is cheaper than the operational cost of five databases.
+
+**Data moves between them through that database, not through calls.** A producer writes what it computes and a consumer reads it: `ingest` writes `telemetry_samples` and touches `known_devices.last_seen_at`; `www` reads both. `ingest` and `www` do not call each other.
+
+**A service call is for an answer that does not exist until something asks for it** - work that cannot be precomputed into a table, or logic that cannot be shared because the pieces are written in different languages. It is the exception, and it is only acceptable where the caller can carry on without it: enrichment may depend on a service, the ingest path may not.
+
+Each table has one writer and as many readers as need it. `known_devices` is the exception that shows the rule - `www` owns the row, `ingest` touches only `last_seen_at` - and it works because the two never write the same column.
 
 ## The migration rule
 
