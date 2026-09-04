@@ -43,6 +43,36 @@ android {
         unitTests {
             isIncludeAndroidResources = true
         }
+
+        /*
+         * Declared here rather than in CI so the same command runs in both
+         * places. Nothing is downloaded until the task is invoked, so this
+         * costs a local checkout nothing - testing against a real handset over
+         * adb stays the faster local path.
+         *
+         * aosp-atd is an Automated Test Device: the pre-installed apps and
+         * background services are stripped out and rendering is headless,
+         * which is what makes it affordable on a runner. ATD images exist only
+         * for API 30, which is newer than this app targets - immaterial for a
+         * Room migration, which is SQLite and framework.
+         */
+        managedDevices {
+            localDevices {
+                create("api30atd") {
+                    device = "Pixel 2"
+                    apiLevel = 30
+                    systemImageSource = "aosp-atd"
+                }
+            }
+        }
+    }
+
+    // MigrationTestHelper reads the exported schemas from the test APK's
+    // assets, so the directory ksp writes them to has to be packaged into it.
+    sourceSets {
+        getByName("androidTest") {
+            assets.srcDirs("$projectDir/schemas")
+        }
     }
     lint {
         // A warning nobody has to act on is a warning nobody reads, and there
@@ -86,6 +116,20 @@ kotlin {
     }
 }
 
+/*
+ * room-testing parses the exported schemas with kotlinx-serialization. The
+ * lifecycle libraries pin serialization-core to 1.7.3 while the json artefact
+ * resolves to 1.8.1, and that pairing throws AbstractMethodError the moment a
+ * schema is read. Aligning them is scoped to the instrumented test classpath so
+ * the app itself keeps exactly the versions its own dependencies asked for.
+ */
+configurations.matching { it.name.contains("AndroidTest") }.configureEach {
+    resolutionStrategy {
+        force("org.jetbrains.kotlinx:kotlinx-serialization-core:1.8.1")
+        force("org.jetbrains.kotlinx:kotlinx-serialization-core-jvm:1.8.1")
+    }
+}
+
 dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
@@ -100,6 +144,7 @@ dependencies {
     testImplementation(libs.robolectric)
     testImplementation(libs.kotlinx.coroutines.test)
     androidTestImplementation(libs.androidx.junit)
+    androidTestImplementation(libs.room.testing)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.ui.test.junit4)
