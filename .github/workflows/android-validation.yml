@@ -1,0 +1,80 @@
+name: Android - validation
+
+on:
+  pull_request:
+    paths:
+      - "android/**"
+      - ".github/workflows/android-validation.yml"
+
+  # Called by a release workflow rather than triggering on the push itself, so
+  # a build is only published once these checks have passed - the same shape
+  # "Ingest - build" uses for the image.
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-validation-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate the Android app
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: android
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      # The Gradle daemon wants JDK 21 per gradle-daemon-jvm.properties. One is
+      # installed here so the build does not begin by downloading a toolchain;
+      # if the pinned vendor differs, Gradle provisions it once and the cache
+      # below keeps it.
+      - name: Install JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      # Also restores the Gradle caches, which is what keeps a re-run cheap on
+      # a pull request that has not changed anything the build depends on.
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      # No local.properties is written: it is deliberately not in the
+      # repository, and the runners already export ANDROID_HOME.
+
+      # Cheapest first, so the quickest thing to fix is the first thing
+      # reported. ktlint is formatting, detekt is the static analysis the
+      # Kotlin side previously had no counterpart to www's ESLint for, and
+      # Android lint catches the platform-specific mistakes neither can see.
+      - name: Check formatting and static analysis
+        run: ./gradlew ktlintCheck detekt lintDebug
+
+      - name: Run unit tests
+        run: ./gradlew testDebugUnitTest
+
+      # Both variants, because they genuinely differ here: the debug manifest
+      # permits cleartext and BuildConfig.DEBUG decides whether the server
+      # address field accepts http, so a release-only break would otherwise go
+      # unnoticed until someone tried to publish one. Release is unsigned,
+      # which needs no key and still exercises the manifest merge and dexing.
+      - name: Assemble both variants
+        run: ./gradlew assembleDebug assembleRelease
+
+      - name: Upload the test report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-reports
+          path: |
+            android/app/build/reports/tests/
+            android/app/build/reports/ktlint/
+            android/app/build/reports/detekt/
+            android/app/build/reports/lint-results-debug.html
+          retention-days: 7
