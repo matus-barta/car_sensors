@@ -388,7 +388,11 @@ private fun ServerAddress(
         supportingText = {
             Text(
                 text = error?.reason
-                    ?: if (allowCleartext) "http:// is accepted in this build only" else "https:// only"
+                    ?: if (allowCleartext) {
+                        "http:// is accepted in this build only"
+                    } else {
+                        "https:// only"
+                    }
             )
         }
     )
@@ -419,9 +423,11 @@ private fun ServerHealthLine(serverHealth: ServerHealth) {
     val (message, colour) = when (serverHealth) {
         ServerHealth.Unknown -> "Not checked yet" to MaterialTheme.colorScheme.onSurfaceVariant
         ServerHealth.Checking -> "Checking…" to MaterialTheme.colorScheme.onSurfaceVariant
-        ServerHealth.Ok -> "Server reachable, this device accepted" to MaterialTheme.colorScheme.primary
+        ServerHealth.Ok ->
+            "Server reachable, this device accepted" to MaterialTheme.colorScheme.primary
         ServerHealth.Unreachable ->
-            "Nothing answered - check the address, port and network" to MaterialTheme.colorScheme.error
+            "Nothing answered - check the address, port and network" to
+                MaterialTheme.colorScheme.error
         ServerHealth.NotTheApi ->
             "Answered, but this is not the telemetry API - check the address" to
                 MaterialTheme.colorScheme.error
