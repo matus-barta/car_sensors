@@ -102,13 +102,20 @@ jobs:
       # The device is declared in build.gradle.kts rather than here, so this is
       # the same command a developer runs, and Gradle can skip it entirely when
       # nothing it depends on has changed.
-      # A pull request waits only for the fast ATD device; once merged, the
-      # group runs and adds API 28.
+      # Only the ATD device for now. The API 28 device is still declared, and
+      # still usable by hand, but its setup fails on the runner with a missing
+      # property inside AGP's own task - after the system image has installed,
+      # and while insisting the ABI is unset when it demonstrably is not. That
+      # is not worth holding main red for; see todo.md.
+      #
+      # --stacktrace because this job cannot be iterated on locally: an arm64
+      # workstation cannot run these images, so a failure here has to be
+      # diagnosable from the log it produces the first time.
       - name: Run migration tests
         run: >-
-          ./gradlew
-          ${{ github.event_name == 'push' && 'allApisGroupDebugAndroidTest' || 'api30atdDebugAndroidTest' }}
+          ./gradlew api30atdDebugAndroidTest
           -Pandroid.testoptions.manageddevices.emulator.gpu=swiftshader_indirect
+          --stacktrace
 
       - name: Upload the test report
         if: failure()
