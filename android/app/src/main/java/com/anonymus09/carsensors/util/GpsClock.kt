@@ -59,8 +59,10 @@ class GpsClock(
     }
 }
 
+private const val NANOS_PER_MILLI = 1_000_000
+
 /** When this fix was taken, on the monotonic clock. */
-fun Location.elapsedRealtimeMs(): Long = elapsedRealtimeNanos / 1_000_000
+fun Location.elapsedRealtimeMs(): Long = elapsedRealtimeNanos / NANOS_PER_MILLI
 
 /**
  * How long ago this fix was taken.

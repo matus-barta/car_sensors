@@ -75,6 +75,18 @@ object AppConfig {
 
     // 10 Hz
     const val SENSOR_SAMPLING_US = 100_000
+
+    // How far the sensors may batch before delivering, as a multiple of the
+    // sampling interval. Batching lets the SoC stay asleep between deliveries.
+    const val SENSOR_BATCH_LATENCY_FACTOR = 5
+
+    // How often each provider is asked for a position. GPS is the one that
+    // matters; the network provider is a coarse fallback and asked less often.
+    const val GPS_UPDATE_INTERVAL_MS = 1_000L
+    const val NETWORK_UPDATE_INTERVAL_MS = 2_000L
+
+    // Metres per second to kilometres per hour.
+    const val MPS_TO_KMH = 3.6f
     // Write one merged sample every 500 ms
     const val FLUSH_INTERVAL_MS = 500L
 
