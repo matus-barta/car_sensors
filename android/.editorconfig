@@ -1,0 +1,31 @@
+# Scoped to the Android tree on purpose. `root = true` stops the search here so
+# these settings cannot reach `www/`, which is formatted by Prettier with its
+# own conventions.
+#
+# This one file configures two things that would otherwise disagree: ktlint
+# reads it, and so does Android Studio. Without it the IDE's formatter produces
+# code that ktlint then rejects, which is the worst of both.
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+
+[*.{kt,kts}]
+# Pinned rather than left to the default, so a ktlint upgrade cannot quietly
+# restyle the codebase.
+ktlint_code_style = ktlint_official
+
+# Matches the 100 columns Prettier already enforces in `www`.
+max_line_length = 100
+
+[*.{yml,yaml,json,xml}]
+indent_size = 2
+
+[*.md]
+# Two trailing spaces are a line break in Markdown.
+trim_trailing_whitespace = false

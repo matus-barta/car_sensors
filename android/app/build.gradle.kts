@@ -4,6 +4,8 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.ksp)
+    alias(libs.plugins.ktlint)
+    alias(libs.plugins.detekt)
 }
 
 android {
@@ -29,7 +31,7 @@ android {
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro"
+                "proguard-rules.pro",
             )
         }
     }
@@ -41,7 +43,74 @@ android {
         unitTests {
             isIncludeAndroidResources = true
         }
+
+        /*
+         * Declared here rather than in CI so the same command runs in both
+         * places. Nothing is downloaded until the task is invoked, so this
+         * costs a local checkout nothing - testing against a real handset over
+         * adb stays the faster local path.
+         *
+         * aosp-atd is an Automated Test Device: the pre-installed apps and
+         * background services are stripped out and rendering is headless,
+         * which is what makes it affordable on a runner. ATD images exist only
+         * for API 30, which is newer than this app targets - immaterial for a
+         * Room migration, which is SQLite and framework.
+         */
+        managedDevices {
+            localDevices {
+                create("api30atd") {
+                    device = "Pixel 2"
+                    apiLevel = 30
+                    systemImageSource = "aosp-atd"
+
+                    // AGP defaults this to x86 today and warns that it becomes
+                    // arm64-v8a in 10.0, which this image cannot run. Pinned so
+                    // the change does not arrive as a test failure.
+                    testedAbi = "x86"
+                }
+
+                /*
+                 * The level this app actually targets and the handset actually
+                 * runs. No ATD image exists below 30, so this one carries the
+                 * apps and services ATD strips out and is correspondingly
+                 * slower - which is why it is not what a pull request waits
+                 * for.
+                 */
+                create("api28") {
+                    device = "Pixel 2"
+                    apiLevel = 28
+                    systemImageSource = "aosp"
+                    testedAbi = "x86"
+                }
+            }
+
+            groups {
+                create("allApis") {
+                    targetDevices.add(localDevices["api30atd"])
+                    targetDevices.add(localDevices["api28"])
+                }
+            }
+        }
     }
+
+    // MigrationTestHelper reads the exported schemas from the test APK's
+    // assets, so the directory ksp writes them to has to be packaged into it.
+    sourceSets {
+        getByName("androidTest") {
+            assets.directories.add("$projectDir/schemas")
+        }
+    }
+    lint {
+        // A warning nobody has to act on is a warning nobody reads, and there
+        // are currently none to act on.
+        warningsAsErrors = true
+        abortOnError = true
+
+        // Reports what has been published since, not anything about this code,
+        // so it would turn a passing build red without a commit being made.
+        disable += "NewerVersionAvailable"
+    }
+
     buildFeatures {
         compose = true
         // BuildConfig.DEBUG gates whether the address field accepts http://.
@@ -59,9 +128,31 @@ ksp {
     arg("room.schemaLocation", "$projectDir/schemas")
 }
 
+detekt {
+    config.setFrom(files("$rootDir/config/detekt/detekt.yml"))
+    // Adds to the defaults rather than replacing them, so only the rules named
+    // in that file differ and everything else stays as detekt ships it.
+    buildUponDefaultConfig = true
+    baseline = file("$rootDir/config/detekt/baseline.xml")
+}
+
 kotlin {
     compilerOptions {
         jvmTarget.set(JvmTarget.JVM_17)
+    }
+}
+
+/*
+ * room-testing parses the exported schemas with kotlinx-serialization. The
+ * lifecycle libraries pin serialization-core to 1.7.3 while the json artefact
+ * resolves to 1.8.1, and that pairing throws AbstractMethodError the moment a
+ * schema is read. Aligning them is scoped to the instrumented test classpath so
+ * the app itself keeps exactly the versions its own dependencies asked for.
+ */
+configurations.matching { it.name.contains("AndroidTest") }.configureEach {
+    resolutionStrategy {
+        force("org.jetbrains.kotlinx:kotlinx-serialization-core:1.8.1")
+        force("org.jetbrains.kotlinx:kotlinx-serialization-core-jvm:1.8.1")
     }
 }
 
@@ -78,7 +169,10 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.robolectric)
     testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.work.testing)
+    testImplementation(libs.mockwebserver)
     androidTestImplementation(libs.androidx.junit)
+    androidTestImplementation(libs.room.testing)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.ui.test.junit4)
@@ -90,5 +184,4 @@ dependencies {
     ksp(libs.room.compiler)
 
     implementation(libs.work.runtime)
-
 }

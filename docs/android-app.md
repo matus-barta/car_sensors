@@ -27,3 +27,24 @@ Nothing is given up while the phone is on power. Off power, the logger sheds wor
 This is how Android treats a stopped package and there is nothing the app can do about it. It is worth knowing because the symptom - a phone that sat in a car for a week and recorded nothing - looks exactly like a bug in the app's own restoration.
 
 **Cleartext uploads are a debug-build affordance.** Release builds do not permit plain HTTP, so a server reached over `http://` works only from a debug build. See `todo.md` for the intended relaxation, which would allow cleartext to private addresses only.
+
+## Working on it
+
+Three tools guard the Kotlin, mirroring what `www` already has: **ktlint** for formatting, which is Prettier's counterpart; **detekt** for code smells, which is ESLint's; and **Android Lint**, which catches platform mistakes neither of the others can see. All three run on every pull request that touches `android/`.
+
+Android Studio needs nothing installed to work with this. `android/.editorconfig` is read by the IDE and by ktlint alike, so the formatter produces code ktlint already accepts rather than code it then rejects - which is the usual friction when a project adds a linter. It is deliberately scoped to the Android tree by `root = true`, so it cannot reach `www/` and its Prettier settings.
+
+Two run configurations are shared through `.idea/runConfigurations/` and appear in the Run menu without anything having to be typed:
+
+| Configuration | Runs |
+| ------------- | ---- |
+| **Verify (lint + tests)** | `ktlintCheck detekt lintDebug testDebugUnitTest` - what CI will run |
+| **Format (ktlint)** | `ktlintFormat` - fixes what can be fixed automatically |
+
+The same tasks are in the Gradle tool window under `app/` if you would rather find them there.
+
+Instrumented tests are a separate matter, because they need a device. Locally, `./gradlew connectedDebugAndroidTest` runs them against whatever is plugged in, which is both the fastest way and the most faithful one. CI has no handset, so it uses a Gradle Managed Device - declared in `build.gradle.kts` rather than in the workflow, so the same declaration serves both - and runs `api30atdDebugAndroidTest`. Only the migration tests live there, and only a change that could affect a migration triggers them.
+
+There are two managed devices rather than one. A pull request waits for `api30atd` alone, because it is the stripped-down image and therefore the quick one. After a merge, the same tests also run on `api28` - the level this app targets and the handset actually runs, for which no stripped-down image exists. Running the slower device after the merge rather than on the pull request means it holds nobody up, while still being something that happens on its own: a check that runs only when somebody remembers is worth about as much as a backup taken the same way. A merge rather than a schedule, because what it guards against can only arrive with a code change - a calendar would fire when nothing had happened and stay quiet when something had.
+
+Two details worth knowing. detekt's baseline, at `android/config/detekt/baseline.xml`, records four findings that are real rather than false: the foreground service is a large class with too many functions and one long method, and one composable is more branched than it should be. They are grandfathered so that anything *new* still fails, and `todo.md` describes the split that would clear them. And `NewerVersionAvailable` is disabled in the lint configuration, because it reports what has been published since rather than anything about this code, and would turn a passing build red without a commit being made.

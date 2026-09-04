@@ -116,57 +116,6 @@ setup inside `setup-www` should stay where it is: it exists to install the SQLx
 CLI and wants neither the components nor the workspace cache, so merging the two
 would produce one action with flags selecting between unrelated behaviours.
 
-### Validate the Android app in CI
-
-Nothing builds or tests the app automatically. `ingest-validation.yml` and
-`www-validation.yml` cover the other two, and the app is the piece most likely
-to break unnoticed, because it is the one nobody compiles except when working
-on it.
-
-A workflow running `assembleDebug` and `testDebugUnitTest` would catch most of
-it. The Android SDK is preinstalled on the GitHub-hosted Ubuntu runners, so
-`local.properties` is not needed - `ANDROID_HOME` is already set - and Gradle
-wants its caches restored the way `Swatinem/rust-cache` does for the Rust side.
-
-That one job covers more than it first appears. Robolectric runs the Room
-database in memory on the JVM, so the DAO queries are already tested there
-without a device, as are the settings migration, the URL validation, the
-response classification and the clock arithmetic. The reflex to reach for an
-emulator is mostly unnecessary here.
-
-Two things worth keeping on the JVM that might otherwise pull an emulator in.
-The upload drain - the batch cap, the halving on 413, the counting of attempts -
-is reachable through `work-testing`'s `TestListenableWorkerBuilder` against a
-fake server such as MockWebServer, because the uploader speaks
-`HttpURLConnection` and does not care who answers. And the logger's decisions
-about which state it should be in, given charge, battery level, whether movement
-was confirmed and how long ago, want extracting from the service into something
-that takes those as arguments; that is worth doing for its own sake and makes
-them testable as a side effect.
-
-### Run migration tests on an emulator, but only when a migration changes
-
-`MigrationTestHelper` from `androidx.room:room-testing` is the one thing here
-that genuinely needs a device or emulator. It builds a database at the older
-version from its exported schema, runs the migration, and checks the result
-against the newer one - which is the only way to find out that a migration
-leaves the schema subtly wrong before a phone does.
-
-Two things to know before setting it up. It cannot test the migration that
-already exists: it needs the *source* version's exported schema, and schemas
-were only exported from version 3 onwards, so there is no `2.json` and 2 to 3 is
-permanently beyond it. And the next migration is exactly the one worth the
-trouble - adding `pairing_id` touches the table holding the only copy of
-telemetry that has not reached the server.
-
-`reactivecircus/android-emulator-runner` is the usual way to get one, and it
-costs minutes rather than seconds. Gate the job on changes under
-`android/app/schemas/**` so it runs when a migration lands and never otherwise.
-
-This would also be the second job with a Rust-free setup of its own, which does
-not change the `setup-rust` argument above but is worth noticing when deciding
-how much of the workflow scaffolding to share.
-
 ## Telemetry upload protocol
 
 ### Stream uploads as NDJSON instead of one JSON array
@@ -669,6 +618,26 @@ The wording should distinguish the two cases the health check draws apart -
 unreachable server against unregistered device - because what the user has to do
 about them is different.
 
+### Split the foreground service up
+
+detekt records four findings in its baseline rather than at the current
+threshold, and three of them are the same observation: `TelemetryForegroundService`
+is a large class, with too many functions, containing one long method. They are
+baselined rather than configured away because they are true.
+
+The service does several separable jobs. It owns the armed and recording state
+machine; it registers and reads sensors; it listens to power and decides which
+tier of work the battery still justifies; it assembles and writes samples; and
+it maintains a notification. The state machine in particular wants lifting out
+into something that takes charge, battery level, whether movement was confirmed
+and how long ago as arguments and returns the state that should follow - which
+would also make it decidable in a plain JVM test, where today it needs a device.
+
+Nothing is broken, so this is not urgent. It is recorded because the baseline
+would otherwise be the only trace of the decision, and a baseline entry read
+years later looks like something that was ignored rather than something that
+was weighed.
+
 ### Do not let the logger state outlive the service that reports it
 
 `LoggerState` lives in a companion object, so it is process-wide rather than
@@ -713,6 +682,15 @@ CI publishes a signed APK to a GitHub release and Obtainium on the phone watches
 the repository and offers the update. It needs no server work, and it makes the
 app installable by anyone who wants it without anything being pushed on them -
 they point Obtainium at the repository or they do not.
+
+The workflow should call the two validation workflows rather than repeat them,
+the way "Ingest - build" already calls "Ingest - validation" so that an image is
+only built once its checks have passed. Both already expose `workflow_call` for
+it. Calling "Android - migration tests" matters most: a release is the last
+point at which an unusual failure can be caught before it reaches a phone, and
+it is the only place where waiting for the slower API 28 device costs nobody
+anything, because nobody is waiting on a release the way they wait on a pull
+request.
 
 One prerequisite regardless: the release build type has no signing configuration
 and everything installed so far is debug-signed. Moving to a release key means
