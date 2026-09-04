@@ -116,75 +116,6 @@ setup inside `setup-www` should stay where it is: it exists to install the SQLx
 CLI and wants neither the components nor the workspace cache, so merging the two
 would produce one action with flags selecting between unrelated behaviours.
 
-### Validate the Android app in CI
-
-Nothing builds or tests the app automatically. `ingest-validation.yml` and
-`www-validation.yml` cover the other two, and the app is the piece most likely
-to break unnoticed, because it is the one nobody compiles except when working
-on it.
-
-A workflow running `assembleDebug` and `testDebugUnitTest` would catch most of
-it. The Android SDK is preinstalled on the GitHub-hosted Ubuntu runners, so
-`local.properties` is not needed - `ANDROID_HOME` is already set - and Gradle
-wants its caches restored the way `Swatinem/rust-cache` does for the Rust side.
-
-That one job covers more than it first appears. Robolectric runs the Room
-database in memory on the JVM, so the DAO queries are already tested there
-without a device, as are the settings migration, the URL validation, the
-response classification and the clock arithmetic. The reflex to reach for an
-emulator is mostly unnecessary here.
-
-Two things worth keeping on the JVM that might otherwise pull an emulator in.
-The upload drain - the batch cap, the halving on 413, the counting of attempts -
-is reachable through `work-testing`'s `TestListenableWorkerBuilder` against a
-fake server such as MockWebServer, because the uploader speaks
-`HttpURLConnection` and does not care who answers. And the logger's decisions
-about which state it should be in, given charge, battery level, whether movement
-was confirmed and how long ago, want extracting from the service into something
-that takes those as arguments; that is worth doing for its own sake and makes
-them testable as a side effect.
-
-### Run migration tests on an emulator, but only when a migration changes
-
-`MigrationTestHelper` from `androidx.room:room-testing` is the one thing here
-that genuinely needs a device or emulator. It builds a database at the older
-version from its exported schema, runs the migration, and checks the result
-against the newer one - which is the only way to find out that a migration
-leaves the schema subtly wrong before a phone does.
-
-Two things to know before setting it up. It cannot test the migration that
-already exists: it needs the *source* version's exported schema, and schemas
-were only exported from version 3 onwards, so there is no `2.json` and 2 to 3 is
-permanently beyond it. And the next migration is exactly the one worth the
-trouble - adding `pairing_id` touches the table holding the only copy of
-telemetry that has not reached the server.
-
-Gradle Managed Devices are the better way to get one, rather than an action
-that boots an emulator beside the build. The device is declared in
-`build.gradle.kts`, so Gradle downloads the image, boots it, runs the tests and
-tears it down as an ordinary task - which means it takes part in up-to-date
-checks and can be skipped entirely when nothing it depends on has changed,
-where an action boots an emulator regardless. An `aosp-atd` image is the one to
-ask for: an Automated Test Device with the pre-installed apps and background
-services stripped out, which is the difference between minutes and a great many
-minutes. On a runner with no GPU the task needs
-`-Pandroid.testoptions.manageddevices.emulator.gpu=swiftshader_indirect`.
-
-Two things about it. ATD images exist only for API 30, so these tests would run
-on a newer platform than the handset does - immaterial for a Room migration,
-which is SQLite and framework, but worth remembering before reaching for the
-same device to test anything version-dependent. And declaring a managed device
-costs nothing locally: it adds a Gradle task and downloads nothing until that
-task is invoked, so testing against a real handset over adb stays the local
-path and remains the faster one.
-
-Gate the job on changes under `android/app/schemas/**` so it runs when a
-migration lands and never otherwise.
-
-This would also be the second job with a Rust-free setup of its own, which does
-not change the `setup-rust` argument above but is worth noticing when deciding
-how much of the workflow scaffolding to share.
-
 ## Telemetry upload protocol
 
 ### Stream uploads as NDJSON instead of one JSON array
@@ -707,6 +638,20 @@ would otherwise be the only trace of the decision, and a baseline entry read
 years later looks like something that was ignored rather than something that
 was weighed.
 
+### Cover the upload drain against a fake server
+
+The uploader's own decisions are tested - which response code means what - but
+the loop around them is not. Whether it really stops at twenty batches, halves
+the batch on a 413 and counts an attempt only where it should, is currently
+established by having watched it drain a real backlog once.
+
+None of that needs a device. `work-testing`'s `TestListenableWorkerBuilder`
+runs the worker directly, and the uploader speaks `HttpURLConnection` and does
+not care who answers, so a fake server such as MockWebServer can play the part
+of `ingest` and hand back whichever status the case under test wants. That
+covers the retry and quarantine behaviour, which is the part with real
+consequences: getting it wrong either loses rows or wedges the queue.
+
 ### Do not let the logger state outlive the service that reports it
 
 `LoggerState` lives in a companion object, so it is process-wide rather than
@@ -722,6 +667,30 @@ while it records, and let the screen say so once the claim has gone stale. Worth
 doing only if this is ever seen in practice - it is written down so that a
 screen insisting on `RECORDING` while nothing is recorded is recognised rather
 than puzzled over.
+
+### Find a way to test on API 28 when something depends on it
+
+The instrumented tests run on an `aosp-atd` image at API 30, because Automated
+Test Devices exist only at that level, and the handset this is written for runs
+API 28. That gap does not matter for a Room migration - SQLite and the
+framework behave the same - but it would matter the moment something under test
+depends on platform behaviour that changed between the two, and the failure
+would be an absence: the emulator would pass and the phone would not.
+
+There is no shortage of ways to close it, only a cost to each. A second managed
+device with `apiLevel = 28` and `systemImageSource = "aosp"` needs one
+declaration, and Gradle can be told to run a group across both - but a non-ATD
+image carries the apps and services ATD strips out, so it boots slower and
+wants more memory. Firebase Test Lab would put the tests on real hardware at a
+chosen level, at the cost of a Google project and credentials in CI. And a
+handset over adb remains the most faithful answer of all, which is what makes
+it the local path already; it is only CI that cannot have one.
+
+The thing to avoid is running everything twice by default. Whatever is added
+should be reached for when a change actually touches version-dependent
+behaviour - a `foregroundServiceType`, a permission model, a storage API - and
+not on every pull request, or the emulator that was carefully kept to
+migrations alone will quietly become the slowest part of every run.
 
 ### Declare a foreground service type before raising the target SDK
 
