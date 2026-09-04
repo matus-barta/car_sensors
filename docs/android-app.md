@@ -43,4 +43,6 @@ Two run configurations are shared through `.idea/runConfigurations/` and appear 
 
 The same tasks are in the Gradle tool window under `app/` if you would rather find them there.
 
+Instrumented tests are a separate matter, because they need a device. Locally, `./gradlew connectedDebugAndroidTest` runs them against whatever is plugged in, which is both the fastest way and the most faithful one. CI has no handset, so it uses a Gradle Managed Device - declared in `build.gradle.kts` rather than in the workflow, so the same declaration serves both - and runs `api30atdDebugAndroidTest`. Only the migration tests live there, and only a change that could affect a migration triggers them.
+
 Two details worth knowing. detekt's baseline, at `android/config/detekt/baseline.xml`, records four findings that are real rather than false: the foreground service is a large class with too many functions and one long method, and one composable is more branched than it should be. They are grandfathered so that anything *new* still fails, and `todo.md` describes the split that would clear them. And `NewerVersionAvailable` is disabled in the lint configuration, because it reports what has been published since rather than anything about this code, and would turn a passing build red without a commit being made.
