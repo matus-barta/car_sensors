@@ -39,6 +39,8 @@ android {
     }
     buildFeatures {
         compose = true
+        // BuildConfig.DEBUG gates whether the address field accepts http://.
+        buildConfig = true
     }
     packaging {
         resources {
