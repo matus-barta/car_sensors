@@ -159,9 +159,27 @@ permanently beyond it. And the next migration is exactly the one worth the
 trouble - adding `pairing_id` touches the table holding the only copy of
 telemetry that has not reached the server.
 
-`reactivecircus/android-emulator-runner` is the usual way to get one, and it
-costs minutes rather than seconds. Gate the job on changes under
-`android/app/schemas/**` so it runs when a migration lands and never otherwise.
+Gradle Managed Devices are the better way to get one, rather than an action
+that boots an emulator beside the build. The device is declared in
+`build.gradle.kts`, so Gradle downloads the image, boots it, runs the tests and
+tears it down as an ordinary task - which means it takes part in up-to-date
+checks and can be skipped entirely when nothing it depends on has changed,
+where an action boots an emulator regardless. An `aosp-atd` image is the one to
+ask for: an Automated Test Device with the pre-installed apps and background
+services stripped out, which is the difference between minutes and a great many
+minutes. On a runner with no GPU the task needs
+`-Pandroid.testoptions.manageddevices.emulator.gpu=swiftshader_indirect`.
+
+Two things about it. ATD images exist only for API 30, so these tests would run
+on a newer platform than the handset does - immaterial for a Room migration,
+which is SQLite and framework, but worth remembering before reaching for the
+same device to test anything version-dependent. And declaring a managed device
+costs nothing locally: it adds a Gradle task and downloads nothing until that
+task is invoked, so testing against a real handset over adb stays the local
+path and remains the faster one.
+
+Gate the job on changes under `android/app/schemas/**` so it runs when a
+migration lands and never otherwise.
 
 This would also be the second job with a Rust-free setup of its own, which does
 not change the `setup-rust` argument above but is worth noticing when deciding
@@ -668,6 +686,26 @@ backlog on a throttle.
 The wording should distinguish the two cases the health check draws apart -
 unreachable server against unregistered device - because what the user has to do
 about them is different.
+
+### Split the foreground service up
+
+detekt records four findings in its baseline rather than at the current
+threshold, and three of them are the same observation: `TelemetryForegroundService`
+is a large class, with too many functions, containing one long method. They are
+baselined rather than configured away because they are true.
+
+The service does several separable jobs. It owns the armed and recording state
+machine; it registers and reads sensors; it listens to power and decides which
+tier of work the battery still justifies; it assembles and writes samples; and
+it maintains a notification. The state machine in particular wants lifting out
+into something that takes charge, battery level, whether movement was confirmed
+and how long ago as arguments and returns the state that should follow - which
+would also make it decidable in a plain JVM test, where today it needs a device.
+
+Nothing is broken, so this is not urgent. It is recorded because the baseline
+would otherwise be the only trace of the decision, and a baseline entry read
+years later looks like something that was ignored rather than something that
+was weighed.
 
 ### Do not let the logger state outlive the service that reports it
 
