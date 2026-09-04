@@ -60,6 +60,34 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      # The runners ship the SDK with most licences accepted, but not the one
+      # for the ATD system image, and Gradle cannot install a package whose
+      # licence it has not been given. Accepting them all is cheap and is what
+      # the failure message itself asks for.
+      # `|| true` because `yes` is killed by SIGPIPE once sdkmanager stops
+      # reading, which some shells report as a failure. A licence that genuinely
+      # could not be accepted still fails loudly further down, where Gradle says
+      # exactly which package it was.
+      - name: Accept the Android SDK licences
+        working-directory: .
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+
+      # The system image is a few hundred megabytes and the device built from
+      # it is rebuilt from scratch otherwise, which is most of what this job
+      # would spend its time on. Keyed on the build file because that is where
+      # the device is declared, so changing the API level or the image fetches
+      # a fresh one rather than reusing the wrong one.
+      - name: Cache the managed device and its system image
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.android/avd
+            ~/.android/gradle-managed-device*
+            ${{ env.ANDROID_HOME }}/system-images
+          key: gmd-${{ runner.os }}-${{ hashFiles('android/app/build.gradle.kts') }}
+          restore-keys: |
+            gmd-${{ runner.os }}-
+
       # Without this the emulator falls back to software emulation and takes
       # long enough to be worth avoiding. The runners have KVM; the device node
       # just is not readable by the job's user by default.

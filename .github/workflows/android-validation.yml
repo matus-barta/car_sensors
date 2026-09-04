@@ -6,6 +6,19 @@ on:
       - "android/**"
       - ".github/workflows/android-validation.yml"
 
+  # Also after a merge, as "WWW - validation" does. Partly so a bad merge is
+  # caught, and partly because caches are only shared between branches when
+  # they were written on the default one - without this every pull request
+  # would fetch its dependencies, its Gradle caches and its Robolectric
+  # runtimes from cold and then throw them away.
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - "android/**"
+      - ".github/workflows/android-validation.yml"
+
   # Called by a release workflow rather than triggering on the push itself, so
   # a build is only published once these checks have passed - the same shape
   # "Ingest - build" uses for the image.
@@ -45,6 +58,30 @@ jobs:
       # a pull request that has not changed anything the build depends on.
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
+
+      # The runners ship the SDK with most licences accepted, but not the one
+      # for the ATD system image, and Gradle cannot install a package whose
+      # licence it has not been given. Accepting them all is cheap and is what
+      # the failure message itself asks for.
+      # `|| true` because `yes` is killed by SIGPIPE once sdkmanager stops
+      # reading, which some shells report as a failure. A licence that genuinely
+      # could not be accepted still fails loudly further down, where Gradle says
+      # exactly which package it was.
+      - name: Accept the Android SDK licences
+        working-directory: .
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+
+      # Robolectric downloads an `android-all` jar for each SDK level it is
+      # asked to emulate, the first time it needs one - into the local Maven
+      # repository, which is not somewhere setup-gradle looks. That is a few
+      # hundred megabytes fetched on every run if it is not kept.
+      - name: Cache the Robolectric runtimes
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository/org/robolectric
+          key: robolectric-${{ runner.os }}-${{ hashFiles('android/gradle/libs.versions.toml') }}
+          restore-keys: |
+            robolectric-${{ runner.os }}-
 
       # No local.properties is written: it is deliberately not in the
       # repository, and the runners already export ANDROID_HOME.
