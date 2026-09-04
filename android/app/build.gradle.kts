@@ -62,6 +62,11 @@ android {
                     device = "Pixel 2"
                     apiLevel = 30
                     systemImageSource = "aosp-atd"
+
+                    // AGP defaults this to x86 today and warns that it becomes
+                    // arm64-v8a in 10.0, which this image cannot run. Pinned so
+                    // the change does not arrive as a test failure.
+                    testedAbi = "x86"
                 }
 
                 /*
@@ -75,6 +80,7 @@ android {
                     device = "Pixel 2"
                     apiLevel = 28
                     systemImageSource = "aosp"
+                    testedAbi = "x86"
                 }
             }
 
@@ -91,7 +97,7 @@ android {
     // assets, so the directory ksp writes them to has to be packaged into it.
     sourceSets {
         getByName("androidTest") {
-            assets.srcDirs("$projectDir/schemas")
+            assets.directories.add("$projectDir/schemas")
         }
     }
     lint {
