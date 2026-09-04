@@ -16,9 +16,15 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -26,9 +32,9 @@ import com.anonymus09.carsensors.MainUiState
 import com.anonymus09.carsensors.TelemetryLocationStatus
 import com.anonymus09.carsensors.data.PowerState
 import com.anonymus09.carsensors.data.TelemetryStorage
-import com.anonymus09.carsensors.util.AppConfig
 import com.anonymus09.carsensors.util.AppConfig.DB_STATS_REFRESH_RATE
 import com.anonymus09.carsensors.util.AppConfig.UPLOAD_MAX_ATTEMPTS
+import com.anonymus09.carsensors.util.ServerUrl
 
 /**
  * The whole screen, given its state and told nothing about where that came
@@ -43,8 +49,11 @@ fun CarSensorsScreen(
     onAutoStartOnBootChange: (Boolean) -> Unit,
     onStopWhenUnpluggedChange: (Boolean) -> Unit,
     onUploadOnlyWhenChargingChange: (Boolean) -> Unit,
+    onLiveUploadChange: (Boolean) -> Unit,
     onToggleLogging: () -> Unit,
     onForceUpload: () -> Unit,
+    onServerBaseUrlSave: (String) -> Unit,
+    allowCleartext: Boolean,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -88,6 +97,17 @@ fun CarSensorsScreen(
             onCheckedChange = onUploadOnlyWhenChargingChange
         )
 
+        SettingRow(
+            title = "Live upload",
+            checked = state.settings.liveUploadEnabled,
+            onCheckedChange = onLiveUploadChange
+        )
+
+        LiveUploadNote(
+            enabled = state.settings.liveUploadEnabled,
+            charging = state.power.charging
+        )
+
         Spacer(modifier = Modifier.height(8.dp))
 
         LoggingSection(isLogging = state.isLogging, onToggleLogging = onToggleLogging)
@@ -104,8 +124,49 @@ fun CarSensorsScreen(
 
         Spacer(modifier = Modifier.height(8.dp))
 
+        ServerSection(
+            serverBaseUrl = state.settings.serverBaseUrl,
+            uploadUrl = state.settings.uploadUrl,
+            allowCleartext = allowCleartext,
+            onSave = onServerBaseUrlSave
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
         UploadSection(storage = state.storage, onForceUpload = onForceUpload)
     }
+}
+
+/**
+ * Says what live upload will do and, when it is on but idle, why.
+ *
+ * The power condition is the part that is not visible from the switch: someone
+ * who turns this on in a stationary car would otherwise see nothing happen and
+ * have no way to tell whether it was broken.
+ */
+@Composable
+private fun LiveUploadNote(enabled: Boolean, charging: Boolean) {
+    val (message, highlighted) = when {
+        !enabled -> "Sends each new position as it changes. Runs only while on power." to false
+
+        charging -> "Active - sending each new position as it changes." to true
+
+        else -> (
+            "Waiting for power. Live upload runs only while charging so it " +
+                "cannot flatten the battery unattended; everything is still " +
+                "recorded and uploaded in batches meanwhile."
+            ) to false
+    }
+
+    Text(
+        text = message,
+        style = MaterialTheme.typography.bodySmall,
+        color = if (highlighted) {
+            MaterialTheme.colorScheme.primary
+        } else {
+            MaterialTheme.colorScheme.onSurfaceVariant
+        }
+    )
 }
 
 @Composable
@@ -196,9 +257,6 @@ private fun StorageSection(storage: TelemetryStorage) {
 private fun UploadSection(storage: TelemetryStorage, onForceUpload: () -> Unit) {
     val stats = storage.stats
 
-    Text(text = "Server configuration", style = MaterialTheme.typography.titleMedium)
-    LabelledValue("Upload endpoint:", AppConfig.TELEMETRY_UPLOAD_URL, valueIsPath = true)
-
     Text(text = "Upload status", style = MaterialTheme.typography.titleMedium)
     LabelledValue("Pending upload rows:", stats.pendingUpload.toString())
 
@@ -228,6 +286,60 @@ private fun UploadSection(storage: TelemetryStorage, onForceUpload: () -> Unit) 
     ) {
         Text(if (stats.pendingUpload > 0) "Force upload now" else "Nothing to upload")
     }
+}
+
+/**
+ * Where telemetry is sent.
+ *
+ * The draft is local until saved so that a half-typed address is never stored,
+ * and it is keyed on the persisted value so an edit made elsewhere replaces it
+ * rather than being silently overwritten.
+ */
+@Composable
+private fun ServerSection(
+    serverBaseUrl: String,
+    uploadUrl: String,
+    allowCleartext: Boolean,
+    onSave: (String) -> Unit
+) {
+    var draft by rememberSaveable(serverBaseUrl) { mutableStateOf(serverBaseUrl) }
+
+    val validation = remember(draft, allowCleartext) {
+        ServerUrl.validate(draft, allowCleartext)
+    }
+    val error = validation as? ServerUrl.Result.Invalid
+    val valid = validation as? ServerUrl.Result.Valid
+
+    Text(text = "Server configuration", style = MaterialTheme.typography.titleMedium)
+
+    OutlinedTextField(
+        value = draft,
+        onValueChange = { draft = it },
+        modifier = Modifier.fillMaxWidth(),
+        label = { Text("Server address") },
+        singleLine = true,
+        isError = error != null,
+        supportingText = {
+            Text(
+                text = error?.reason
+                    ?: if (allowCleartext) {
+                        "http:// is accepted in this build only"
+                    } else {
+                        "https:// only"
+                    }
+            )
+        }
+    )
+
+    Button(
+        onClick = { valid?.let { onSave(it.normalized) } },
+        enabled = valid != null && valid.normalized != serverBaseUrl,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Text("Save server address")
+    }
+
+    LabelledValue("Upload endpoint:", uploadUrl, valueIsPath = true)
 }
 
 /** A label over its value, the shape most of this screen is made of. */

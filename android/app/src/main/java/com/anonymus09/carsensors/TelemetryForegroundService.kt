@@ -19,6 +19,7 @@ import android.location.LocationListener
 import android.location.LocationManager
 import android.os.Handler
 import android.os.HandlerThread
+import android.os.SystemClock
 import android.os.IBinder
 import android.os.Looper
 import android.util.Log
@@ -28,6 +29,7 @@ import com.anonymus09.carsensors.data.AppDatabase
 import com.anonymus09.carsensors.data.PowerState
 import com.anonymus09.carsensors.data.PowerStateProvider
 import com.anonymus09.carsensors.data.SettingsRepository
+import com.anonymus09.carsensors.data.TelemetryUploader
 import com.anonymus09.carsensors.data.TelemetrySampleEntity
 import com.anonymus09.carsensors.work.WifiUploadScheduler
 import kotlinx.coroutines.CoroutineScope
@@ -46,6 +48,8 @@ import java.util.concurrent.atomic.AtomicInteger
 import kotlin.coroutines.EmptyCoroutineContext
 import kotlin.math.roundToInt
 import com.anonymus09.carsensors.util.AppConfig.FLUSH_INTERVAL_MS
+import com.anonymus09.carsensors.util.AppConfig.LIVE_PUSH_MAX_ROWS
+import com.anonymus09.carsensors.util.AppConfig.LIVE_PUSH_MIN_INTERVAL_MS
 import com.anonymus09.carsensors.util.AppConfig.SENSOR_SAMPLING_US
 import com.anonymus09.carsensors.util.AppConfig.UPLOAD_CHECK_EVERY_N_SAMPLES
 import com.anonymus09.carsensors.util.AppConfig.UPLOAD_MAX_ATTEMPTS
@@ -101,6 +105,14 @@ class TelemetryForegroundService : Service(), SensorEventListener {
     private val samplesSinceUploadCheck = AtomicInteger(0)
 
     private val settings by lazy { SettingsRepository(this) }
+    private val uploader by lazy { TelemetryUploader.create(this) }
+
+    /** Fix already announced live, as a monotonic clock reading. */
+    @Volatile
+    private var lastPushedFixNanos: Long = 0
+
+    @Volatile
+    private var lastLivePushAt: Long = 0
     private val powerStateProvider by lazy { PowerStateProvider(this) }
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -553,6 +565,8 @@ class TelemetryForegroundService : Service(), SensorEventListener {
             try {
                 telemetryDao.insert(sample)
 
+                maybePushLive(location)
+
                 /*
                  * Both counts used to run on every write: two scans of a table
                  * that grows by 172,800 rows a day, twice a second, one of them
@@ -573,6 +587,64 @@ class TelemetryForegroundService : Service(), SensorEventListener {
             }
         }
 
+    }
+
+    /**
+     * Announces the newest position as soon as there is a new one.
+     *
+     * Always after the row is written, never instead of it: a push that is
+     * skipped, fails, or never happens because the phone is on its own battery
+     * costs nothing, because the same row is already stored and the batch
+     * upload carries it in the ordinary way.
+     *
+     * What drives this is the position changing. Sensor readings change on
+     * every sample and would turn a drive into one request per sample, while
+     * telling the map nothing it does not already show.
+     */
+    private suspend fun maybePushLive(location: Location?) {
+        if (location == null) return
+        if (!settings.current().liveUploadEnabled) return
+
+        /*
+         * Only on power. A live push keeps the radio awake for the length of a
+         * drive, which is not something to do to a phone running on its own
+         * battery unless it was asked for.
+         */
+        if (!isCurrentlyCharging) return
+
+        /*
+         * elapsedRealtimeNanos rather than the fix's wall clock: it is
+         * monotonic, so a clock correction mid-drive cannot make an old fix
+         * look new or a new one look stale.
+         */
+        if (location.elapsedRealtimeNanos <= lastPushedFixNanos) return
+
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastLivePushAt < LIVE_PUSH_MIN_INTERVAL_MS) return
+
+        val attempted = uploader.ifIdle {
+            val rows = telemetryDao.getNewestLocatedPending(
+                LIVE_PUSH_MAX_ROWS,
+                UPLOAD_MAX_ATTEMPTS
+            )
+
+            when (uploader.send(rows)) {
+                TelemetryUploader.Outcome.STORED -> {
+                    lastPushedFixNanos = location.elapsedRealtimeNanos
+                    lastLivePushAt = now
+                    Log.i("Telemetry", "Live push sent ${rows.size} row(s)")
+                }
+
+                else -> Log.w(
+                    "Telemetry",
+                    "Live push did not land; the batch upload will carry these rows"
+                )
+            }
+        }
+
+        if (!attempted) {
+            Log.d("Telemetry", "Live push skipped, a batch upload is in flight")
+        }
     }
 
     private fun writeAccuracyChangeEvent(sensor: Sensor, accuracy: Int) {

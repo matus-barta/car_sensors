@@ -21,6 +21,29 @@ interface TelemetryDao {
     )
     suspend fun getPendingBatch(limit: Int, maxAttempts: Int): List<TelemetrySampleEntity>
 
+    /**
+     * The newest rows that carry a position, for the live push.
+     *
+     * Deliberately the opposite order to [getPendingBatch]. The backlog drains
+     * oldest first, but a live position is only worth sending while it is still
+     * where the vehicle is - behind a deep backlog the oldest rows would not
+     * contain the current position at all. Rows without coordinates cannot move
+     * the map and are left to the batch path.
+     */
+    @Query(
+        """
+        SELECT * FROM telemetry_samples
+        WHERE uploaded = 0 AND uploadAttemptCount < :maxAttempts
+          AND latitude IS NOT NULL AND longitude IS NOT NULL
+        ORDER BY timestamp DESC
+        LIMIT :limit
+    """
+    )
+    suspend fun getNewestLocatedPending(
+        limit: Int,
+        maxAttempts: Int
+    ): List<TelemetrySampleEntity>
+
     @Query(
         """
         SELECT COUNT(*) FROM telemetry_samples

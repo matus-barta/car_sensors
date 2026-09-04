@@ -3,6 +3,8 @@ package com.anonymus09.carsensors.data
 import android.content.Context
 import android.content.SharedPreferences
 import androidx.core.content.edit
+import com.anonymus09.carsensors.util.AppConfig.DEFAULT_SERVER_BASE_URL
+import com.anonymus09.carsensors.util.AppConfig.TELEMETRY_UPLOAD_PATH
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
@@ -12,8 +14,13 @@ import kotlinx.coroutines.flow.conflate
 data class TelemetrySettings(
     val autoStartOnBoot: Boolean = true,
     val stopWhenUnplugged: Boolean = true,
-    val uploadOnlyWhenCharging: Boolean = true
-)
+    val uploadOnlyWhenCharging: Boolean = true,
+    val liveUploadEnabled: Boolean = false,
+    val serverBaseUrl: String = DEFAULT_SERVER_BASE_URL
+) {
+    /** Where an upload is actually posted. */
+    val uploadUrl: String get() = serverBaseUrl + TELEMETRY_UPLOAD_PATH
+}
 
 /**
  * Reads and writes the user's settings, and reports when they change.
@@ -30,7 +37,9 @@ class SettingsRepository(context: Context) {
     fun current(): TelemetrySettings = TelemetrySettings(
         autoStartOnBoot = prefs.getBoolean(KEY_AUTO_START_ON_BOOT, true),
         stopWhenUnplugged = prefs.getBoolean(KEY_STOP_WHEN_UNPLUGGED, true),
-        uploadOnlyWhenCharging = prefs.getBoolean(KEY_UPLOAD_ONLY_WHEN_CHARGING, true)
+        uploadOnlyWhenCharging = prefs.getBoolean(KEY_UPLOAD_ONLY_WHEN_CHARGING, true),
+        liveUploadEnabled = prefs.getBoolean(KEY_LIVE_UPLOAD, false),
+        serverBaseUrl = prefs.getString(KEY_SERVER_BASE_URL, null) ?: DEFAULT_SERVER_BASE_URL
     )
 
     fun setAutoStartOnBoot(enabled: Boolean) =
@@ -41,6 +50,13 @@ class SettingsRepository(context: Context) {
 
     fun setUploadOnlyWhenCharging(enabled: Boolean) =
         prefs.edit { putBoolean(KEY_UPLOAD_ONLY_WHEN_CHARGING, enabled) }
+
+    fun setLiveUploadEnabled(enabled: Boolean) =
+        prefs.edit { putBoolean(KEY_LIVE_UPLOAD, enabled) }
+
+    /** Expects an address already through [com.anonymus09.carsensors.util.ServerUrl]. */
+    fun setServerBaseUrl(baseUrl: String) =
+        prefs.edit { putString(KEY_SERVER_BASE_URL, baseUrl) }
 
     /**
      * Emits the settings now, and again whenever any of them is written -
@@ -62,5 +78,7 @@ class SettingsRepository(context: Context) {
         private const val KEY_AUTO_START_ON_BOOT = "auto_start_on_boot"
         private const val KEY_STOP_WHEN_UNPLUGGED = "stop_when_unplugged"
         private const val KEY_UPLOAD_ONLY_WHEN_CHARGING = "upload_only_when_charging"
+        private const val KEY_LIVE_UPLOAD = "live_upload_enabled"
+        private const val KEY_SERVER_BASE_URL = "server_base_url"
     }
 }
