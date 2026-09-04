@@ -104,9 +104,6 @@ class MainActivity : ComponentActivity() {
 
         WindowCompat.setDecorFitsSystemWindows(window, false)
 
-        TelemetryForegroundService.setAutoStartOnBoot(this, true)
-        TelemetryForegroundService.setStopWhenUnplugged(this, true)
-
         val db = AppDatabase.getInstance(applicationContext)
         val dao = db.telemetryDao()
 
