@@ -116,6 +116,12 @@ cd ./tools
 docker compose up
 ```
 
+## Documentation
+
+- [`docs/android-app.md`](docs/android-app.md) - what the Android logger does, and the platform limitations worth knowing
+- [`docs/database-migrations.md`](docs/database-migrations.md) - how the schema is owned and propagated
+- [`docs/ai-policy.md`](docs/ai-policy.md) - how AI-assisted changes are made here
+
 ## AI-assisted development
 
 AI tools may be used to assist with research, documentation, analysis, and code suggestions. They are not autonomous contributors or decision-makers for this project.
