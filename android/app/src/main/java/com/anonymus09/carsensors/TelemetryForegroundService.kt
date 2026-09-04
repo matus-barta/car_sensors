@@ -33,9 +33,11 @@ import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.anonymus09.carsensors.data.AppDatabase
 import com.anonymus09.carsensors.data.PowerState
+import com.anonymus09.carsensors.data.PowerTier
 import com.anonymus09.carsensors.data.PowerStateProvider
 import com.anonymus09.carsensors.data.SettingsRepository
 import com.anonymus09.carsensors.data.TelemetryUploader
+import com.anonymus09.carsensors.data.UploadOutcome
 import com.anonymus09.carsensors.data.TelemetrySampleEntity
 import com.anonymus09.carsensors.work.WifiUploadScheduler
 import kotlinx.coroutines.CoroutineScope
@@ -53,6 +55,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.coroutines.EmptyCoroutineContext
 import kotlin.math.roundToInt
+import com.anonymus09.carsensors.util.AppConfig.BATTERY_REDUCED_RATE_FACTOR
 import com.anonymus09.carsensors.util.AppConfig.FLUSH_INTERVAL_MS
 import com.anonymus09.carsensors.util.AppConfig.LIVE_PUSH_MAX_ROWS
 import com.anonymus09.carsensors.util.AppConfig.MAX_LOCATION_AGE_MS
@@ -234,6 +237,10 @@ class TelemetryForegroundService : Service(), SensorEventListener {
      */
     private var wakeLock: PowerManager.WakeLock? = null
 
+    /** How much of itself the logger is currently doing. */
+    @Volatile
+    private var powerTier: PowerTier = PowerTier.FULL
+
     /** Last time the vehicle was seen moving, on the monotonic clock. */
     @Volatile
     private var lastMovementAt: Long = 0
@@ -412,7 +419,13 @@ class TelemetryForegroundService : Service(), SensorEventListener {
                 e.printStackTrace()
             }
 
-            workerHandler?.postDelayed(this, FLUSH_INTERVAL_MS)
+            val interval = if (powerTier >= PowerTier.REDUCED_RATE) {
+                FLUSH_INTERVAL_MS * BATTERY_REDUCED_RATE_FACTOR
+            } else {
+                FLUSH_INTERVAL_MS
+            }
+
+            workerHandler?.postDelayed(this, interval)
         }
     }
 
@@ -448,6 +461,7 @@ class TelemetryForegroundService : Service(), SensorEventListener {
         isRunning.set(true)
 
         registerPowerReceiver()
+        watchPowerState()
 
         writeSimpleEvent("service_started", JSONObject().apply {
             put("charging", isCurrentlyCharging)
@@ -464,6 +478,57 @@ class TelemetryForegroundService : Service(), SensorEventListener {
     // ----------------------------------------------------
     // Armed / recording
     // ----------------------------------------------------
+
+    /**
+     * Follows the battery as well as the plug.
+     *
+     * The broadcast receiver hears the moment power is connected or lost, which
+     * is what the transitions hang off; this hears the level, which is what
+     * decides how much of the logger keeps running.
+     */
+    private fun watchPowerState() {
+        serviceScope.launch {
+            powerStateProvider.observe().collect { power ->
+                isCurrentlyCharging = power.charging
+                currentPowerSource = power.source
+                applyPowerTier(power.tier)
+            }
+        }
+    }
+
+    @Synchronized
+    private fun applyPowerTier(tier: PowerTier) {
+        if (tier == powerTier) return
+
+        val previous = powerTier
+        powerTier = tier
+
+        writeSimpleEvent("power_tier_changed", JSONObject().apply {
+            put("from", previous.name)
+            put("to", tier.name)
+        })
+
+        updateNotification()
+
+        when {
+            // Nothing left to spend: back to waiting until there is power again.
+            tier == PowerTier.PAUSED -> enterArmed()
+
+            // Recovered enough to record, and nothing else says to wait.
+            previous == PowerTier.PAUSED && canRecordNow() && !shouldWaitForMotion() ->
+                enterRecording()
+
+            // The set of sensors worth running has changed under a live session.
+            _loggerState.value == LoggerState.RECORDING -> {
+                try {
+                    sensorManager.unregisterListener(this@TelemetryForegroundService)
+                } catch (_: Exception) {
+                }
+
+                registerSensors()
+            }
+        }
+    }
 
     private fun enterInitialState() {
         when {
@@ -669,6 +734,14 @@ class TelemetryForegroundService : Service(), SensorEventListener {
         registerReceiver(powerReceiver, filter)
     }
 
+    /**
+     * Registers what this power tier still justifies.
+     *
+     * The accelerometer stays to the end because it is what a heading and any
+     * sense of movement rest on; the barometer, magnetometer and gyroscope
+     * describe a position rather than establish it, so they are the first to
+     * go.
+     */
     private fun registerSensors() {
         accelerometer?.let {
             sensorManager.registerListener(
@@ -676,19 +749,19 @@ class TelemetryForegroundService : Service(), SensorEventListener {
             )
         }
 
-        gyroscope?.let {
+        gyroscope?.takeIf { runsDecorativeSensors() }?.let {
             sensorManager.registerListener(
                 this, it, SENSOR_SAMPLING_US, SENSOR_SAMPLING_US * 5, workerHandler
             )
         }
 
-        magnetometer?.let {
+        magnetometer?.takeIf { runsDecorativeSensors() }?.let {
             sensorManager.registerListener(
                 this, it, SENSOR_SAMPLING_US, SENSOR_SAMPLING_US * 5, workerHandler
             )
         }
 
-        pressureSensor?.let {
+        pressureSensor?.takeIf { runsDecorativeSensors() }?.let {
             sensorManager.registerListener(
                 this,
                 it,
@@ -699,6 +772,9 @@ class TelemetryForegroundService : Service(), SensorEventListener {
         }
 
     }
+
+    /** Whether this tier still runs the sensors that merely decorate a fix. */
+    private fun runsDecorativeSensors(): Boolean = powerTier < PowerTier.LOCATION_ONLY
 
     private fun requestLocationUpdates() {
         val fineGranted = ContextCompat.checkSelfPermission(
@@ -947,7 +1023,7 @@ class TelemetryForegroundService : Service(), SensorEventListener {
             )
 
             when (uploader.send(rows)) {
-                TelemetryUploader.Outcome.STORED -> {
+                UploadOutcome.STORED -> {
                     lastPushedFixNanos = location.elapsedRealtimeNanos
                     lastLivePushAt = now
                     Log.i("Telemetry", "Live push sent ${rows.size} row(s)")
@@ -1208,10 +1284,17 @@ class TelemetryForegroundService : Service(), SensorEventListener {
     }
 
     private fun updateNotificationText(gpsPart: String, powerPart: String, headingPart: String) {
-        val status = when (_loggerState.value) {
+        val base = when (_loggerState.value) {
             LoggerState.RECORDING -> "Logging active"
             LoggerState.ARMED -> "Waiting for movement"
             LoggerState.OFF -> "Stopped"
+        }
+
+        // Being cut back looks identical to being broken unless it is said.
+        val status = if (powerTier == PowerTier.FULL) {
+            base
+        } else {
+            "$base (battery saving: ${powerTier.name.lowercase().replace('_', ' ')})"
         }
 
         val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager

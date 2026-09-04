@@ -5,6 +5,8 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.anonymus09.carsensors.data.PowerState
 import com.anonymus09.carsensors.data.PowerStateProvider
+import com.anonymus09.carsensors.data.ServerHealth
+import com.anonymus09.carsensors.data.ServerHealthChecker
 import com.anonymus09.carsensors.data.SettingsRepository
 import com.anonymus09.carsensors.data.TelemetryRepository
 import com.anonymus09.carsensors.data.TelemetrySettings
@@ -12,6 +14,7 @@ import com.anonymus09.carsensors.data.TelemetryStorage
 import com.anonymus09.carsensors.util.AppConfig.DB_STATS_REFRESH_RATE
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
@@ -31,14 +34,32 @@ class MainViewModel(
     private val settingsRepository: SettingsRepository,
     telemetryRepository: TelemetryRepository,
     powerStateProvider: PowerStateProvider,
+    private val healthChecker: ServerHealthChecker,
     loadDeviceId: suspend () -> String
 ) : ViewModel() {
 
     private val deviceId = MutableStateFlow("")
 
+    private val _serverHealth = MutableStateFlow<ServerHealth>(ServerHealth.Unknown)
+
+    /**
+     * Whether the configured address is answering, and whether it will take
+     * this device's telemetry.
+     */
+    val serverHealth: StateFlow<ServerHealth> = _serverHealth.asStateFlow()
+
     init {
         // Reading it creates it on first run, so this is disk work, not a getter.
         viewModelScope.launch { deviceId.value = loadDeviceId() }
+
+        checkServerHealth()
+    }
+
+    fun checkServerHealth() {
+        viewModelScope.launch {
+            _serverHealth.value = ServerHealth.Checking
+            _serverHealth.value = healthChecker.check()
+        }
     }
 
     /**
@@ -92,13 +113,19 @@ class MainViewModel(
     fun setLiveUploadEnabled(enabled: Boolean) =
         settingsRepository.setLiveUploadEnabled(enabled)
 
-    fun setServerBaseUrl(baseUrl: String) = settingsRepository.setServerBaseUrl(baseUrl)
+    fun setServerBaseUrl(baseUrl: String) {
+        settingsRepository.setServerBaseUrl(baseUrl)
+
+        // A new address is exactly when its correctness is worth knowing.
+        checkServerHealth()
+    }
 }
 
 class MainViewModelFactory(
     private val settingsRepository: SettingsRepository,
     private val telemetryRepository: TelemetryRepository,
     private val powerStateProvider: PowerStateProvider,
+    private val healthChecker: ServerHealthChecker,
     private val loadDeviceId: suspend () -> String
 ) : ViewModelProvider.Factory {
 
@@ -112,6 +139,7 @@ class MainViewModelFactory(
             settingsRepository,
             telemetryRepository,
             powerStateProvider,
+            healthChecker,
             loadDeviceId
         ) as T
     }
