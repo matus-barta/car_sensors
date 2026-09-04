@@ -155,9 +155,4 @@ class UploadWorker(
 
     }
 
-    private fun plainPayload(input: String): ByteArray {
-        return input.toByteArray(Charsets.UTF_8)
-    }
-
-
 }
