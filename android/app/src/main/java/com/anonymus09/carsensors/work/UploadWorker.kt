@@ -8,6 +8,10 @@ import com.anonymus09.carsensors.data.AppDatabase
 import com.anonymus09.carsensors.data.TelemetrySampleEntity
 import com.anonymus09.carsensors.util.AppConfig.BATCH_SIZE
 import com.anonymus09.carsensors.util.AppConfig.TELEMETRY_UPLOAD_URL
+import com.anonymus09.carsensors.util.AppConfig.UPLOADED_ROW_RETENTION_MS
+import com.anonymus09.carsensors.util.AppConfig.UPLOAD_MAX_ATTEMPTS
+import com.anonymus09.carsensors.util.AppConfig.UPLOAD_MAX_BATCHES_PER_RUN
+import com.anonymus09.carsensors.util.AppConfig.UPLOAD_MIN_BATCH_SIZE
 import com.anonymus09.carsensors.util.DeviceIdProvider
 import org.json.JSONArray
 import org.json.JSONObject
@@ -16,7 +20,6 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.util.zip.GZIPOutputStream
 
-
 class UploadWorker(
     context: Context,
     params: WorkerParameters
@@ -24,46 +27,152 @@ class UploadWorker(
 
     companion object {
         private const val TAG = "UploadWorker"
+
+        /** No constants for these two in [HttpURLConnection]. */
+        private const val HTTP_TOO_MANY_REQUESTS = 429
+        private const val HTTP_UNPROCESSABLE_ENTITY = 422
     }
 
     private val dao = AppDatabase.getInstance(context).telemetryDao()
 
+    /** What the server made of one batch, and so what to do with it next. */
+    private enum class UploadOutcome {
+        /** Stored. Mark the rows and move on to the next batch. */
+        STORED,
+
+        /** The server or the network is having a bad time; the batch will do later. */
+        TRANSIENT,
+
+        /** Too big to accept. The same rows may fit in a smaller batch. */
+        TOO_LARGE,
+
+        /**
+         * The request could not be accepted at all - wrong endpoint, unknown or
+         * deactivated device. This says nothing about the rows themselves.
+         */
+        REFUSED,
+
+        /** The server understood the request and rejected this body. */
+        MALFORMED
+    }
+
     override suspend fun doWork(): Result {
-        val batch = dao.getPendingBatch(BATCH_SIZE)
+        var batchSize = BATCH_SIZE
+        var batchesUploaded = 0
 
-        if (batch.isEmpty()) {
-            Log.i(TAG, "No pending rows to upload")
-            return Result.success()
-        }
+        while (batchesUploaded < UPLOAD_MAX_BATCHES_PER_RUN) {
+            val batch = dao.getPendingBatch(batchSize, UPLOAD_MAX_ATTEMPTS)
 
-        return try {
-            val ids = batch.map { it.id }
-            dao.incrementUploadAttempts(ids)
-
-            val payload = buildJsonPayload(batch)
-            val uploadOk = uploadToServer(payload)
-
-            if (uploadOk) {
-                dao.markUploaded(ids, System.currentTimeMillis())
-
-                // optional cleanup: keep uploaded rows only for 7 days
-                val sevenDaysAgo = System.currentTimeMillis() - 7L * 24 * 60 * 60 * 1000
-                dao.deleteUploadedOlderThan(sevenDaysAgo)
-
-                Log.i(TAG, "Uploaded ${ids.size} rows successfully")
-                Result.success()
-            } else {
-                Log.w(TAG, "Upload failed, retry requested")
-                Result.retry()
+            if (batch.isEmpty()) {
+                Log.i(TAG, "Backlog cleared after $batchesUploaded batch(es)")
+                return finish(batchesUploaded)
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Upload worker exception", e)
-            Result.retry()
+
+            val ids = batch.map { it.id }
+
+            val outcome = try {
+                uploadToServer(buildJsonPayload(batch))
+            } catch (e: Exception) {
+                Log.e(TAG, "Upload attempt failed", e)
+                UploadOutcome.TRANSIENT
+            }
+
+            when (outcome) {
+                UploadOutcome.STORED -> {
+                    dao.markUploaded(ids, System.currentTimeMillis())
+                    batchesUploaded++
+                    Log.i(TAG, "Uploaded ${ids.size} rows")
+                }
+
+                UploadOutcome.TOO_LARGE -> {
+                    if (batchSize <= UPLOAD_MIN_BATCH_SIZE) {
+                        /*
+                         * Not the size, then. Counting it lets these rows
+                         * eventually stop blocking the ones behind them.
+                         */
+                        dao.incrementUploadAttempts(ids)
+                        Log.e(TAG, "Server rejects even $batchSize rows as too large")
+                        return Result.failure()
+                    }
+
+                    batchSize /= 2
+                    Log.w(TAG, "Batch too large, retrying with $batchSize rows")
+                }
+
+                UploadOutcome.TRANSIENT -> {
+                    /*
+                     * Deliberately not counted against the rows. A server that
+                     * is down says nothing about the batch, and counting it
+                     * would quarantine a perfectly good backlog for the sole
+                     * reason that the server was away for a while.
+                     */
+                    Log.w(TAG, "Upload deferred, will retry with backoff")
+                    return Result.retry()
+                }
+
+                UploadOutcome.MALFORMED -> {
+                    // The body is the problem, so this is the batch's own fault.
+                    dao.incrementUploadAttempts(ids)
+                    Log.e(TAG, "Server could not parse the batch, giving up this run")
+                    return Result.failure()
+                }
+
+                UploadOutcome.REFUSED -> {
+                    /*
+                     * Not counted: a wrong endpoint or an unregistered device
+                     * refuses every batch alike, and quarantining perfectly good
+                     * rows over a configuration mistake would lose data that a
+                     * corrected setting would have sent.
+                     */
+                    Log.e(
+                        TAG,
+                        "Server refused the request - check the endpoint and that " +
+                            "this device is registered"
+                    )
+                    return Result.failure()
+                }
+            }
         }
+
+        /*
+         * The backlog outlasted this run. Stopping here keeps one pass inside
+         * WorkManager's execution window; whatever remains is picked up by the
+         * next enqueue, which the service raises once the backlog rebuilds.
+         */
+        Log.i(TAG, "Stopped after $batchesUploaded batches, more rows still pending")
+        return finish(batchesUploaded)
+    }
+
+    private suspend fun finish(batchesUploaded: Int): Result {
+        if (batchesUploaded > 0) {
+            val cutoff = System.currentTimeMillis() - UPLOADED_ROW_RETENTION_MS
+            dao.deleteUploadedOlderThan(cutoff)
+        }
+
+        return Result.success()
+    }
+
+    /**
+     * Maps a response code onto what the worker should do about it.
+     *
+     * `ingest` answers 401 for a device it does not know, 403 for one that has
+     * been deactivated, 400 for a body it cannot parse and 413 for one that
+     * outgrew its limits. It draws that last distinction on purpose - one says
+     * "send smaller batches", the other "this will never be accepted" - and
+     * this used to collapse all of them into an endless retry.
+     */
+    private fun classify(code: Int): UploadOutcome = when {
+        code in 200..299 -> UploadOutcome.STORED
+        code == HttpURLConnection.HTTP_ENTITY_TOO_LARGE -> UploadOutcome.TOO_LARGE
+        code == HttpURLConnection.HTTP_CLIENT_TIMEOUT -> UploadOutcome.TRANSIENT
+        code == HTTP_TOO_MANY_REQUESTS -> UploadOutcome.TRANSIENT
+        code == HttpURLConnection.HTTP_BAD_REQUEST -> UploadOutcome.MALFORMED
+        code == HTTP_UNPROCESSABLE_ENTITY -> UploadOutcome.MALFORMED
+        code in 400..499 -> UploadOutcome.REFUSED
+        else -> UploadOutcome.TRANSIENT
     }
 
     private fun buildJsonPayload(batch: List<TelemetrySampleEntity>): String {
-        Log.i(TAG, "Building Payload")
         val array = JSONArray()
 
         batch.forEach { item ->
@@ -76,38 +185,38 @@ class UploadWorker(
                 put("charging", item.charging)
                 put("powerSource", item.powerSource)
 
-                put("latitude", item.latitude)
-                put("longitude", item.longitude)
-                put("altitude", item.altitude)
-                put("speedMps", item.speedMps)
-                put("speedKmh", item.speedKmh)
-                put("bearing", item.bearing)
-                put("accuracyM", item.accuracyM)
+                putFinite("latitude", item.latitude)
+                putFinite("longitude", item.longitude)
+                putFinite("altitude", item.altitude)
+                putFinite("speedMps", item.speedMps)
+                putFinite("speedKmh", item.speedKmh)
+                putFinite("bearing", item.bearing)
+                putFinite("accuracyM", item.accuracyM)
                 put("provider", item.provider)
 
-                put("accelX", item.accelX)
-                put("accelY", item.accelY)
-                put("accelZ", item.accelZ)
+                putFinite("accelX", item.accelX)
+                putFinite("accelY", item.accelY)
+                putFinite("accelZ", item.accelZ)
                 put("accelAccuracy", item.accelAccuracy)
                 put("accelAccuracyLabel", item.accelAccuracyLabel)
 
-                put("gyroX", item.gyroX)
-                put("gyroY", item.gyroY)
-                put("gyroZ", item.gyroZ)
+                putFinite("gyroX", item.gyroX)
+                putFinite("gyroY", item.gyroY)
+                putFinite("gyroZ", item.gyroZ)
                 put("gyroAccuracy", item.gyroAccuracy)
                 put("gyroAccuracyLabel", item.gyroAccuracyLabel)
 
-                put("magX", item.magX)
-                put("magY", item.magY)
-                put("magZ", item.magZ)
+                putFinite("magX", item.magX)
+                putFinite("magY", item.magY)
+                putFinite("magZ", item.magZ)
                 put("magnetAccuracy", item.magnetAccuracy)
                 put("magnetAccuracyLabel", item.magnetAccuracyLabel)
 
-                put("pressureHpa", item.pressureHpa)
+                putFinite("pressureHpa", item.pressureHpa)
                 put("pressureAccuracy", item.pressureAccuracy)
                 put("pressureAccuracyLabel", item.pressureAccuracyLabel)
 
-                put("headingDeg", item.headingDeg)
+                putFinite("headingDeg", item.headingDeg)
             }
             array.put(obj)
         }
@@ -115,11 +224,24 @@ class UploadWorker(
         return array.toString()
     }
 
-    private fun uploadToServer(payload: String): Boolean {
-        Log.i(TAG, "Uploading to: $TELEMETRY_UPLOAD_URL")
-        val url = URL(TELEMETRY_UPLOAD_URL)
+    /*
+     * JSONObject refuses a non-finite number, and a sensor that has gone
+     * unreliable does hand out NaN. Letting that throw would fail the whole
+     * batch - and go on failing it, since the same rows come back next run -
+     * over a single bad reading, so it is stored as null instead. Omitting the
+     * key is what a null does here, and the server reads a missing field as
+     * None already.
+     */
+    private fun JSONObject.putFinite(name: String, value: Float?) {
+        put(name, value?.takeIf { it.isFinite() })
+    }
 
-        val connection = (url.openConnection() as HttpURLConnection).apply {
+    private fun JSONObject.putFinite(name: String, value: Double?) {
+        put(name, value?.takeIf { it.isFinite() })
+    }
+
+    private fun uploadToServer(payload: String): UploadOutcome {
+        val connection = (URL(TELEMETRY_UPLOAD_URL).openConnection() as HttpURLConnection).apply {
             requestMethod = "POST"
             connectTimeout = 15000
             readTimeout = 15000
@@ -140,7 +262,8 @@ class UploadWorker(
             }
 
             val code = connection.responseCode
-            code in 200..299
+            Log.i(TAG, "$TELEMETRY_UPLOAD_URL answered $code")
+            classify(code)
         } finally {
             connection.disconnect()
         }
@@ -152,7 +275,5 @@ class UploadWorker(
             gzip.write(input.toByteArray(Charsets.UTF_8))
         }
         return bos.toByteArray()
-
     }
-
 }

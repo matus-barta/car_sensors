@@ -17,7 +17,6 @@ import android.hardware.SensorManager
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
-import android.os.BatteryManager
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.IBinder
@@ -25,8 +24,10 @@ import android.os.Looper
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
-import androidx.core.content.edit
 import com.anonymus09.carsensors.data.AppDatabase
+import com.anonymus09.carsensors.data.PowerState
+import com.anonymus09.carsensors.data.PowerStateProvider
+import com.anonymus09.carsensors.data.SettingsRepository
 import com.anonymus09.carsensors.data.TelemetrySampleEntity
 import com.anonymus09.carsensors.work.WifiUploadScheduler
 import kotlinx.coroutines.CoroutineScope
@@ -47,6 +48,7 @@ import kotlin.math.roundToInt
 import com.anonymus09.carsensors.util.AppConfig.FLUSH_INTERVAL_MS
 import com.anonymus09.carsensors.util.AppConfig.SENSOR_SAMPLING_US
 import com.anonymus09.carsensors.util.AppConfig.UPLOAD_CHECK_EVERY_N_SAMPLES
+import com.anonymus09.carsensors.util.AppConfig.UPLOAD_MAX_ATTEMPTS
 import com.anonymus09.carsensors.util.AppConfig.UPLOAD_TRIGGER_PENDING_ROWS
 
 data class TelemetryLocationStatus(
@@ -65,12 +67,6 @@ class TelemetryForegroundService : Service(), SensorEventListener {
         private const val NOTIFICATION_ID = 1001
         private const val SENSOR_THREAD_NAME = "TelemetryLoggerThread"
 
-        // SharedPreferences
-        const val PREFS_NAME = "car_sensors_prefs"
-        const val PREF_AUTO_START_ON_BOOT = "auto_start_on_boot"
-        const val PREF_STOP_WHEN_UNPLUGGED = "stop_when_unplugged"
-        const val PREF_UPLOAD_ONLY_WHEN_CHARGING = "upload_only_when_charging"
-
         fun startService(context: Context) {
             val intent = Intent(context, TelemetryForegroundService::class.java)
             ContextCompat.startForegroundService(context, intent)
@@ -79,63 +75,6 @@ class TelemetryForegroundService : Service(), SensorEventListener {
         fun stopService(context: Context) {
             val intent = Intent(context, TelemetryForegroundService::class.java)
             context.stopService(intent)
-        }
-
-        fun isAutoStartOnBootEnabled(context: Context): Boolean {
-            val prefs = context.getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
-            return prefs.getBoolean(PREF_AUTO_START_ON_BOOT, true)
-        }
-
-        fun isStopWhenUnpluggedEnabled(context: Context): Boolean {
-            val prefs = context.getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
-            return prefs.getBoolean(PREF_STOP_WHEN_UNPLUGGED, true)
-        }
-
-        fun setAutoStartOnBoot(context: Context, enabled: Boolean) {
-            context.getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit {
-                putBoolean(PREF_AUTO_START_ON_BOOT, enabled)
-            }
-        }
-
-        fun setStopWhenUnplugged(context: Context, enabled: Boolean) {
-            context.getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit {
-                putBoolean(PREF_STOP_WHEN_UNPLUGGED, enabled)
-            }
-        }
-
-        fun isUploadOnlyWhenChargingEnabled(context: Context): Boolean {
-            return context.getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
-                .getBoolean(PREF_UPLOAD_ONLY_WHEN_CHARGING, true)
-        }
-
-        fun setUploadOnlyWhenCharging(context: Context, enabled: Boolean) {
-            context.getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
-                .edit {
-                    putBoolean(PREF_UPLOAD_ONLY_WHEN_CHARGING, enabled)
-                }
-        }
-
-        fun isDeviceCharging(context: Context): Boolean {
-            val batteryStatus: Intent? = context.registerReceiver(
-                null, IntentFilter(Intent.ACTION_BATTERY_CHANGED)
-            )
-
-            val status = batteryStatus?.getIntExtra(BatteryManager.EXTRA_STATUS, -1) ?: -1
-            return status == BatteryManager.BATTERY_STATUS_CHARGING || status == BatteryManager.BATTERY_STATUS_FULL
-        }
-
-        fun getChargePlugLabel(context: Context): String {
-            val batteryStatus: Intent? = context.registerReceiver(
-                null, IntentFilter(Intent.ACTION_BATTERY_CHANGED)
-            )
-
-            val plugged = batteryStatus?.getIntExtra(BatteryManager.EXTRA_PLUGGED, -1) ?: -1
-            return when (plugged) {
-                BatteryManager.BATTERY_PLUGGED_AC -> "AC"
-                BatteryManager.BATTERY_PLUGGED_USB -> "USB"
-                BatteryManager.BATTERY_PLUGGED_WIRELESS -> "WIRELESS"
-                else -> "NOT_CHARGING"
-            }
         }
 
         private val _isRunningFlow = MutableStateFlow(false)
@@ -161,6 +100,9 @@ class TelemetryForegroundService : Service(), SensorEventListener {
     /** Samples written since the upload backlog was last measured. */
     private val samplesSinceUploadCheck = AtomicInteger(0)
 
+    private val settings by lazy { SettingsRepository(this) }
+    private val powerStateProvider by lazy { PowerStateProvider(this) }
+
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val telemetryDao by lazy {
         AppDatabase.getInstance(this).telemetryDao()
@@ -170,15 +112,30 @@ class TelemetryForegroundService : Service(), SensorEventListener {
     @Volatile
     private var latestLocation: Location? = null
 
-    // Latest sensor values
+    /*
+     * Latest sensor values, null until the sensor has actually reported. These
+     * started life as FloatArray(3), whose zeroes read back as a genuine
+     * reading of zero: every sample written before a sensor woke up claimed the
+     * device was perfectly still and unmagnetised, rather than saying nothing.
+     */
     @Volatile
-    private var accelValues = FloatArray(3)
+    private var accelValues: FloatArray? = null
 
     @Volatile
-    private var gyroValues = FloatArray(3)
+    private var gyroValues: FloatArray? = null
 
     @Volatile
-    private var magnetValues = FloatArray(3)
+    private var magnetValues: FloatArray? = null
+
+    /*
+     * Scratch space for recomputeHeading, which runs on every accelerometer and
+     * magnetometer event - twenty times a second between them, allocating three
+     * arrays on each. Only the sensor thread touches them, and that is the same
+     * thread workerHandler runs, so they need no synchronisation.
+     */
+    private val rotationMatrix = FloatArray(9)
+    private val inclinationMatrix = FloatArray(9)
+    private val orientationAngles = FloatArray(3)
 
     @Volatile
     private var headingDegrees: Float? = null
@@ -198,7 +155,7 @@ class TelemetryForegroundService : Service(), SensorEventListener {
     private var isCurrentlyCharging: Boolean = false
 
     @Volatile
-    private var currentPowerSource: String = "UNKNOWN"
+    private var currentPowerSource: String = PowerState.SOURCE_UNKNOWN
 
     // Latest pressure data
     private var pressureSensor: Sensor? = null
@@ -262,7 +219,7 @@ class TelemetryForegroundService : Service(), SensorEventListener {
             when (intent?.action) {
                 Intent.ACTION_POWER_CONNECTED -> {
                     isCurrentlyCharging = true
-                    currentPowerSource = getChargePlugLabel(context)
+                    currentPowerSource = powerStateProvider.current().source
 
                     writeSimpleEvent("power_connected", JSONObject().apply {
                         put("powerSource", currentPowerSource)
@@ -273,13 +230,13 @@ class TelemetryForegroundService : Service(), SensorEventListener {
 
                 Intent.ACTION_POWER_DISCONNECTED -> {
                     isCurrentlyCharging = false
-                    currentPowerSource = "NOT_CHARGING"
+                    currentPowerSource = PowerState.SOURCE_NOT_CHARGING
 
                     writeSimpleEvent("power_disconnected", JSONObject(), detached = true)
 
                     updateNotification()
 
-                    if (isStopWhenUnpluggedEnabled(context)) {
+                    if (settings.current().stopWhenUnplugged) {
                         writeSimpleEvent(
                             "service_stopping_due_to_unplug",
                             JSONObject(),
@@ -326,8 +283,9 @@ class TelemetryForegroundService : Service(), SensorEventListener {
         workerThread = HandlerThread(SENSOR_THREAD_NAME).apply { start() }
         workerHandler = Handler(workerThread!!.looper)
 
-        isCurrentlyCharging = isDeviceCharging(this)
-        currentPowerSource = getChargePlugLabel(this)
+        val power = powerStateProvider.current()
+        isCurrentlyCharging = power.charging
+        currentPowerSource = power.source
 
         createNotificationChannel()
         startForeground(
@@ -344,11 +302,8 @@ class TelemetryForegroundService : Service(), SensorEventListener {
         writeSimpleEvent("service_started", JSONObject().apply {
             put("charging", isCurrentlyCharging)
             put("powerSource", currentPowerSource)
-            put("autoStartOnBootEnabled", isAutoStartOnBootEnabled(this@TelemetryForegroundService))
-            put(
-                "stopWhenUnpluggedEnabled",
-                isStopWhenUnpluggedEnabled(this@TelemetryForegroundService)
-            )
+            put("autoStartOnBootEnabled", settings.current().autoStartOnBoot)
+            put("stopWhenUnpluggedEnabled", settings.current().stopWhenUnplugged)
         })
 
         workerHandler?.post(flushRunnable)
@@ -523,18 +478,16 @@ class TelemetryForegroundService : Service(), SensorEventListener {
     }
 
     private fun recomputeHeading() {
-        val rotationMatrix = FloatArray(9)
-        val inclinationMatrix = FloatArray(9)
+        val accel = accelValues ?: return
+        val magnet = magnetValues ?: return
 
         val success = SensorManager.getRotationMatrix(
-            rotationMatrix, inclinationMatrix, accelValues, magnetValues
+            rotationMatrix, inclinationMatrix, accel, magnet
         )
 
         if (success) {
-            val orientation = FloatArray(3)
-            SensorManager.getOrientation(rotationMatrix, orientation)
-            val azimuthRad = orientation[0]
-            val azimuthDeg = Math.toDegrees(azimuthRad.toDouble()).toFloat()
+            SensorManager.getOrientation(rotationMatrix, orientationAngles)
+            val azimuthDeg = Math.toDegrees(orientationAngles[0].toDouble()).toFloat()
             headingDegrees = (azimuthDeg + 360f) % 360f
         }
     }
@@ -548,6 +501,10 @@ class TelemetryForegroundService : Service(), SensorEventListener {
 
         val location = latestLocation
         val heading = headingDegrees
+        val accel = accelValues
+        val gyro = gyroValues
+        val magnet = magnetValues
+        val pressure = pressureHpa
 
         val sample = TelemetrySampleEntity(
             timestamp = System.currentTimeMillis(),
@@ -567,27 +524,27 @@ class TelemetryForegroundService : Service(), SensorEventListener {
             accuracyM = location?.accuracy,
             provider = location?.provider,
 
-            accelX = accelValues.getOrNull(0),
-            accelY = accelValues.getOrNull(1),
-            accelZ = accelValues.getOrNull(2),
-            accelAccuracy = accelAccuracy,
-            accelAccuracyLabel = accuracyToLabel(accelAccuracy),
+            accelX = accel?.getOrNull(0),
+            accelY = accel?.getOrNull(1),
+            accelZ = accel?.getOrNull(2),
+            accelAccuracy = accel?.let { accelAccuracy },
+            accelAccuracyLabel = accel?.let { accuracyToLabel(accelAccuracy) },
 
-            gyroX = gyroValues.getOrNull(0),
-            gyroY = gyroValues.getOrNull(1),
-            gyroZ = gyroValues.getOrNull(2),
-            gyroAccuracy = gyroAccuracy,
-            gyroAccuracyLabel = accuracyToLabel(gyroAccuracy),
+            gyroX = gyro?.getOrNull(0),
+            gyroY = gyro?.getOrNull(1),
+            gyroZ = gyro?.getOrNull(2),
+            gyroAccuracy = gyro?.let { gyroAccuracy },
+            gyroAccuracyLabel = gyro?.let { accuracyToLabel(gyroAccuracy) },
 
-            magX = magnetValues.getOrNull(0),
-            magY = magnetValues.getOrNull(1),
-            magZ = magnetValues.getOrNull(2),
-            magnetAccuracy = magnetAccuracy,
-            magnetAccuracyLabel = accuracyToLabel(magnetAccuracy),
+            magX = magnet?.getOrNull(0),
+            magY = magnet?.getOrNull(1),
+            magZ = magnet?.getOrNull(2),
+            magnetAccuracy = magnet?.let { magnetAccuracy },
+            magnetAccuracyLabel = magnet?.let { accuracyToLabel(magnetAccuracy) },
 
-            pressureHpa = pressureHpa,
-            pressureAccuracy = pressureAccuracy,
-            pressureAccuracyLabel = accuracyToLabel(pressureAccuracy),
+            pressureHpa = pressure,
+            pressureAccuracy = pressure?.let { pressureAccuracy },
+            pressureAccuracyLabel = pressure?.let { accuracyToLabel(pressureAccuracy) },
 
             headingDeg = heading
         )
@@ -606,7 +563,8 @@ class TelemetryForegroundService : Service(), SensorEventListener {
                 if (samplesSinceUploadCheck.incrementAndGet() >= UPLOAD_CHECK_EVERY_N_SAMPLES) {
                     samplesSinceUploadCheck.set(0)
 
-                    if (telemetryDao.getPendingUploadCount() >= UPLOAD_TRIGGER_PENDING_ROWS) {
+                    val pending = telemetryDao.getPendingUploadCount(UPLOAD_MAX_ATTEMPTS)
+                    if (pending >= UPLOAD_TRIGGER_PENDING_ROWS) {
                         WifiUploadScheduler.enqueue(this@TelemetryForegroundService)
                     }
                 }
