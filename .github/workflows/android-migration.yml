@@ -12,6 +12,23 @@ on:
       - "android/app/src/androidTest/**"
       - ".github/workflows/android-migration.yml"
 
+  # After a merge, on anything under android/. This is where the API 28 device
+  # runs - the level the app targets and the handset actually uses, for which
+  # no stripped-down ATD image exists.
+  #
+  # A merge rather than a schedule, because what this guards against can only
+  # arrive with a code change: a calendar fires when nothing has happened and
+  # stays quiet when something has. Running after the merge rather than on the
+  # pull request means the slower emulator holds nobody up, while still being
+  # something that happens on its own.
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - "android/**"
+      - ".github/workflows/android-migration.yml"
+
   workflow_call:
 
 permissions:
@@ -57,9 +74,12 @@ jobs:
       # The device is declared in build.gradle.kts rather than here, so this is
       # the same command a developer runs, and Gradle can skip it entirely when
       # nothing it depends on has changed.
+      # A pull request waits only for the fast ATD device; once merged, the
+      # group runs and adds API 28.
       - name: Run migration tests
         run: >-
-          ./gradlew api30atdDebugAndroidTest
+          ./gradlew
+          ${{ github.event_name == 'push' && 'allApisGroupDebugAndroidTest' || 'api30atdDebugAndroidTest' }}
           -Pandroid.testoptions.manageddevices.emulator.gpu=swiftshader_indirect
 
       - name: Upload the test report
