@@ -37,10 +37,5 @@ abstract class AppDatabase : RoomDatabase() {
         fun getDatabaseFile(context: Context): File {
             return context.getDatabasePath(DB_NAME)
         }
-
-        // optional: expose DB directory (nice for debugging)
-        fun getDatabaseDir(context: Context): File? {
-            return getDatabaseFile(context).parentFile
-        }
     }
 }
