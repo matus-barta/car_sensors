@@ -638,20 +638,6 @@ would otherwise be the only trace of the decision, and a baseline entry read
 years later looks like something that was ignored rather than something that
 was weighed.
 
-### Cover the upload drain against a fake server
-
-The uploader's own decisions are tested - which response code means what - but
-the loop around them is not. Whether it really stops at twenty batches, halves
-the batch on a 413 and counts an attempt only where it should, is currently
-established by having watched it drain a real backlog once.
-
-None of that needs a device. `work-testing`'s `TestListenableWorkerBuilder`
-runs the worker directly, and the uploader speaks `HttpURLConnection` and does
-not care who answers, so a fake server such as MockWebServer can play the part
-of `ingest` and hand back whichever status the case under test wants. That
-covers the retry and quarantine behaviour, which is the part with real
-consequences: getting it wrong either loses rows or wedges the queue.
-
 ### Do not let the logger state outlive the service that reports it
 
 `LoggerState` lives in a companion object, so it is process-wide rather than
@@ -667,30 +653,6 @@ while it records, and let the screen say so once the claim has gone stale. Worth
 doing only if this is ever seen in practice - it is written down so that a
 screen insisting on `RECORDING` while nothing is recorded is recognised rather
 than puzzled over.
-
-### Find a way to test on API 28 when something depends on it
-
-The instrumented tests run on an `aosp-atd` image at API 30, because Automated
-Test Devices exist only at that level, and the handset this is written for runs
-API 28. That gap does not matter for a Room migration - SQLite and the
-framework behave the same - but it would matter the moment something under test
-depends on platform behaviour that changed between the two, and the failure
-would be an absence: the emulator would pass and the phone would not.
-
-There is no shortage of ways to close it, only a cost to each. A second managed
-device with `apiLevel = 28` and `systemImageSource = "aosp"` needs one
-declaration, and Gradle can be told to run a group across both - but a non-ATD
-image carries the apps and services ATD strips out, so it boots slower and
-wants more memory. Firebase Test Lab would put the tests on real hardware at a
-chosen level, at the cost of a Google project and credentials in CI. And a
-handset over adb remains the most faithful answer of all, which is what makes
-it the local path already; it is only CI that cannot have one.
-
-The thing to avoid is running everything twice by default. Whatever is added
-should be reached for when a change actually touches version-dependent
-behaviour - a `foregroundServiceType`, a permission model, a storage API - and
-not on every pull request, or the emulator that was carefully kept to
-migrations alone will quietly become the slowest part of every run.
 
 ### Declare a foreground service type before raising the target SDK
 
@@ -720,6 +682,15 @@ CI publishes a signed APK to a GitHub release and Obtainium on the phone watches
 the repository and offers the update. It needs no server work, and it makes the
 app installable by anyone who wants it without anything being pushed on them -
 they point Obtainium at the repository or they do not.
+
+The workflow should call the two validation workflows rather than repeat them,
+the way "Ingest - build" already calls "Ingest - validation" so that an image is
+only built once its checks have passed. Both already expose `workflow_call` for
+it. Calling "Android - migration tests" matters most: a release is the last
+point at which an unusual failure can be caught before it reaches a phone, and
+it is the only place where waiting for the slower API 28 device costs nobody
+anything, because nobody is waiting on a release the way they wait on a pull
+request.
 
 One prerequisite regardless: the release build type has no signing configuration
 and everything installed so far is debug-signed. Moving to a release key means
