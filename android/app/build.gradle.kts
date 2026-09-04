@@ -63,6 +63,26 @@ android {
                     apiLevel = 30
                     systemImageSource = "aosp-atd"
                 }
+
+                /*
+                 * The level this app actually targets and the handset actually
+                 * runs. No ATD image exists below 30, so this one carries the
+                 * apps and services ATD strips out and is correspondingly
+                 * slower - which is why it is not what a pull request waits
+                 * for.
+                 */
+                create("api28") {
+                    device = "Pixel 2"
+                    apiLevel = 28
+                    systemImageSource = "aosp"
+                }
+            }
+
+            groups {
+                create("allApis") {
+                    targetDevices.add(localDevices["api30atd"])
+                    targetDevices.add(localDevices["api28"])
+                }
             }
         }
     }
@@ -143,6 +163,8 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.robolectric)
     testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.work.testing)
+    testImplementation(libs.mockwebserver)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.room.testing)
     androidTestImplementation(libs.androidx.espresso.core)
