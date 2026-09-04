@@ -32,7 +32,7 @@ abstract class AppDatabase : RoomDatabase() {
          * backlog that is merely waiting for the server to come back. Rows that
          * have yet to be uploaded start again from zero.
          */
-        private val MIGRATION_2_3 = object : Migration(2, 3) {
+        internal val MIGRATION_2_3 = object : Migration(2, 3) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL(
                     "UPDATE telemetry_samples SET uploadAttemptCount = 0 WHERE uploaded = 0"
