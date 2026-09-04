@@ -2,5 +2,143 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
     "config:recommended"
-  ]
+  ],
+  "timezone": "Europe/Bratislava",
+  "schedule": [
+    "before 6am on monday"
+  ],
+  "dependencyDashboard": true,
+  "prConcurrentLimit": 5,
+  "semanticCommits": "disabled",
+  "commitMessagePrefix": "deps :",
+  "commitMessageAction": "Update",
+  "minimumReleaseAge": "5 days",
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": [
+      "before 6am on the first day of the month"
+    ]
+  },
+  "packageRules": [
+    {
+      "description": "Anything that is not a major arrives, passes the checks and merges itself without ever opening a pull request. If the checks fail, Renovate raises one instead, so a failure is the only thing that asks for attention. What is left to look at is only what needed deciding.",
+      "matchUpdateTypes": [
+        "minor",
+        "patch"
+      ],
+      "automerge": true,
+      "automergeType": "branch"
+    },
+    {
+      "description": "The build toolchain is the exception, and reviewed by hand however small the version bump looks. Everything else is judged by CI; this is what CI is built out of, so a passing run is weaker evidence than usual - a compiler that changed its output validates itself. Kotlin and AGP also call changes minor that are nothing of the sort.",
+      "matchManagers": [
+        "gradle"
+      ],
+      "matchPackageNames": [
+        "/^org\\.jetbrains\\.kotlin/",
+        "/^com\\.google\\.devtools\\.ksp/",
+        "com.android.application",
+        "com.android.library"
+      ],
+      "automerge": false,
+      "labels": [
+        "needs-attention"
+      ]
+    },
+    {
+      "description": "Kotlin, its compiler plugins and KSP are released against each other. Updating one without the others is how a build stops compiling for reasons that look unrelated.",
+      "matchManagers": [
+        "gradle"
+      ],
+      "matchPackageNames": [
+        "/^org\\.jetbrains\\.kotlin/",
+        "/^com\\.google\\.devtools\\.ksp/"
+      ],
+      "groupName": "Kotlin and KSP"
+    },
+    {
+      "description": "The Compose BOM decides the version of everything under androidx.compose, so they move together whether or not Renovate is told.",
+      "matchManagers": [
+        "gradle"
+      ],
+      "matchPackageNames": [
+        "/^androidx\\.compose/"
+      ],
+      "groupName": "Compose"
+    },
+    {
+      "description": "Room's runtime, compiler and testing artefacts share a version and will not work if they drift apart.",
+      "matchManagers": [
+        "gradle"
+      ],
+      "matchPackageNames": [
+        "/^androidx\\.room/"
+      ],
+      "groupName": "Room"
+    },
+    {
+      "description": "The Android Gradle plugin decides which SDK, which Gradle and which Java the build needs, so it travels alone.",
+      "matchManagers": [
+        "gradle"
+      ],
+      "matchPackageNames": [
+        "com.android.application",
+        "com.android.library"
+      ],
+      "groupName": "Android Gradle plugin"
+    },
+    {
+      "description": "One pull request a week for the workflows rather than one per action.",
+      "matchManagers": [
+        "github-actions"
+      ],
+      "groupName": "GitHub Actions"
+    },
+    {
+      "description": "Rust patch and minor updates are rarely interesting on their own.",
+      "matchManagers": [
+        "cargo"
+      ],
+      "matchUpdateTypes": [
+        "minor",
+        "patch"
+      ],
+      "groupName": "Rust dependencies"
+    },
+    {
+      "description": "Same for the web application's own dependencies.",
+      "matchManagers": [
+        "npm"
+      ],
+      "matchUpdateTypes": [
+        "minor",
+        "patch"
+      ],
+      "groupName": "www dependencies"
+    },
+    {
+      "description": "A floating tag is already whatever it is; a pull request saying so tells nobody anything.",
+      "matchDatasources": [
+        "docker"
+      ],
+      "matchCurrentValue": "latest",
+      "enabled": false
+    },
+    {
+      "description": "A major version is a decision rather than an update, so it arrives on its own and says so.",
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "automerge": false,
+      "labels": [
+        "needs-attention"
+      ]
+    }
+  ],
+  "ignorePaths": [
+    "**/node_modules/**",
+    "**/build/**",
+    "**/.agents/**"
+  ],
+  "branchConcurrentLimit": 5
 }
