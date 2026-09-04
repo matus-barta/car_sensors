@@ -85,6 +85,11 @@ class MainViewModel(
 
     fun setUploadOnlyWhenCharging(enabled: Boolean) =
         settingsRepository.setUploadOnlyWhenCharging(enabled)
+
+    fun setLiveUploadEnabled(enabled: Boolean) =
+        settingsRepository.setLiveUploadEnabled(enabled)
+
+    fun setServerBaseUrl(baseUrl: String) = settingsRepository.setServerBaseUrl(baseUrl)
 }
 
 class MainViewModelFactory(

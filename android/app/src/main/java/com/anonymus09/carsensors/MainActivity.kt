@@ -84,8 +84,16 @@ class MainActivity : ComponentActivity() {
                         onAutoStartOnBootChange = viewModel::setAutoStartOnBoot,
                         onStopWhenUnpluggedChange = viewModel::setStopWhenUnplugged,
                         onUploadOnlyWhenChargingChange = viewModel::setUploadOnlyWhenCharging,
+                        onLiveUploadChange = viewModel::setLiveUploadEnabled,
                         onToggleLogging = { toggleLogging(state.isLogging) },
-                        onForceUpload = { WifiUploadScheduler.enqueueNow(this) }
+                        onForceUpload = { WifiUploadScheduler.enqueueNow(this) },
+                        onServerBaseUrlSave = viewModel::setServerBaseUrl,
+                        /*
+                         * Cleartext is only permitted by the debug manifest, so
+                         * the field must refuse http:// anywhere it would not
+                         * actually work.
+                         */
+                        allowCleartext = BuildConfig.DEBUG
                     )
                 }
             }
