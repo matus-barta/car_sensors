@@ -4,7 +4,6 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
-import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface TelemetryDao {
@@ -12,35 +11,46 @@ interface TelemetryDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(sample: TelemetrySampleEntity)
 
-    @Query("SELECT COUNT(*) FROM telemetry_samples")
-    suspend fun getCount(): Int
-
-    @Query("SELECT COUNT(*) FROM telemetry_samples WHERE event = 'telemetry_sample'")
-    suspend fun getTelemetrySampleCount(): Int
-
-    @Query("SELECT COUNT(*) FROM telemetry_samples WHERE event != 'telemetry_sample'")
-    suspend fun getEventCount(): Int
-
-    @Query("SELECT MAX(timestamp) FROM telemetry_samples")
-    suspend fun getLastTimestamp(): Long?
-
     @Query(
         """
         SELECT * FROM telemetry_samples
-        WHERE uploaded = 0
+        WHERE uploaded = 0 AND uploadAttemptCount < :maxAttempts
         ORDER BY timestamp ASC
         LIMIT :limit
     """
     )
-    suspend fun getPendingBatch(limit: Int): List<TelemetrySampleEntity>
+    suspend fun getPendingBatch(limit: Int, maxAttempts: Int): List<TelemetrySampleEntity>
+
+    /**
+     * The newest rows that carry a position, for the live push.
+     *
+     * Deliberately the opposite order to [getPendingBatch]. The backlog drains
+     * oldest first, but a live position is only worth sending while it is still
+     * where the vehicle is - behind a deep backlog the oldest rows would not
+     * contain the current position at all. Rows without coordinates cannot move
+     * the map and are left to the batch path.
+     */
+    @Query(
+        """
+        SELECT * FROM telemetry_samples
+        WHERE uploaded = 0 AND uploadAttemptCount < :maxAttempts
+          AND latitude IS NOT NULL AND longitude IS NOT NULL
+        ORDER BY timestamp DESC
+        LIMIT :limit
+    """
+    )
+    suspend fun getNewestLocatedPending(
+        limit: Int,
+        maxAttempts: Int
+    ): List<TelemetrySampleEntity>
 
     @Query(
         """
         SELECT COUNT(*) FROM telemetry_samples
-        WHERE uploaded = 0
+        WHERE uploaded = 0 AND uploadAttemptCount < :maxAttempts
     """
     )
-    suspend fun getPendingUploadCount(): Int
+    suspend fun getPendingUploadCount(maxAttempts: Int): Int
 
     @Query(
         """
@@ -69,30 +79,29 @@ interface TelemetryDao {
     )
     suspend fun deleteUploadedOlderThan(cutoff: Long): Int
 
+    /**
+     * Every figure the storage panel shows, in one pass over the table.
+     *
+     * These were seven separate queries driven from the composable. Asking for
+     * them together is one scan rather than seven, and COUNT with a CASE that
+     * yields NULL for the rows it should skip keeps each column non-null
+     * without SUM's nullability.
+     */
     @Query(
         """
-    SELECT MAX(uploadedAt) FROM telemetry_samples
-    WHERE uploaded = 1
-"""
+        SELECT
+            COUNT(*) AS totalRows,
+            COUNT(CASE WHEN event = 'telemetry_sample' THEN 1 END) AS telemetryRows,
+            COUNT(CASE WHEN event != 'telemetry_sample' THEN 1 END) AS eventRows,
+            COUNT(CASE WHEN uploaded = 0 AND uploadAttemptCount < :maxAttempts THEN 1 END)
+                AS pendingUpload,
+            COUNT(CASE WHEN uploaded = 0 AND uploadAttemptCount >= :maxAttempts THEN 1 END)
+                AS blockedUpload,
+            MAX(timestamp) AS lastTimestamp,
+            MAX(CASE WHEN uploaded = 1 THEN uploadedAt END) AS lastUploadTime,
+            COALESCE(MAX(uploadAttemptCount), 0) AS maxUploadAttempts
+        FROM telemetry_samples
+    """
     )
-    suspend fun getLastUploadTime(): Long?
-
-
-    @Query(
-        """
-    SELECT MAX(uploadAttemptCount) FROM telemetry_samples
-"""
-    )
-    suspend fun getMaxUploadAttempts(): Int?
-
-    @Query("""SELECT COUNT(*) FROM telemetry_samples WHERE uploaded = 0""")
-    fun getPendingCountFlow(): Flow<Int>
-
-    @Query("""
-    SELECT MAX(uploadedAt) FROM telemetry_samples
-    WHERE uploaded = 1
-""")
-    fun getLastUploadTimeFlow(): Flow<Long?>
-
+    suspend fun getStats(maxAttempts: Int): TelemetryStats
 }
-

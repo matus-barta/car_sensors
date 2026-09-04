@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Debug builds only.
+
+    The server address is a setting now, and a local ingest usually runs behind
+    plain HTTP, so a testing build has to be able to reach it. A release build
+    merges without this and the platform refuses cleartext outright, which is
+    the backstop behind the https:// check on the address field - the device id
+    doubles as the credential, so sending it in the clear hands anyone on the
+    network the ability to post telemetry as this device.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application android:usesCleartextTraffic="true" />
+
+</manifest>
