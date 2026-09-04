@@ -123,12 +123,45 @@ Nothing builds or tests the app automatically. `ingest-validation.yml` and
 to break unnoticed, because it is the one nobody compiles except when working
 on it.
 
-A workflow running `assembleDebug` and the JVM unit tests would catch most of
+A workflow running `assembleDebug` and `testDebugUnitTest` would catch most of
 it. The Android SDK is preinstalled on the GitHub-hosted Ubuntu runners, so
 `local.properties` is not needed - `ANDROID_HOME` is already set - and Gradle
 wants its caches restored the way `Swatinem/rust-cache` does for the Rust side.
-Instrumented tests need an emulator and are slow enough to be worth leaving out
-until there is something that genuinely needs one.
+
+That one job covers more than it first appears. Robolectric runs the Room
+database in memory on the JVM, so the DAO queries are already tested there
+without a device, as are the settings migration, the URL validation, the
+response classification and the clock arithmetic. The reflex to reach for an
+emulator is mostly unnecessary here.
+
+Two things worth keeping on the JVM that might otherwise pull an emulator in.
+The upload drain - the batch cap, the halving on 413, the counting of attempts -
+is reachable through `work-testing`'s `TestListenableWorkerBuilder` against a
+fake server such as MockWebServer, because the uploader speaks
+`HttpURLConnection` and does not care who answers. And the logger's decisions
+about which state it should be in, given charge, battery level, whether movement
+was confirmed and how long ago, want extracting from the service into something
+that takes those as arguments; that is worth doing for its own sake and makes
+them testable as a side effect.
+
+### Run migration tests on an emulator, but only when a migration changes
+
+`MigrationTestHelper` from `androidx.room:room-testing` is the one thing here
+that genuinely needs a device or emulator. It builds a database at the older
+version from its exported schema, runs the migration, and checks the result
+against the newer one - which is the only way to find out that a migration
+leaves the schema subtly wrong before a phone does.
+
+Two things to know before setting it up. It cannot test the migration that
+already exists: it needs the *source* version's exported schema, and schemas
+were only exported from version 3 onwards, so there is no `2.json` and 2 to 3 is
+permanently beyond it. And the next migration is exactly the one worth the
+trouble - adding `pairing_id` touches the table holding the only copy of
+telemetry that has not reached the server.
+
+`reactivecircus/android-emulator-runner` is the usual way to get one, and it
+costs minutes rather than seconds. Gate the job on changes under
+`android/app/schemas/**` so it runs when a migration lands and never otherwise.
 
 This would also be the second job with a Rust-free setup of its own, which does
 not change the `setup-rust` argument above but is worth noticing when deciding
@@ -217,6 +250,12 @@ screen that assumes one exists has to cope with its absence.
 
 ZXing (`zxing-android-embedded`) reads the code without dragging in Play
 Services, which is the better trade on the old handset this runs on.
+
+Undecided, and worth settling before the web side is written: whether `www`
+stops accepting a typed device id altogether once it generates them, or keeps
+the field as an escape hatch. Removing it makes the server unambiguously the
+authority; keeping it leaves a way to adopt a device whose identity came from
+somewhere else. It changes how much of the existing dialog survives.
 
 Pairing has to be repeatable, not a one-off. A phone moves between cars, a token
 is rotated, an app is reinstalled - the flow that assigns an identity is the
@@ -532,22 +571,6 @@ requirement.
 
 ## Android app
 
-### Confirm the server address against the API
-
-The address is a setting now, but nothing checks it. Getting it wrong is not
-hypothetical: uploads went to a path that did not exist for two months, and the
-only symptom was a backlog that quietly grew to 22,866 rows.
-
-Two checks, because there are two distinct failures. `GET /api/health` is public
-and proves the server is reachable at all - that is the class of mistake the
-missing `/api` prefix was. Whether *this* device may upload is a separate
-question, and posting an empty array to `/api/telemetry/upload` answers it: 401
-for an unknown device, 403 for a deactivated one, 200 otherwise, storing nothing
-either way. "Reachable but not registered" is a state worth being able to show.
-
-Worth running when the address is saved and when the app opens, with the result
-beside the address field.
-
 ### Allow cleartext to a private address, and only to a private address
 
 Release builds refuse `http://` outright, which was the right instinct and the
@@ -611,23 +634,6 @@ identity is paired next - arriving on the server attributed to the wrong
 vehicle, or refused outright. Either refuse while rows are pending, or say so
 plainly first.
 
-### Put the state and the setup at the top of the screen
-
-The screen is one long scroll in the order it was written: identity, then six
-switches, then the logging state, then storage and upload figures. The state -
-the one thing that answers "is this thing recording?" - sits below three
-screens of settings, which is how a phone that recorded nothing goes unnoticed
-until someone goes looking for the data.
-
-Three blocks on one screen, no navigation, in this order. **Status** first:
-logger state, and when armed the sentence explaining that this is deliberate,
-plus GPS fix and power. **Setup** next: server address with the health result
-above, identity with its reset button, then the switches, which already carry
-their own descriptions. **Diagnostics** last, collapsed behind a disclosure -
-database counts, upload figures, file paths, the restart button. That keeps the
-developer information without letting it dominate, and avoids adding
-navigation-compose to a single-screen app.
-
 ### Keep unuploaded data until the storage runs out, and say so first
 
 `deleteUploadedOlderThan` bounds only the rows that have been uploaded. Nothing
@@ -646,27 +652,6 @@ Deleting the only copy of something should never be the first the user hears of
 it. The warning belongs well before the threshold - see the entry below - not at
 the moment data is discarded.
 
-### Give way gradually as the battery drains
-
-`PowerState` reports whether the device is charging but not how full it is, and
-"record on battery" is now a switch that can be left on. A phone left recording
-in a parked car discharges until it dies, and a dead phone neither records nor
-answers when someone wonders why.
-
-`BatteryManager.EXTRA_LEVEL` and `EXTRA_SCALE` arrive on the sticky broadcast
-`PowerStateProvider` already reads, so the reading costs nothing.
-
-Rather than one cliff, the app should give things up in the order of what they
-cost against what they are worth. Uploading goes first: it wakes the radio,
-which is the most expensive thing here, and the data is not lost by waiting.
-Then the sample rate drops, since a coarser track is far better than none. Then
-the sensors that only decorate a position - barometer, magnetometer, gyroscope -
-leaving location alone. Recording stops last, and the logger returns to waiting.
-
-The thresholds are worth choosing deliberately and naming in `AppConfig`, and
-whichever tier is in force should be visible where the state is shown, or the
-app will look broken in exactly the way the arming state did.
-
 ### Warn when nothing has reached the server
 
 Nothing tells the user that uploads have stopped. The `/api` bug ran for two
@@ -683,6 +668,39 @@ backlog on a throttle.
 The wording should distinguish the two cases the health check draws apart -
 unreachable server against unregistered device - because what the user has to do
 about them is different.
+
+### Do not let the logger state outlive the service that reports it
+
+`LoggerState` lives in a companion object, so it is process-wide rather than
+tied to the service instance. Almost always that is right - a restart under
+`START_STICKY` sets it again, and a process death resets it to `OFF` - but a
+service killed while its process survives would leave the screen reporting
+`RECORDING` for something that stopped.
+
+Reading it back from whether the service is really running would mean binding to
+it, which is more machinery than the fault deserves. A cheaper answer is to
+treat it as a claim rather than a fact: have the service refresh a heartbeat
+while it records, and let the screen say so once the claim has gone stale. Worth
+doing only if this is ever seen in practice - it is written down so that a
+screen insisting on `RECORDING` while nothing is recorded is recognised rather
+than puzzled over.
+
+### Declare a foreground service type before raising the target SDK
+
+`targetSdk` is 28, and that is what keeps several things simple: a foreground
+service needs no declared type, background location needs no separate
+permission, and cleartext is a manifest attribute rather than a negotiation.
+Staying off the Play Store is what makes it tenable, since Play enforces a
+minimum target version and nothing else does.
+
+Should the target ever be raised - a newer handset, or a Play listing after all
+- the service will need `android:foregroundServiceType="location"` in the
+manifest and the `FOREGROUND_SERVICE_LOCATION` permission, or on API 34 and
+above it will not be allowed to start at all. API 29 also splits background
+location into a permission of its own, which changes what has to be asked for
+and when. None of this is work today; all of it is work on the day that number
+changes, and it is better known in advance than discovered by a service that
+refuses to start.
 
 ## Distribution
 
