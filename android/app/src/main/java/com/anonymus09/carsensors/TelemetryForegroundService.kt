@@ -49,10 +49,13 @@ import kotlin.coroutines.EmptyCoroutineContext
 import kotlin.math.roundToInt
 import com.anonymus09.carsensors.util.AppConfig.FLUSH_INTERVAL_MS
 import com.anonymus09.carsensors.util.AppConfig.LIVE_PUSH_MAX_ROWS
+import com.anonymus09.carsensors.util.AppConfig.MAX_LOCATION_AGE_MS
 import com.anonymus09.carsensors.util.AppConfig.LIVE_PUSH_MIN_INTERVAL_MS
 import com.anonymus09.carsensors.util.AppConfig.SENSOR_SAMPLING_US
 import com.anonymus09.carsensors.util.AppConfig.UPLOAD_CHECK_EVERY_N_SAMPLES
 import com.anonymus09.carsensors.util.AppConfig.UPLOAD_MAX_ATTEMPTS
+import com.anonymus09.carsensors.util.GpsClock
+import com.anonymus09.carsensors.util.ageMs
 import com.anonymus09.carsensors.util.AppConfig.UPLOAD_TRIGGER_PENDING_ROWS
 
 data class TelemetryLocationStatus(
@@ -103,6 +106,12 @@ class TelemetryForegroundService : Service(), SensorEventListener {
 
     /** Samples written since the upload backlog was last measured. */
     private val samplesSinceUploadCheck = AtomicInteger(0)
+
+    /*
+     * Every row is stamped from here rather than from System.currentTimeMillis,
+     * which Android takes from the network and never from GPS.
+     */
+    private val gpsClock = GpsClock()
 
     private val settings by lazy { SettingsRepository(this) }
     private val uploader by lazy { TelemetryUploader.create(this) }
@@ -180,6 +189,20 @@ class TelemetryForegroundService : Service(), SensorEventListener {
 
     private val locationListener = object : LocationListener {
         override fun onLocationChanged(location: Location) {
+            val wasDisciplined = gpsClock.isDisciplined
+            gpsClock.discipline(location)
+
+            /*
+             * Recorded once, when satellite time first becomes available. The
+             * offset is how wrong the phone's own clock was, which is the whole
+             * reason for not stamping samples with it.
+             */
+            if (!wasDisciplined && gpsClock.isDisciplined) {
+                writeSimpleEvent("gps_clock_disciplined", JSONObject().apply {
+                    put("systemClockOffsetMs", gpsClock.nowMs() - System.currentTimeMillis())
+                })
+            }
+
             latestLocation = location
 
             _locationStatus.value = TelemetryLocationStatus(
@@ -511,7 +534,21 @@ class TelemetryForegroundService : Service(), SensorEventListener {
     private fun writeMergedSample() {
         Log.i("Telemetry", "Writing sample!")
 
-        val location = latestLocation
+        /*
+         * A fix older than this is no longer where the vehicle is. The last
+         * known one goes on being returned after GPS drops out, so writing it
+         * with a fresh timestamp is how a phone in a tunnel came to look like a
+         * vehicle reporting live from a position it left long ago. Dropping it
+         * says "no position" instead, which is the truth, and the position
+         * itself is already recorded in the rows written while it was current.
+         */
+        val location = latestLocation?.takeIf { it.ageMs() <= MAX_LOCATION_AGE_MS }
+
+        if (location == null && _locationStatus.value.hasFix) {
+            _locationStatus.value = _locationStatus.value.copy(hasFix = false)
+            updateNotification()
+        }
+
         val heading = headingDegrees
         val accel = accelValues
         val gyro = gyroValues
@@ -519,7 +556,7 @@ class TelemetryForegroundService : Service(), SensorEventListener {
         val pressure = pressureHpa
 
         val sample = TelemetrySampleEntity(
-            timestamp = System.currentTimeMillis(),
+            timestamp = gpsClock.nowMs(),
             event = "telemetry_sample",
 
             charging = isCurrentlyCharging,
@@ -665,7 +702,7 @@ class TelemetryForegroundService : Service(), SensorEventListener {
 
         val sample = TelemetrySampleEntity(
             event = "sensor_accuracy_changed",
-            timestamp = System.currentTimeMillis(),
+            timestamp = gpsClock.nowMs(),
             payload = payload.toString(),
 
             charging = isCurrentlyCharging,
@@ -727,7 +764,7 @@ class TelemetryForegroundService : Service(), SensorEventListener {
 
         val sample = TelemetrySampleEntity(
             event = eventName,
-            timestamp = System.currentTimeMillis(),
+            timestamp = gpsClock.nowMs(),
             payload = payload.toString(),
 
             charging = isCurrentlyCharging,
@@ -833,7 +870,8 @@ class TelemetryForegroundService : Service(), SensorEventListener {
     }
 
     private fun updateNotification() {
-        val loc = latestLocation
+        // Same staleness rule as a sample: a fix this old is not a position.
+        val loc = latestLocation?.takeIf { it.ageMs() <= MAX_LOCATION_AGE_MS }
 
         val gpsPart = if (loc == null) {
             "GPS: waiting"

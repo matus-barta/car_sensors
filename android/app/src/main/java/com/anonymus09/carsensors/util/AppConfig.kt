@@ -39,6 +39,11 @@ object AppConfig {
     // How long an uploaded row is kept before it is deleted.
     const val UPLOADED_ROW_RETENTION_MS = 7L * 24 * 60 * 60 * 1000
 
+    // Past this, a fix is no longer taken to be where the vehicle is. The last
+    // known one keeps being returned after GPS drops out, so without this a
+    // phone parked in a tunnel goes on reporting the position it left.
+    const val MAX_LOCATION_AGE_MS = 15_000L
+
     // 10 Hz
     const val SENSOR_SAMPLING_US = 100_000
     // Write one merged sample every 500 ms
