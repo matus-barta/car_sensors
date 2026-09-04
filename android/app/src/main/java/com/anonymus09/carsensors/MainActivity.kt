@@ -17,6 +17,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.anonymus09.carsensors.data.AppDatabase
 import com.anonymus09.carsensors.data.PowerStateProvider
+import com.anonymus09.carsensors.data.ServerHealthChecker
 import com.anonymus09.carsensors.data.SettingsRepository
 import com.anonymus09.carsensors.data.TelemetryRepository
 import com.anonymus09.carsensors.ui.CarSensorsScreen
@@ -40,6 +41,10 @@ class MainActivity : ComponentActivity() {
                 databaseFile = AppDatabase.getDatabaseFile(context)
             ),
             powerStateProvider = PowerStateProvider(context),
+            healthChecker = ServerHealthChecker(
+                settings = SettingsRepository(context),
+                loadDeviceId = { DeviceIdProvider.getOrCreateDeviceId(context) }
+            ),
             loadDeviceId = {
                 withContext(Dispatchers.IO) { DeviceIdProvider.getOrCreateDeviceId(context) }
             }
@@ -77,10 +82,12 @@ class MainActivity : ComponentActivity() {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     val state by viewModel.uiState.collectAsStateWithLifecycle()
                     val locationStatus by viewModel.locationStatus.collectAsStateWithLifecycle()
+                    val serverHealth by viewModel.serverHealth.collectAsStateWithLifecycle()
 
                     CarSensorsScreen(
                         state = state,
                         locationStatus = locationStatus,
+                        serverHealth = serverHealth,
                         onAutoStartOnBootChange = viewModel::setAutoStartOnBoot,
                         onRecordOnBatteryChange = viewModel::setRecordOnBattery,
                         onUploadOnBatteryChange = viewModel::setUploadOnBattery,
@@ -91,6 +98,7 @@ class MainActivity : ComponentActivity() {
                         onForceUpload = { WifiUploadScheduler.enqueueNow(this) },
                         onRestartService = { TelemetryForegroundService.restartService(this) },
                         onServerBaseUrlSave = viewModel::setServerBaseUrl,
+                        onCheckServer = viewModel::checkServerHealth,
                         /*
                          * Cleartext is only permitted by the debug manifest, so
                          * the field must refuse http:// anywhere it would not

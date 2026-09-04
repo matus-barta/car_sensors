@@ -5,7 +5,10 @@ import android.util.Log
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.anonymus09.carsensors.data.AppDatabase
+import com.anonymus09.carsensors.data.PowerStateProvider
+import com.anonymus09.carsensors.data.PowerTier
 import com.anonymus09.carsensors.data.TelemetryUploader
+import com.anonymus09.carsensors.data.UploadOutcome
 import com.anonymus09.carsensors.util.AppConfig.BATCH_SIZE
 import com.anonymus09.carsensors.util.AppConfig.UPLOADED_ROW_RETENTION_MS
 import com.anonymus09.carsensors.util.AppConfig.UPLOAD_MAX_ATTEMPTS
@@ -31,7 +34,22 @@ class UploadWorker(
     private val dao = AppDatabase.getInstance(context).telemetryDao()
     private val uploader = TelemetryUploader.create(context)
 
-    override suspend fun doWork(): Result = uploader.exclusively { drain() }
+    private val powerStateProvider = PowerStateProvider(context)
+
+    override suspend fun doWork(): Result {
+        /*
+         * WorkManager's charging constraint covers "only upload on power", but
+         * not the case where uploading on battery is allowed and the battery is
+         * nearly gone. The radio is the most expensive thing this app does, and
+         * nothing is lost by waiting for a charge.
+         */
+        if (powerStateProvider.current().tier >= PowerTier.NO_UPLOAD) {
+            Log.i(TAG, "Battery too low to upload; deferring")
+            return Result.retry()
+        }
+
+        return uploader.exclusively { drain() }
+    }
 
     private suspend fun drain(): Result {
         var batchSize = BATCH_SIZE
@@ -46,12 +64,12 @@ class UploadWorker(
             }
 
             when (uploader.send(batch)) {
-                TelemetryUploader.Outcome.STORED -> {
+                UploadOutcome.STORED -> {
                     batchesUploaded++
                     Log.i(TAG, "Uploaded ${batch.size} rows")
                 }
 
-                TelemetryUploader.Outcome.TOO_LARGE -> {
+                UploadOutcome.TOO_LARGE -> {
                     if (batchSize <= UPLOAD_MIN_BATCH_SIZE) {
                         /*
                          * Not the size, then. Counting it lets these rows
@@ -66,17 +84,17 @@ class UploadWorker(
                     Log.w(TAG, "Batch too large, retrying with $batchSize rows")
                 }
 
-                TelemetryUploader.Outcome.TRANSIENT -> {
+                UploadOutcome.TRANSIENT -> {
                     Log.w(TAG, "Upload deferred, will retry with backoff")
                     return Result.retry()
                 }
 
-                TelemetryUploader.Outcome.MALFORMED -> {
+                UploadOutcome.MALFORMED -> {
                     Log.e(TAG, "Server could not parse the batch, giving up this run")
                     return Result.failure()
                 }
 
-                TelemetryUploader.Outcome.REFUSED -> {
+                UploadOutcome.REFUSED -> {
                     Log.e(
                         TAG,
                         "Server refused the request - check the endpoint and that " +

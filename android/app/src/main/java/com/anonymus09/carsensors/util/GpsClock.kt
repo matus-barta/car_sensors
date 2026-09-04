@@ -19,8 +19,14 @@ import android.os.SystemClock
  * GPS outage with the same increasingly stale moment, because the last known
  * fix keeps being returned; an offset carries the correction forward while
  * still advancing in real time.
+ *
+ * Both clocks are injected so that the arithmetic can be decided in a plain JVM
+ * test, where neither `SystemClock` nor a real `Location` is available.
  */
-class GpsClock {
+class GpsClock(
+    private val elapsedRealtime: () -> Long = { SystemClock.elapsedRealtime() },
+    private val systemTime: () -> Long = { System.currentTimeMillis() }
+) {
 
     /** Satellite time minus the monotonic clock, once GPS has told us. */
     @Volatile
@@ -35,17 +41,21 @@ class GpsClock {
      * the system clock the provider read, so disciplining against it would just
      * copy back the clock this exists to distrust.
      */
-    fun discipline(location: Location) {
-        if (location.provider != LocationManager.GPS_PROVIDER) return
+    fun discipline(location: Location) =
+        discipline(location.provider, location.time, location.elapsedRealtimeMs())
 
-        offsetMs = location.time - location.elapsedRealtimeMs()
+    /** The same, in terms a test can supply without an Android `Location`. */
+    fun discipline(provider: String?, fixTimeMs: Long, fixElapsedMs: Long) {
+        if (provider != LocationManager.GPS_PROVIDER) return
+
+        offsetMs = fixTimeMs - fixElapsedMs
     }
 
     /** The current time, GPS-derived where possible. */
     fun nowMs(): Long {
-        val offset = offsetMs ?: return System.currentTimeMillis()
+        val offset = offsetMs ?: return systemTime()
 
-        return offset + SystemClock.elapsedRealtime()
+        return offset + elapsedRealtime()
     }
 }
 

@@ -26,28 +26,6 @@ class TelemetryUploader(
     private val loadDeviceId: () -> String
 ) {
 
-    /** What the server made of a batch, and so what the caller should do next. */
-    enum class Outcome {
-        /** Stored. The rows are marked uploaded before this returns. */
-        STORED,
-
-        /** The server or the network is having a bad time; the rows will do later. */
-        TRANSIENT,
-
-        /** Too big to accept. The same rows may fit in a smaller batch. */
-        TOO_LARGE,
-
-        /**
-         * The request could not be accepted at all - wrong endpoint, unknown or
-         * deactivated device. This says nothing about the rows themselves, so
-         * nothing is counted against them.
-         */
-        REFUSED,
-
-        /** The server understood the request and rejected this body. */
-        MALFORMED
-    }
-
     /**
      * Sends [rows], marking them uploaded if the server took them.
      *
@@ -56,8 +34,8 @@ class TelemetryUploader(
      * against its rows. Anything else is policy for the caller, which knows
      * whether it can afford to retry.
      */
-    suspend fun send(rows: List<TelemetrySampleEntity>): Outcome {
-        if (rows.isEmpty()) return Outcome.STORED
+    suspend fun send(rows: List<TelemetrySampleEntity>): UploadOutcome {
+        if (rows.isEmpty()) return UploadOutcome.STORED
 
         val ids = rows.map { it.id }
 
@@ -65,12 +43,12 @@ class TelemetryUploader(
             post(buildJsonPayload(rows))
         } catch (e: Exception) {
             Log.e(TAG, "Upload attempt failed", e)
-            Outcome.TRANSIENT
+            UploadOutcome.TRANSIENT
         }
 
         when (outcome) {
-            Outcome.STORED -> dao.markUploaded(ids, System.currentTimeMillis())
-            Outcome.MALFORMED -> dao.incrementUploadAttempts(ids)
+            UploadOutcome.STORED -> dao.markUploaded(ids, System.currentTimeMillis())
+            UploadOutcome.MALFORMED -> dao.incrementUploadAttempts(ids)
             else -> Unit
         }
 
@@ -101,7 +79,7 @@ class TelemetryUploader(
     /** Runs [block] once any in-flight upload has finished. */
     suspend fun <T> exclusively(block: suspend () -> T): T = uploadLock.withLock { block() }
 
-    private fun post(payload: String): Outcome {
+    private fun post(payload: String): UploadOutcome {
         val uploadUrl = settings.current().uploadUrl
 
         val connection = (URL(uploadUrl).openConnection() as HttpURLConnection).apply {
@@ -123,31 +101,10 @@ class TelemetryUploader(
 
             val code = connection.responseCode
             Log.i(TAG, "$uploadUrl answered $code")
-            classify(code)
+            UploadOutcome.forResponseCode(code)
         } finally {
             connection.disconnect()
         }
-    }
-
-    /**
-     * Maps a response code onto what should be done about it.
-     *
-     * `ingest` answers 401 for a device it does not know, 403 for one that has
-     * been deactivated, 400 for a body it cannot parse and 413 for one that
-     * outgrew its limits. It draws those distinctions on purpose - "send
-     * smaller batches" and "this will never be accepted" call for different
-     * things - and a wrong endpoint answers 404 for every batch alike, which is
-     * the reason that is separated from the rows being at fault.
-     */
-    private fun classify(code: Int): Outcome = when {
-        code in 200..299 -> Outcome.STORED
-        code == HttpURLConnection.HTTP_ENTITY_TOO_LARGE -> Outcome.TOO_LARGE
-        code == HttpURLConnection.HTTP_CLIENT_TIMEOUT -> Outcome.TRANSIENT
-        code == HTTP_TOO_MANY_REQUESTS -> Outcome.TRANSIENT
-        code == HttpURLConnection.HTTP_BAD_REQUEST -> Outcome.MALFORMED
-        code == HTTP_UNPROCESSABLE_ENTITY -> Outcome.MALFORMED
-        code in 400..499 -> Outcome.REFUSED
-        else -> Outcome.TRANSIENT
     }
 
     private fun buildJsonPayload(batch: List<TelemetrySampleEntity>): String {
@@ -229,10 +186,6 @@ class TelemetryUploader(
 
         private const val CONNECT_TIMEOUT_MS = 15_000
         private const val READ_TIMEOUT_MS = 15_000
-
-        /** No constants for these two in [HttpURLConnection]. */
-        private const val HTTP_TOO_MANY_REQUESTS = 429
-        private const val HTTP_UNPROCESSABLE_ENTITY = 422
 
         /*
          * One upload at a time across the process. The batch worker and the

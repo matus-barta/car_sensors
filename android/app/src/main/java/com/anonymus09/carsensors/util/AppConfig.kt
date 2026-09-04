@@ -45,6 +45,20 @@ object AppConfig {
     // it does, a session is on this much shorter leash.
     const val MOTION_CONFIRM_WINDOW_MS = 90 * 1000L
 
+    // What the logger gives up as the battery falls, in the order of what each
+    // costs against what it is worth. Uploading goes first because the radio is
+    // the most expensive thing here and nothing is lost by waiting; then the
+    // sample rate, since a coarse track beats none; then the sensors that only
+    // decorate a position; and only last does recording stop. None of it
+    // applies while the phone is on power.
+    const val BATTERY_PAUSE_UPLOAD_PERCENT = 30
+    const val BATTERY_REDUCE_RATE_PERCENT = 20
+    const val BATTERY_LOCATION_ONLY_PERCENT = 15
+    const val BATTERY_STOP_RECORDING_PERCENT = 10
+
+    // How much the flush interval is stretched once the rate is reduced.
+    const val BATTERY_REDUCED_RATE_FACTOR = 4
+
     // How long the vehicle must be still before recording gives way to waiting
     // for it to move again. Long enough to sit at a level crossing or in traffic
     // without the session being torn down and rebuilt.
