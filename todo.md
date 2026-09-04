@@ -618,6 +618,36 @@ The wording should distinguish the two cases the health check draws apart -
 unreachable server against unregistered device - because what the user has to do
 about them is different.
 
+### Work out why the API 28 managed device will not set itself up
+
+The `api28` device is declared and grouped with `api30atd`, but running it on a
+runner fails inside AGP's own `ManagedDeviceInstrumentationTestSetupTask` with
+"Cannot query the value of this property because it has no value available".
+Only the ATD device runs in CI as a result, so the level this app actually
+targets is covered locally - the handset is API 28 - and not automatically,
+which was the whole point of adding it.
+
+Two things about the failure are worth keeping, because they narrow it. The
+system image installs perfectly well first, so resolving `systemImageSource =
+"aosp"` to `system-images;android-28;default;x86` is not the problem; whatever
+is unset is needed after that, while the device itself is being created. And
+AGP reports that the device "does not specify a testedAbi" when
+`testedAbi = "x86"` is plainly set on it and the same setting on `api30atd`
+silenced the identical warning there. Something is not reading that device's
+configuration, and the missing property is likely the same fault seen from the
+other end.
+
+Nothing was found searching for the combination, so this is not a well-trodden
+path. Things to try, cheapest first: `systemImageSource = "google"` instead of
+`"aosp"`, in case the `default` image family is what is unhandled; a device
+profile other than `Pixel 2`; and API 29, which would still be below the ATD
+floor of 30 while being a more travelled configuration. The job now runs with
+`--stacktrace`, so the next failure should name the property outright.
+
+This cannot be reproduced on the workstation - an arm64 machine cannot run
+these x86 images - so each attempt costs a CI run, which is the main reason to
+have a theory before trying one.
+
 ### Split the foreground service up
 
 detekt records four findings in its baseline rather than at the current
