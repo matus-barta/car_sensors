@@ -82,11 +82,14 @@ class MainActivity : ComponentActivity() {
                         state = state,
                         locationStatus = locationStatus,
                         onAutoStartOnBootChange = viewModel::setAutoStartOnBoot,
-                        onStopWhenUnpluggedChange = viewModel::setStopWhenUnplugged,
-                        onUploadOnlyWhenChargingChange = viewModel::setUploadOnlyWhenCharging,
+                        onRecordOnBatteryChange = viewModel::setRecordOnBattery,
+                        onUploadOnBatteryChange = viewModel::setUploadOnBattery,
+                        onWifiOnlyChange = viewModel::setWifiOnly,
                         onLiveUploadChange = viewModel::setLiveUploadEnabled,
-                        onToggleLogging = { toggleLogging(state.isLogging) },
+                        onToggleLogging = { toggleLogging(state.loggerState) },
+                        onWakeOnMotionChange = viewModel::setWakeOnMotion,
                         onForceUpload = { WifiUploadScheduler.enqueueNow(this) },
+                        onRestartService = { TelemetryForegroundService.restartService(this) },
                         onServerBaseUrlSave = viewModel::setServerBaseUrl,
                         /*
                          * Cleartext is only permitted by the debug manifest, so
@@ -100,8 +103,8 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun toggleLogging(isLogging: Boolean) {
-        if (isLogging) {
+    private fun toggleLogging(loggerState: LoggerState) {
+        if (loggerState != LoggerState.OFF) {
             TelemetryForegroundService.stopService(this)
             return
         }

@@ -39,6 +39,21 @@ object AppConfig {
     // How long an uploaded row is kept before it is deleted.
     const val UPLOADED_ROW_RETENTION_MS = 7L * 24 * 60 * 60 * 1000
 
+    // How long a session has to show real movement before it counts as a
+    // journey. Significant motion also fires for a door slamming or the phone
+    // being picked up, so GPS has to second the motion sensor's opinion; until
+    // it does, a session is on this much shorter leash.
+    const val MOTION_CONFIRM_WINDOW_MS = 90 * 1000L
+
+    // How long the vehicle must be still before recording gives way to waiting
+    // for it to move again. Long enough to sit at a level crossing or in traffic
+    // without the session being torn down and rebuilt.
+    const val MOTION_IDLE_TIMEOUT_MS = 5 * 60 * 1000L
+
+    // Above this the vehicle counts as moving. Roughly 5 km/h, high enough that
+    // GPS noise while parked does not read as movement.
+    const val MOVEMENT_SPEED_MPS = 1.4f
+
     // Past this, a fix is no longer taken to be where the vehicle is. The last
     // known one keeps being returned after GPS drops out, so without this a
     // phone parked in a tunnel goes on reporting the position it left.
