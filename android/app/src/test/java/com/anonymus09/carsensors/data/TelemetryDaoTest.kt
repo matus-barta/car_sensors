@@ -4,6 +4,7 @@ import androidx.room.Room
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -88,6 +89,30 @@ class TelemetryDaoTest {
 
         assertEquals(1, batch.size)
         assertEquals(20L, batch.first().timestamp)
+    }
+
+    @Test
+    fun `upload progress reports the backlog and how long it has been one`() = runTest {
+        dao.insert(sample(timestamp = 10, uploaded = true))
+        dao.insert(sample(timestamp = 20))
+        dao.insert(sample(timestamp = 30))
+        // Blocked, so neither pending nor the oldest thing still waiting.
+        dao.insert(sample(timestamp = 5, attempts = 9))
+
+        val progress = dao.getUploadProgress(maxAttempts = 5)
+
+        assertEquals(2, progress.pendingRows)
+        assertEquals(10L, progress.lastUploadedAt)
+        assertEquals(20L, progress.oldestPendingAt)
+    }
+
+    @Test
+    fun `upload progress leaves both timestamps null when there is nothing to report`() = runTest {
+        val progress = dao.getUploadProgress(maxAttempts = 5)
+
+        assertEquals(0, progress.pendingRows)
+        assertNull(progress.lastUploadedAt)
+        assertNull(progress.oldestPendingAt)
     }
 
     @Test
