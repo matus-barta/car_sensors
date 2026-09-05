@@ -52,6 +52,26 @@ interface TelemetryDao {
     )
     suspend fun getPendingUploadCount(maxAttempts: Int): Int
 
+    /**
+     * The backlog, and how long it has been one, in a single pass.
+     *
+     * The service asks for this on the same throttle that used to ask only for
+     * the pending count, so noticing that uploads have stopped costs no extra
+     * scan of a table taking two writes a second.
+     */
+    @Query(
+        """
+        SELECT
+            COUNT(CASE WHEN uploaded = 0 AND uploadAttemptCount < :maxAttempts THEN 1 END)
+                AS pendingRows,
+            MAX(CASE WHEN uploaded = 1 THEN uploadedAt END) AS lastUploadedAt,
+            MIN(CASE WHEN uploaded = 0 AND uploadAttemptCount < :maxAttempts THEN timestamp END)
+                AS oldestPendingAt
+        FROM telemetry_samples
+    """
+    )
+    suspend fun getUploadProgress(maxAttempts: Int): UploadProgress
+
     @Query(
         """
         UPDATE telemetry_samples

@@ -563,25 +563,19 @@ Only under real storage pressure should any be dropped, and then the oldest
 first, because the recent ones describe where the vehicle is now.
 
 Deleting the only copy of something should never be the first the user hears of
-it. The warning belongs well before the threshold - see the entry below - not at
-the moment data is discarded.
+it. `UploadSilenceNotifier` already warns once telemetry has gone unsent for
+`UPLOAD_SILENCE_WARNING_MS`, which covers the ordinary case of a server that
+has stopped accepting anything. What a storage ceiling adds is a second, more
+insistent warning as the backlog approaches it, because a phone that is about
+to start discarding rows deserves more notice than one that is merely behind.
+That one belongs here, with the threshold it is measured against.
 
-### Warn when nothing has reached the server
-
-Nothing tells the user that uploads have stopped. The `/api` bug ran for two
-months and the only evidence was a number on a diagnostics panel nobody had
-reason to look at.
-
-A notification once the newest successful upload is older than some threshold,
-and a second, more insistent one as the unuploaded backlog approaches the
-storage ceiling above, so that discarding data is never the first notice of a
-problem. The figures are already to hand: `TelemetryStats` carries
-`lastUploadTime` and `pendingUpload`, and the service already measures the
-backlog on a throttle.
-
-The wording should distinguish the two cases the health check draws apart -
-unreachable server against unregistered device - because what the user has to do
-about them is different.
+Worth knowing about the existing warning when this is written: it is raised
+from the foreground service's throttled backlog check, so it is only evaluated
+while the logger is actually recording. A phone that is driven regularly hears
+within a day; one that is parked for a month hears nothing until it next
+records. That is the right trade for a warning about data still being
+collected, but a warning about storage pressure may not want to inherit it.
 
 ### Work out why the API 28 managed device will not set itself up
 

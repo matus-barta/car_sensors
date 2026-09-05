@@ -98,5 +98,18 @@ object AppConfig {
     // second.
     const val UPLOAD_CHECK_EVERY_N_SAMPLES = 120
 
+    // How long telemetry may go unsent before the user is told. The wrong
+    // endpoint went unnoticed for two months because the only evidence was a
+    // number on a panel nobody had reason to open, so the warning has to come
+    // to them. A day is long enough to sit out a weekend away from the usual
+    // Wi-Fi without crying wolf, and short enough that a real break is caught
+    // while it is still a small backlog.
+    const val UPLOAD_SILENCE_WARNING_MS = 24L * 60 * 60 * 1000
+
+    // How often that warning is renewed while it goes unresolved. Each renewal
+    // re-checks the server, so the stated cause stays true if it changes, and
+    // this is what keeps that check to four times a day rather than hourly.
+    const val UPLOAD_SILENCE_RENOTIFY_MS = 6L * 60 * 60 * 1000
+
     const val DB_STATS_REFRESH_RATE = 5
 }
