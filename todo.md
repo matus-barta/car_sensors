@@ -107,6 +107,30 @@ device sends the token and `ingest` hashes what it receives and compares in
 constant time, inside the lookup the middleware already performs. That adds no
 round trip and no measurable time to the upload path.
 
+Those 32 bytes are rendered as unpadded base64url, which is the ordinary form
+for an opaque bearer token and the one RFC 6750's `b64token` syntax expects. It
+is worth naming because it is a wire decision rather than a presentation one -
+`ingest` hashes the string it receives, so the encoding is part of what the
+hash is of, and changing it later means re-pairing every device. An encoding
+chosen instead for being read aloud, such as Crockford Base32, was considered
+and dropped: it only paid for itself while typing a token by hand was a
+supported path, and it no longer is.
+
+The token does not expire. It is valid until it is rotated or the device is
+deactivated, and `token_rotated_at` records when it last changed rather than
+setting a deadline. An expiry bounds the damage from a credential that cannot
+be withdrawn, which is the situation a signed token creates and not this one:
+the hash sits on a row `ingest` already reads on every request, so withdrawing
+it is a database write that takes effect at once. Against that, a lifetime buys
+nothing and introduces a way to lock out a phone that has done nothing wrong -
+one parked offline for a fortnight would come back to a credential that had
+lapsed, with no way to renew it that does not need the server it cannot reach.
+
+The caveat is the cache rather than the scheme. While the lookup is served from
+Valkey a withdrawn token keeps working until that entry expires, so "at once"
+is true of the database and only true of the running system once `www` clears
+the key - which is the same point the trap above makes.
+
 A password hash - Argon2, bcrypt - would be the wrong tool despite being the
 usual advice. Those are deliberately slow because passwords have little entropy;
 a 256-bit random token has plenty, and the slowness would land on every upload.
@@ -129,6 +153,14 @@ service. What multiple pieces need is the stored hash, not centrally executed
 behaviour, and `db/migrations` already owns that contract - whereas an
 authentication service would put a network dependency in the one path that must
 never lose data.
+
+No compatibility window when this ships. The obvious caution would be a nullable
+`token_hash` that `ingest` accepts as "the identity alone is enough" until every
+device has been re-paired, but that transitional path is the very hole this
+entry exists to close, and it would outlive the migration that justified it.
+The deployment is one server and one handset in the same hands, so the column,
+the server and the app land together and the phone is re-paired by hand. The
+token is required from the first request that reaches the new `ingest`.
 
 One trap in the middleware as it stands. `require_known_device` caches
 `known_device:{id}` as a bare boolean for five minutes, so a cache hit answers
@@ -156,8 +188,25 @@ arrives.
 
 The authority moves to the server. `www` generates the identity and the token
 from the entry above, stores them in `known_devices` and shows both as a QR code
-and as copyable text. The phone starts with nothing and offers to scan; typing
-or pasting stays the fallback for when the camera will not cooperate.
+and as copyable text. The phone starts with nothing and offers to scan.
+
+The fallback when the camera will not cooperate is copy and paste, not typing:
+`www` is on the same network, so the phone opens it in a browser and copies the
+values across. Typing them by hand is not a path worth supporting - an identity
+and a token together are around ninety characters of random data, and nobody
+transcribes that correctly. Signing in to `www` on the phone to reach them
+means a password already known rather than a secret being transcribed, which is
+the whole difference.
+
+If pairing ever has to work where that is not available - the audience widening
+past a single operator, which the Obtainium entry contemplates - the standard
+answer is a short single-use code redeemed over HTTP, the shape RFC 8628 uses
+for televisions and command-line tools: `www` shows something like `K7M2-9QXA`,
+the phone sends it back and receives the real credential. That keeps what is
+typed to a few characters without weakening the token behind it. It is a
+convenience rather than a requirement, and it is a credential-issuing endpoint
+that would need to be single-use, short-lived and rate-limited, so it is not
+worth building before somebody actually needs it.
 `DeviceIdProvider` stops generating anything, which is a real behavioural change
 - an unpaired app has no identity rather than an unregistered one, and every
 screen that assumes one exists has to cope with its absence.
@@ -165,11 +214,21 @@ screen that assumes one exists has to cope with its absence.
 ZXing (`zxing-android-embedded`) reads the code without dragging in Play
 Services, which is the better trade on the old handset this runs on.
 
-Undecided, and worth settling before the web side is written: whether `www`
-stops accepting a typed device id altogether once it generates them, or keeps
-the field as an escape hatch. Removing it makes the server unambiguously the
-authority; keeping it leaves a way to adopt a device whose identity came from
-somewhere else. It changes how much of the existing dialog survives.
+Decided: `www` stops accepting a typed device id altogether, and the field goes.
+It had looked as though an escape hatch was needed to adopt devices paired under
+the old flow, but it is not - `www` already owns every one of those rows, so
+giving an existing vehicle a token is a rotation against an id it already holds.
+The id does not change, the history is preserved, and nothing is typed. The same
+is true of a replacement handset and of a phone moving between cars, which
+leaves no ordinary case that wants the field, and one real hazard that goes with
+it: `deviceId` accepts any string of 1 to 255 characters, so a typo registers a
+vehicle that silently never receives telemetry.
+
+The one case it does not cover is a phone holding an identity `www` has no row
+for at all - a lost or restored database. A free-text id would not rescue that
+either, since the hash cannot be recovered without the token, so it wants a
+deliberate "adopt this device" flow taking both values rather than the field
+that exists today. Not worth building until it happens.
 
 Pairing has to be repeatable, not a one-off. A phone moves between cars, a token
 is rotated, an app is reinstalled - the flow that assigns an identity is the
@@ -188,6 +247,45 @@ looks: App Links need `assetlinks.json` served over HTTPS from the domain, which
 a LAN address over plain HTTP cannot do, and a custom scheme any application can
 claim would put a token into browser history. A convenience to add after the QR
 flow works, not an alternative to it.
+
+The token travels as `Authorization: Bearer <token>` and a `Device-Id` header
+keeps carrying the identity, which is the ordinary division rather than an
+invention:
+a bearer token is what RFC 6750 describes, logging and proxy tooling already
+knows to redact that header, and the identity is deliberately not a secret and
+stays a plain greppable value that `ingest` looks the row up by. Folding both
+into HTTP Basic as an id and password pair would also be standard, but it would
+repurpose a header that currently means something clearer.
+
+The `X-` prefix goes at the same time: RFC 6648 deprecated it for new headers
+long ago, and `Device-Id` is the current spelling of the same idea. It is a
+protocol break, which is exactly why it belongs here - the token already
+requires both sides to ship together, so the rename costs nothing on top,
+whereas doing it alone later would mean breaking a working deployment for
+tidiness. Five places name the header today: the middleware in
+`ingest/src/helpers/middleware.rs`, the two Android callers in
+`TelemetryUploader` and `ServerHealth`, the request builders in
+`ingest/tests/api.rs`, and the protocol description in `ingest/README.md`.
+
+Follow RFC 6750 rather than only borrowing its header. Keeping `Device-Id`
+alongside is not a departure from it - the specification governs how a bearer
+token travels and is silent on identity, which belongs to the pairing flow -
+but its error responses are a part currently missing, and the useful part. A
+rejection should carry `WWW-Authenticate: Bearer` with a reason: `invalid_token`
+for a credential that is wrong, revoked or malformed, against a bare 401 when
+none was presented at all. That is worth having because the phone cannot
+presently tell those apart. `UploadOutcome.forResponseCode` collapses 401 and
+403 alike into `REFUSED`, which is the reason the question of what to do about
+a banned device is still open below - a machine-readable reason answers it
+without inventing a private convention.
+
+One requirement will be broken deliberately. Section 5.1 says a bearer token
+MUST be sent over TLS, and the Android entry below plans to allow cleartext to
+a private address precisely because a LAN server has no certificate. That is a
+real exception rather than an oversight, and the trade is the one that entry
+already argues: a token that can be rotated the moment it is suspected is what
+makes the exposure affordable, which is also why the cleartext relaxation is
+sequenced after this work rather than before it.
 
 ### Cover the four ways a phone and a car come together
 
@@ -263,10 +361,31 @@ What follows:
   them is when an identity is finally assigned, since the user knows which car
   the phone was sitting in and nothing else does.
 
+Recording while unpaired is a feature rather than a state to be tolerated. Hand
+somebody a spare phone with no server and no account, let them drive, and decide
+afterwards what the trip was - which car it belonged to, or whether to keep it
+at all. That only works if the untagged rows survive until someone says
+otherwise, so an unpaired app must record freely and simply never upload.
+
+What makes it safe is asking at the one moment the answer is known. When pairing
+starts, the phone checks whether untagged rows exist and, if they do, asks
+before going any further: attach them to the pairing being set up, or discard
+them. Both answers are reasonable - a phone that has been sitting in the car all
+along should hand its journeys over, and a phone that recorded somebody else's
+trip should not - and the user is the only party who knows which. What must not
+happen is the question going unasked, because then the rows are silently
+adopted by whichever car the phone is pointed at next, which is precisely the
+misattribution the pairing column exists to prevent.
+
+Worth deciding at the same time whether discarding offers to export first. The
+rows are the only copy, and "wipe them" is an irreversible answer to a question
+asked in passing during setup.
+
 This is a Room migration on a table that already holds the only copy of
 unuploaded telemetry, so it wants the same care as the last one: rows written
 before it lands have no pairing and are indistinguishable from rows recorded
-unpaired.
+unpaired - which is the same question the pairing prompt above already has to
+answer, and it can be left to it.
 
 ## Database
 
