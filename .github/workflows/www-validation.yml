@@ -9,6 +9,7 @@ on:
       - "tools/scripts/cleanup-drizzle-output.js"
       - ".github/actions/setup-www/**"
       - ".github/workflows/www-validation.yml"
+      - "!www/**/*.md"
 
   push:
     branches:
@@ -21,6 +22,7 @@ on:
       - "tools/scripts/cleanup-drizzle-output.js"
       - ".github/actions/setup-www/**"
       - ".github/workflows/www-validation.yml"
+      - "!www/**/*.md"
 
 permissions:
   contents: read

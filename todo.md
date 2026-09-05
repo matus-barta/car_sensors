@@ -703,6 +703,37 @@ refuses to start.
 
 ## Distribution
 
+### Give the web application a container image
+
+The Compose file starts PostgreSQL, Valkey, pgAdmin and `ingest`, and stops
+there. `www` has no image, so a deployment is only half a deployment: the
+README has to tell an operator to build it themselves and run `node build`
+beside the stack. It already uses `adapter-node`, so the missing pieces are a
+multi-stage Dockerfile, a build workflow shaped like `ingest-build.yml`, and
+the service added to `docker-compose.yml`.
+
+One thing to settle first, because it decides whether a published image is
+worth publishing. The map's tile and style URLs are read through
+`$env/static/public`, which SvelteKit inlines into the bundle at build time
+rather than reading at startup. An image built once therefore carries whichever
+tile server was configured when it was built, and an operator cannot point it
+at their own with an environment variable - they would have to rebuild, which
+is most of the reason to have an image gone. Moving those two to
+`$env/dynamic/public` is what makes one image serve every deployment. There is
+a fallback to the public OpenStreetMap vector server already, so an image built
+with neither set does work; it just works one way only.
+
+The secrets are the other half. `DATABASE_URL`, `ORIGIN` and
+`BETTER_AUTH_SECRET` are read at runtime and validated at startup, so they are
+ordinary environment variables - but `BETTER_AUTH_SECRET` must not acquire a
+default, and the Compose file should make its absence a failure rather than
+quietly starting with something predictable.
+
+Worth doing before the Android release work rather than after: between them
+they are the point at which this project starts having versions, and a badge or
+a release note has something true to say only once both pieces ship the same
+way.
+
 ### Publish signed builds to GitHub Releases for Obtainium
 
 Every install so far has been `adb install` from a workstation, which does not

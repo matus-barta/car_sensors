@@ -21,6 +21,7 @@ on:
     paths:
       - "android/**"
       - ".github/workflows/android-dependency-graph.yml"
+      - "!android/**/*.md"
 
 permissions:
   contents: read

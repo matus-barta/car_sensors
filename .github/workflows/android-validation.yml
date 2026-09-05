@@ -5,6 +5,7 @@ on:
     paths:
       - "android/**"
       - ".github/workflows/android-validation.yml"
+      - "!android/**/*.md"
 
   # Also after a merge, as "WWW - validation" does. Partly so a bad merge is
   # caught, and partly because caches are only shared between branches when
@@ -18,6 +19,7 @@ on:
     paths:
       - "android/**"
       - ".github/workflows/android-validation.yml"
+      - "!android/**/*.md"
 
   # Called by a release workflow rather than triggering on the push itself, so
   # a build is only published once these checks have passed - the same shape
