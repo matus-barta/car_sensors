@@ -27,6 +27,7 @@ on:
       - master
     paths:
       - "android/**"
+      - "!android/**/*.md"
       - ".github/workflows/android-migration.yml"
 
   workflow_call:
