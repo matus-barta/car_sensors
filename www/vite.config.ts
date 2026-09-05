@@ -27,6 +27,16 @@ export default defineConfig({
 			}
 		})
 	],
+	/*
+	 * VehicleMap reaches maplibre-gl through a dynamic import, and the only
+	 * static references to it are an erased `import type` and the ?worker&url
+	 * subpath - so Vite's scanner never sees the bare specifier and discovers
+	 * it at runtime instead. That mid-session pre-bundle forces a page reload,
+	 * which in browser-mode tests lands underneath whichever file is running.
+	 */
+	optimizeDeps: {
+		include: ['maplibre-gl']
+	},
 	test: {
 		expect: { requireAssertions: true },
 		projects: [
