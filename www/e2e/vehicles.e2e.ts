@@ -307,6 +307,51 @@ test.describe('vehicle selection and creation', () => {
 		await expect(page.getByTestId('vehicle-map-loading')).toHaveAttribute('aria-hidden', 'true');
 	});
 
+	test('releases the camera when the map is panned and takes it back on request', async ({
+		page
+	}) => {
+		const map = page.getByTestId('vehicle-map');
+
+		await expect(map).toHaveAttribute('data-map-state', 'ready', {
+			timeout: 20_000
+		});
+
+		const followToggle = page.getByTestId('vehicle-map-follow-toggle');
+
+		await expect(followToggle).toHaveAttribute('aria-pressed', 'true');
+
+		/*
+		 * A real drag rather than a synthetic event: what separates a user gesture
+		 * from the component's own camera moves is the DOM event MapLibre attaches
+		 * to the first, and only an actual pointer sequence produces one.
+		 */
+		const canvas = map.locator('canvas').first();
+		const box = await canvas.boundingBox();
+
+		expect(box).not.toBeNull();
+
+		if (!box) {
+			return;
+		}
+
+		const startX = box.x + box.width * 0.5;
+		const startY = box.y + box.height * 0.72;
+
+		await page.mouse.move(startX, startY);
+		await page.mouse.down();
+		await page.mouse.move(startX - 160, startY - 120, { steps: 12 });
+		await page.mouse.up();
+
+		await expect(followToggle).toHaveAttribute('aria-pressed', 'false');
+
+		// Panning releases the camera only - the vehicle stays selected.
+		await expect(getVehicleInfoCard(page)).toContainText('Škoda Octavia');
+
+		await followToggle.click();
+
+		await expect(followToggle).toHaveAttribute('aria-pressed', 'true');
+	});
+
 	test('resets the vehicle form after cancellation', async ({ page }) => {
 		const dialog = await openAddVehicleDialog(page);
 

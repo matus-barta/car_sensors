@@ -30,56 +30,6 @@ screens once there is more inside it; and surfacing more live fields means
 growing `VehicleLivePosition` and the merge in `vehicle-state.svelte.ts`
 beyond the four fields it carries now.
 
-### Let the map be panned away from the selected vehicle without losing it
-
-`vehicle-map.svelte`'s `focusSelectedVehicle()` runs inside an `$effect` that
-reads `selectedVehicleId` and `vehicles`, and re-centers the map with
-`easeTo()` on every change to either. That means any update to the selected
-vehicle's position re-centers the map, even if someone had just panned or
-zoomed away to look at something else - the view snaps back underneath them.
-Live tracking makes this a lot more noticeable than it used to be: the
-selected vehicle's position can now update every few seconds instead of every
-poll, so the map fights a manual pan far more often than before.
-
-The fix is a "follow" state, separate from "selected": panning, zooming or
-rotating the map by hand should disengage follow without deselecting the
-vehicle - the info card stays, the marker stays highlighted, but position
-updates stop forcing the camera back. A small button near the existing map
-controls, in the spirit of the "recenter on my location" button in most map
-apps, re-engages follow and jumps back to the vehicle; it could be a toggle
-that also shows whether follow is currently on.
-
-The main implementation question is telling a user gesture apart from the
-component's own `easeTo()`/`jumpTo()` calls, since both fire the same camera
-events. MapLibre's `movestart`/`dragstart`/`zoomstart`/`rotatestart` events
-carry a real `originalEvent` (the underlying DOM event) only when a user
-triggered them; a call to `easeTo()` that does not explicitly pass its own
-`originalEvent` fires with `originalEvent: undefined`, which is what should
-distinguish "the user moved the map" from "the map moved because a vehicle
-did" without needing a manual flag around every future place code moves the
-camera.
-
-### Do not flash a skeleton for a vehicle info card that is never coming
-
-`+page.svelte` shows `VehicleInfoCardSkeleton` while `vehicleState.loading`,
-then `VehicleInfoCard` if `vehicleState.selectedVehicle`, otherwise nothing.
-`loading` is only ever true once - the very first fetch of the vehicle list,
-before `VehicleState` has resolved whether there is anything to select - so
-whenever that first load ends with no selection (an empty fleet, today; any
-other reason there is no selection, in the future), the skeleton has already
-promised a card that then just disappears once loading finishes. The correct
-first frame for "there is nothing to select" is no card at all, not a skeleton
-that flashes and vanishes.
-
-Since there is no way to know in advance, while that first fetch is still in
-flight, whether it will end in a selection, the skeleton cannot be conditioned
-on the eventual answer - it has to go. Showing nothing until
-`vehicleState.selectedVehicle` actually resolves removes the flash entirely;
-the map already carries its own "Loading map…" indicator, so the page is not
-left silent while data loads. `vehicle-info-card-skeleton.svelte` has no other
-consumer, so this would remove that component along with the branch in
-`+page.svelte` that renders it.
-
 ### Validate vehicle summary rows with a zod schema
 
 `getVehicleSummaries()` in `vehicle-service.ts` reads a raw SQL join and casts
@@ -179,6 +129,21 @@ service. What multiple pieces need is the stored hash, not centrally executed
 behaviour, and `db/migrations` already owns that contract - whereas an
 authentication service would put a network dependency in the one path that must
 never lose data.
+
+One trap in the middleware as it stands. `require_known_device` caches
+`known_device:{id}` as a bare boolean for five minutes, so a cache hit answers
+"this device is known and active" without the database being consulted at all.
+Adding a token check naively would leave that hit short-circuiting the
+comparison, and a request bearing the wrong token would be accepted for as long
+as the entry lives. The cached value has to become the stored hash rather than a
+boolean, so that the comparison happens on every request whether or not the
+lookup was served from Valkey.
+
+Rotation then needs deciding alongside it: either `www` deletes the cache key
+when it mints a new token - it already talks to Valkey for live tracking - or a
+window of up to `KNOWN_DEVICE_CACHE_TTL_SECS` in which the old token still works
+is accepted and written down. Silently inheriting the second is the outcome to
+avoid, given that locking the previous handset out is the point of rotating.
 
 ### Let the server issue the identity and the phone scan it
 

@@ -1,6 +1,5 @@
 <script lang="ts">
 	import VehicleInfoCard from '$lib/components/vehicle-info-card.svelte';
-	import VehicleInfoCardSkeleton from '$lib/components/vehicle-info-card-skeleton.svelte';
 	import VehicleMap from '$lib/components/vehicle-map.svelte';
 
 	import { getVehicleState } from '$lib/vehicles/vehicle-state.svelte.js';
@@ -19,11 +18,13 @@
 		onVehicleSelect={(vehicleId) => vehicleState.selectVehicle(vehicleId)}
 	/>
 
-	{#if vehicleState.loading}
-		<div class="pointer-events-none absolute top-4 left-4 z-30 md:top-5 md:left-5">
-			<VehicleInfoCardSkeleton />
-		</div>
-	{:else if vehicleState.selectedVehicle}
+	<!--
+		No skeleton while the first fetch is in flight. Nothing can know yet
+		whether it will end in a selection, so a placeholder card is a promise
+		that an empty fleet then breaks by having it vanish. The map carries its
+		own loading indicator, so the page is not silent in the meantime.
+	-->
+	{#if vehicleState.selectedVehicle}
 		{@const selectedVehicle = vehicleState.selectedVehicle}
 
 		<div class="pointer-events-none absolute top-4 left-4 z-30 md:top-5 md:left-5">
