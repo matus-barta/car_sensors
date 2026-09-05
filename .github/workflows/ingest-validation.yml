@@ -9,6 +9,7 @@ on:
       - "Cargo.toml"
       - "Cargo.lock"
       - ".github/workflows/ingest-validation.yml"
+      - "!ingest/**/*.md"
 
   # Called by "Ingest - build" on main rather than triggering on the push
   # itself, so the image is only built once these checks have passed.

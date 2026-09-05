@@ -15,7 +15,7 @@ on:
       - "Cargo.lock"
       - ".github/workflows/ingest-build.yml"
       - ".github/workflows/ingest-validation.yml"
-      - "!ingest/*.md"
+      - "!ingest/**/*.md"
       - ".dockerignore"
       - "!docker-compose.yml"
 
