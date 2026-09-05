@@ -6,8 +6,13 @@
 
 	import mapLibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 
+	import LocateIcon from '@lucide/svelte/icons/locate';
+	import LocateFixedIcon from '@lucide/svelte/icons/locate-fixed';
+
 	import type { VehicleWithStatus } from '$lib/vehicles/vehicle';
+	import { Button } from '$lib/components/ui/button';
 	import { createOsmMapStyle } from '$lib/map/osm-map-style';
+	import { isUserCameraGesture, type CameraEventOrigin } from '$lib/map/camera-gesture';
 
 	import { tick } from 'svelte';
 	import type { Attachment } from 'svelte/attachments';
@@ -23,6 +28,23 @@
 	let map: MapLibreMap | null = null;
 	let mapLoaded = $state(false);
 	let mapError = $state<string | null>(null);
+
+	/*
+	 * Whether the camera is locked to the selected vehicle. Selecting a vehicle
+	 * is a request to look at it, so this starts engaged and re-engages on every
+	 * new selection; moving the map by hand disengages it, which is what lets
+	 * someone look somewhere else without the next position update dragging the
+	 * view back. It is deliberately separate from selection: a disengaged follow
+	 * still leaves the vehicle selected, its marker highlighted and its card up.
+	 */
+	let following = $state(true);
+
+	/*
+	 * The selection the follow state was last reconciled against. A plain
+	 * variable rather than `$state`, so recording it does not re-run the effect
+	 * that writes it.
+	 */
+	let followedVehicleId: string | null = null;
 
 	const styleUrl =
 		PUBLIC_OSM_STYLE_URL || 'https://vector.openstreetmap.org/styles/shortbread/colorful.json';
@@ -49,6 +71,15 @@
 			vehicle.longitude <= 180
 		);
 	}
+
+	/*
+	 * There is no point offering to follow something the camera cannot reach, so
+	 * the toggle stays hidden until the selected vehicle actually has a position.
+	 */
+	const canFollowSelectedVehicle = $derived(
+		selectedVehicleId !== null &&
+			vehicles.some((vehicle) => vehicle.id === selectedVehicleId && hasCoordinates(vehicle))
+	);
 
 	function createVehicleFeatureCollection(): FeatureCollection<Point> {
 		return {
@@ -142,7 +173,7 @@
 	}
 
 	function focusSelectedVehicle(): void {
-		if (!mapLoaded || !map || !selectedVehicleId) {
+		if (!mapLoaded || !map || !selectedVehicleId || !following) {
 			return;
 		}
 
@@ -230,11 +261,45 @@
 			return;
 		}
 
+		/*
+		 * Clicking the vehicle that is already selected changes no prop, so the
+		 * selection effect never sees it. Re-engage here, or a marker click would
+		 * be the one obvious way back to a vehicle that does nothing.
+		 */
+		if (vehicleId === selectedVehicleId) {
+			following = true;
+		}
+
 		onVehicleSelect?.(vehicleId);
+	}
+
+	function handleCameraMoveStart(event: CameraEventOrigin): void {
+		if (!isUserCameraGesture(event)) {
+			return;
+		}
+
+		following = false;
+	}
+
+	function toggleFollow(): void {
+		following = !following;
 	}
 
 	$effect(() => {
 		updateVehicleSource();
+	});
+
+	/*
+	 * Re-engage follow whenever the selection changes, so that choosing a vehicle
+	 * always brings the camera to it however the last one was left.
+	 */
+	$effect(() => {
+		if (selectedVehicleId === followedVehicleId) {
+			return;
+		}
+
+		followedVehicleId = selectedVehicleId;
+		following = true;
 	});
 
 	$effect(() => {
@@ -314,6 +379,19 @@
 						sourceId: 'sourceId' in event ? event.sourceId : undefined
 					});
 				});
+
+				/*
+				 * `movestart` is the one that catches keyboard panning, which moves the
+				 * camera without ever dragging. The four specific events catch a gesture
+				 * that begins while a programmatic ease is still running, when the map is
+				 * already moving and `movestart` will not fire a second time. Each only
+				 * ever clears the same flag, so the overlap between them costs nothing.
+				 */
+				map.on('movestart', handleCameraMoveStart);
+				map.on('dragstart', handleCameraMoveStart);
+				map.on('zoomstart', handleCameraMoveStart);
+				map.on('rotatestart', handleCameraMoveStart);
+				map.on('pitchstart', handleCameraMoveStart);
 
 				async function markMapReady(): Promise<void> {
 					if (!map || destroyed || mapLoaded) {
@@ -407,6 +485,32 @@
 				<p class="text-sm font-medium">The map could not be loaded.</p>
 				<p class="mt-1 text-sm text-muted-foreground">{mapError}</p>
 			</div>
+		</div>
+	{/if}
+
+	{#if mapLoaded && canFollowSelectedVehicle}
+		<!--
+			Bottom right, above the compact attribution: the navigation control
+			already owns the top right, and this is where a recenter control sits in
+			most map applications.
+		-->
+		<div class="absolute right-2.5 bottom-12 z-20">
+			<Button
+				variant="outline"
+				size="icon"
+				class="rounded-full bg-background/95 shadow-lg backdrop-blur-sm"
+				aria-pressed={following}
+				aria-label="Follow the selected vehicle"
+				title="Follow the selected vehicle"
+				data-testid="vehicle-map-follow-toggle"
+				onclick={toggleFollow}
+			>
+				{#if following}
+					<LocateFixedIcon class="text-primary" />
+				{:else}
+					<LocateIcon />
+				{/if}
+			</Button>
 		</div>
 	{/if}
 
