@@ -1,0 +1,64 @@
+name: Android - dependency graph
+
+# Submits the resolved dependency graph to GitHub so that security advisories
+# can reach the Android tree. Without it that tree is invisible: `ingest` and
+# `www` are covered because a lockfile carries resolved versions, but Gradle
+# has none, and the version catalog means the build files hold names like
+# `libs.androidx.core.ktx` rather than versions. Anything that reads the files
+# therefore sees dependencies with no version and can say nothing about them.
+#
+# This action asks Gradle to resolve the graph instead of parsing anything, so
+# the catalog is followed the way the build follows it.
+
+on:
+  # Only from the default branch. The dependency graph describes what is
+  # released rather than what is proposed, and a submission from a branch would
+  # overwrite it with something that may never merge.
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - "android/**"
+      - ".github/workflows/android-dependency-graph.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-dependency-graph-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  submit:
+    name: Submit the Android dependency graph
+    runs-on: ubuntu-latest
+
+    permissions:
+      # Submitting a dependency graph is a write to the repository's
+      # dependency data, so it needs more than the read the other workflows
+      # get. Kept to this job, which is why this is a workflow of its own.
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Install JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      # Resolving the graph builds enough of the project to need the SDK, and
+      # an unaccepted licence stops that as surely as it stops a compile.
+      - name: Accept the Android SDK licences
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+
+      - name: Generate and submit the dependency graph
+        uses: gradle/actions/dependency-submission@v6
+        with:
+          # The Gradle build is not at the repository root, and this input is
+          # what the action uses - `working-directory` would only affect `run`
+          # steps, not an action.
+          build-root-directory: android
