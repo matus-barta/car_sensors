@@ -35,9 +35,11 @@ import com.anonymus09.carsensors.data.AppDatabase
 import com.anonymus09.carsensors.data.PowerState
 import com.anonymus09.carsensors.data.PowerTier
 import com.anonymus09.carsensors.data.PowerStateProvider
+import com.anonymus09.carsensors.data.ServerHealthChecker
 import com.anonymus09.carsensors.data.SettingsRepository
 import com.anonymus09.carsensors.data.TelemetryUploader
 import com.anonymus09.carsensors.data.UploadOutcome
+import com.anonymus09.carsensors.data.uploadSilenceMessage
 import com.anonymus09.carsensors.data.TelemetrySampleEntity
 import com.anonymus09.carsensors.work.WifiUploadScheduler
 import kotlinx.coroutines.CoroutineScope
@@ -70,6 +72,9 @@ import com.anonymus09.carsensors.util.AppConfig.LIVE_PUSH_MIN_INTERVAL_MS
 import com.anonymus09.carsensors.util.AppConfig.SENSOR_SAMPLING_US
 import com.anonymus09.carsensors.util.AppConfig.UPLOAD_CHECK_EVERY_N_SAMPLES
 import com.anonymus09.carsensors.util.AppConfig.UPLOAD_MAX_ATTEMPTS
+import com.anonymus09.carsensors.util.AppConfig.UPLOAD_SILENCE_RENOTIFY_MS
+import com.anonymus09.carsensors.util.AppConfig.UPLOAD_SILENCE_WARNING_MS
+import com.anonymus09.carsensors.util.DeviceIdProvider
 import com.anonymus09.carsensors.util.GpsClock
 import com.anonymus09.carsensors.util.ageMs
 import com.anonymus09.carsensors.util.AppConfig.UPLOAD_TRIGGER_PENDING_ROWS
@@ -168,6 +173,17 @@ class TelemetryForegroundService : Service(), SensorEventListener {
 
     private val settings by lazy { SettingsRepository(this) }
     private val uploader by lazy { TelemetryUploader.create(this) }
+    private val uploadSilenceNotifier by lazy { UploadSilenceNotifier(this) }
+
+    /**
+     * When the upload-silence warning was last posted, so that an outage
+     * lasting weeks does not re-check the server every minute.
+     *
+     * Held on the instance rather than persisted: forgetting it across a
+     * restart costs one extra check, and the warning itself survives in the
+     * shade regardless.
+     */
+    private var uploadSilenceWarnedAt: Long? = null
 
     /** Fix already announced live, as a monotonic clock reading. */
     @Volatile
@@ -981,16 +997,66 @@ class TelemetryForegroundService : Service(), SensorEventListener {
                 if (samplesSinceUploadCheck.incrementAndGet() >= UPLOAD_CHECK_EVERY_N_SAMPLES) {
                     samplesSinceUploadCheck.set(0)
 
-                    val pending = telemetryDao.getPendingUploadCount(UPLOAD_MAX_ATTEMPTS)
-                    if (pending >= UPLOAD_TRIGGER_PENDING_ROWS) {
-                        WifiUploadScheduler.enqueue(this@TelemetryForegroundService)
-                    }
+                    reviewUploadBacklog()
                 }
             } catch (e: Exception) {
                 Log.e("Telemetry", "Room insert failed", e)
             }
         }
 
+    }
+
+    /**
+     * Wakes the uploader when the backlog justifies it, and warns when that
+     * backlog has stopped draining.
+     *
+     * Both questions are answered from one scan of the table. The warning is
+     * raised here rather than in the uploader because the failure worth
+     * catching includes the uploader never running at all - a constraint that
+     * is never satisfied, or work that is never enqueued, produces no failed
+     * upload to notice.
+     */
+    private suspend fun reviewUploadBacklog() {
+        val progress = telemetryDao.getUploadProgress(UPLOAD_MAX_ATTEMPTS)
+
+        if (progress.pendingRows >= UPLOAD_TRIGGER_PENDING_ROWS) {
+            WifiUploadScheduler.enqueue(this)
+        }
+
+        val now = System.currentTimeMillis()
+        val waiting = progress.waitingMs(now)
+
+        if (waiting == null || waiting < UPLOAD_SILENCE_WARNING_MS) {
+            /*
+             * Telemetry is moving again, or there is none to move. Clearing
+             * unconditionally rather than only when a warning is up: the
+             * process may have died and been restarted since it was posted,
+             * and the notification outlives the field that remembers it.
+             */
+            uploadSilenceNotifier.clear()
+            uploadSilenceWarnedAt = null
+
+            return
+        }
+
+        val warnedAt = uploadSilenceWarnedAt
+
+        if (warnedAt != null && now - warnedAt < UPLOAD_SILENCE_RENOTIFY_MS) return
+
+        /*
+         * Only now, with the silence established, is the server asked what is
+         * wrong with it - the answer decides the wording, and this is rare
+         * enough for a network round trip to cost nothing.
+         */
+        val health = ServerHealthChecker(settings) {
+            DeviceIdProvider.getOrCreateDeviceId(this)
+        }.check()
+
+        uploadSilenceNotifier.warn(
+            uploadSilenceMessage(health, settings.current(), progress.pendingRows, waiting)
+        )
+
+        uploadSilenceWarnedAt = now
     }
 
     /**
