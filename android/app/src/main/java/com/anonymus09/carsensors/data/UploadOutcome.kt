@@ -40,12 +40,21 @@ enum class UploadOutcome {
         /**
          * Maps a response code onto what should be done about it.
          *
-         * `ingest` answers 401 for a device it does not know, 403 for one that
-         * has been deactivated, 400 for a body it cannot parse and 413 for one
-         * that outgrew its limits. It draws those distinctions on purpose -
-         * "send smaller batches" and "this will never be accepted" call for
-         * different things - and a wrong endpoint answers 404 for every batch
-         * alike, which is why that is separated from the rows being at fault.
+         * `ingest` answers 400 for a body it cannot parse and 413 for one that
+         * outgrew its limits. It draws those distinctions on purpose - "send
+         * smaller batches" and "this will never be accepted" call for different
+         * things - and a wrong endpoint answers 404 for every batch alike,
+         * which is why that is separated from the rows being at fault.
+         *
+         * The authentication answers are flattened here, and should not stay
+         * that way. Since the bearer token landed, `ingest` follows RFC 6750:
+         * 401 with `error="invalid_token"` means the credential was refused and
+         * re-pairing fixes it, 401 with no error code means none was sent, and
+         * 403 with `error="insufficient_scope"` means the token is good and the
+         * vehicle has been retired - which re-pairing will never fix. All three
+         * collapse into [REFUSED] below, so a permanently banned device is
+         * indistinguishable from a mistyped address and its backlog grows for
+         * ever. See `todo.md`.
          *
          * Kept apart from the uploader so it can be decided without a network.
          */
