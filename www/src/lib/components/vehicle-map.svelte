@@ -6,6 +6,14 @@
 
 	import mapLibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 
+	/*
+	 * Imported here rather than from the global stylesheet so it is loaded with
+	 * the one component that needs it. Only the path is referenced, so this
+	 * does not pull the library itself into the initial bundle - that stays
+	 * behind the dynamic import below.
+	 */
+	import 'maplibre-gl/dist/maplibre-gl.css';
+
 	import LocateIcon from '@lucide/svelte/icons/locate';
 	import LocateFixedIcon from '@lucide/svelte/icons/locate-fixed';
 
@@ -450,7 +458,7 @@
 	};
 </script>
 
-<div class="relative isolate size-full min-h-0 overflow-hidden bg-muted">
+<div class="vehicle-map relative isolate size-full min-h-0 overflow-hidden bg-muted">
 	<div
 		{@attach attachMap}
 		class="absolute inset-0 z-0 size-full"
@@ -522,3 +530,123 @@
 		</div>
 	{/if}
 </div>
+
+<style>
+	/*
+	 * MapLibre builds its controls imperatively, so none of that DOM carries
+	 * Svelte's scoping attribute and no ordinary scoped selector can reach it.
+	 * Anchoring a `:global` block under this component's own class buys
+	 * containment instead: the rules cannot escape the map, and they travel
+	 * with the component rather than sitting in the layout every route loads.
+	 *
+	 * Every value here is a theme token, so the controls follow the palette
+	 * rather than carrying one of their own.
+	 */
+	.vehicle-map :global {
+		.maplibregl-map {
+			position: relative;
+			width: 100%;
+			height: 100%;
+			overflow: hidden;
+			font-family: var(--font-sans);
+			color: var(--foreground);
+		}
+
+		/* Navigation control group */
+		.maplibregl-ctrl-group {
+			overflow: hidden;
+			border: 1px solid var(--border);
+			border-radius: var(--radius);
+			background-color: var(--popover);
+			color: var(--popover-foreground);
+			box-shadow:
+				0 1px 2px rgb(0 0 0 / 5%),
+				0 4px 12px rgb(0 0 0 / 8%);
+		}
+
+		/* Zoom and compass buttons */
+		.maplibregl-ctrl-group button {
+			border: 0;
+			background-color: transparent;
+			color: var(--popover-foreground);
+		}
+
+		.maplibregl-ctrl-group button:hover {
+			background-color: var(--accent);
+			color: var(--accent-foreground);
+		}
+
+		.maplibregl-ctrl-group button:focus-visible {
+			position: relative;
+			z-index: 1;
+			outline: 2px solid var(--ring);
+			outline-offset: -2px;
+		}
+
+		.maplibregl-ctrl-group button + button {
+			border-top: 1px solid var(--border);
+		}
+
+		/*
+		 * MapLibre draws these icons as background images, so colour alone does
+		 * not affect them. The originals suit a light theme and are inverted
+		 * for a dark one below.
+		 */
+		.maplibregl-ctrl-icon {
+			opacity: 0.8;
+		}
+
+		/* Scale */
+		.maplibregl-ctrl-scale {
+			border-color: var(--foreground);
+			border-top: 0;
+			background-color: color-mix(in oklch, var(--popover) 90%, transparent);
+			color: var(--foreground);
+			backdrop-filter: blur(8px);
+		}
+
+		/* Attribution panel */
+		.maplibregl-ctrl-attrib {
+			border: 1px solid var(--border);
+			border-radius: calc(var(--radius) * 0.8);
+			background-color: color-mix(in oklch, var(--popover) 94%, transparent);
+			color: var(--muted-foreground);
+			box-shadow: 0 1px 3px rgb(0 0 0 / 8%);
+			backdrop-filter: blur(8px);
+		}
+
+		.maplibregl-ctrl-attrib a {
+			color: var(--popover-foreground);
+			text-decoration: underline;
+			text-underline-offset: 2px;
+		}
+
+		.maplibregl-ctrl-attrib a:hover {
+			color: var(--primary);
+		}
+
+		/* Compact attribution toggle */
+		.maplibregl-ctrl-attrib-button {
+			background-color: var(--popover);
+		}
+
+		.maplibregl-ctrl-attrib-button:hover {
+			background-color: var(--accent);
+		}
+	}
+
+	/*
+	 * `.dark` sits on the document element, outside this component, so these
+	 * cannot live in the block above.
+	 */
+	:global(.dark) .vehicle-map :global {
+		.maplibregl-ctrl-icon {
+			filter: invert(1);
+			opacity: 0.9;
+		}
+
+		.maplibregl-ctrl-attrib-button {
+			filter: invert(1);
+		}
+	}
+</style>

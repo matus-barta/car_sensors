@@ -26,13 +26,20 @@ Install dependencies:
 pnpm install
 ```
 
-Create the local environment file:
+Create the environment file, **at the repository root rather than here**:
 
 ```bash
-cp .env.example .env
+cp .env.example .env    # from the repository root
 ```
 
-Configure the following variables:
+There is one environment file for the whole project, shared with `ingest`. This
+directory deliberately has none: `kit.env.dir` in `vite.config.ts`, the Drizzle
+config and the Better Auth script are all pointed at the root, so a `www/.env`
+would simply not be read. Two files drifted apart once and left this
+application talking to a different database from the service writing to it,
+with every check passing against the other one.
+
+Configure at least:
 
 ```dotenv
 DATABASE_URL="postgres://postgres:postgres@localhost:5432/postgres"
@@ -48,9 +55,12 @@ openssl rand -base64 32
 
 The `.env` file contains secrets and must not be committed.
 
-Optionally, set `REDIS_URL` to the same Valkey instance `ingest` uses to enable
-live tracking of the selected vehicle. Without it, the vehicle list still
-updates through its periodic poll.
+Setting `REDIS_URL` to the same Valkey instance `ingest` uses enables live
+tracking of the selected vehicle. Without it, the vehicle list still updates
+through its periodic poll.
+
+The end-to-end suite is the one exception: it has its own committed
+`.env.test`, which Playwright loads itself.
 
 ## Development
 

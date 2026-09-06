@@ -1,6 +1,15 @@
 package com.anonymus09.carsensors.util
 
+import com.anonymus09.carsensors.BuildConfig
+
 object AppConfig {
+    // How this app names itself to the server. Read from the build rather than
+    // written out, because a hardcoded version silently goes on claiming 1.0
+    // long after it stops being true - and the point of sending one at all is
+    // to be able to tell which build a request came from. Not `const`, since
+    // it is assembled from `versionName` at build time.
+    val USER_AGENT = "CarSensors/${BuildConfig.VERSION_NAME}"
+
     // Only the starting point: the address is a setting now, so it can be
     // corrected on the device instead of in a rebuild.
     const val DEFAULT_SERVER_BASE_URL = "http://192.168.22.141:3000"

@@ -1,7 +1,7 @@
 package com.anonymus09.carsensors.data
 
 import android.util.Log
-import com.anonymus09.carsensors.util.DeviceIdProvider
+import com.anonymus09.carsensors.util.AppConfig.USER_AGENT
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.json.JSONArray
@@ -23,7 +23,8 @@ import java.util.zip.GZIPOutputStream
 class TelemetryUploader(
     private val dao: TelemetryDao,
     private val settings: SettingsRepository,
-    private val loadDeviceId: () -> String
+    private val loadPairing: () -> DevicePairing?,
+    private val recordRejection: (PairingRejection?) -> Unit
 ) {
 
     /**
@@ -37,18 +38,42 @@ class TelemetryUploader(
     suspend fun send(rows: List<TelemetrySampleEntity>): UploadOutcome {
         if (rows.isEmpty()) return UploadOutcome.STORED
 
+        /*
+         * Checked before anything is built or sent. An unpaired phone still
+         * records - somebody may be driving before the vehicle exists - but it
+         * has nothing to authenticate with, so the rows simply wait.
+         */
+        val pairing = loadPairing() ?: return UploadOutcome.NOT_PAIRED
+
         val ids = rows.map { it.id }
 
         val outcome = try {
-            post(buildJsonPayload(rows))
+            post(pairing, buildJsonPayload(rows))
         } catch (e: Exception) {
             Log.e(TAG, "Upload attempt failed", e)
             UploadOutcome.TRANSIENT
         }
 
         when (outcome) {
-            UploadOutcome.STORED -> dao.markUploaded(ids, System.currentTimeMillis())
+            UploadOutcome.STORED -> {
+                dao.markUploaded(ids, System.currentTimeMillis())
+
+                // Whatever was wrong with the credential plainly is not now.
+                recordRejection(null)
+            }
+
             UploadOutcome.MALFORMED -> dao.incrementUploadAttempts(ids)
+
+            /*
+             * Recorded rather than only logged: the screen has to be able to
+             * say which of the two happened, because pairing again fixes one
+             * and will never fix the other.
+             */
+            UploadOutcome.CREDENTIAL_REJECTED ->
+                recordRejection(PairingRejection.CREDENTIAL_REJECTED)
+
+            UploadOutcome.DEVICE_RETIRED -> recordRejection(PairingRejection.DEVICE_RETIRED)
+
             else -> Unit
         }
 
@@ -79,7 +104,7 @@ class TelemetryUploader(
     /** Runs [block] once any in-flight upload has finished. */
     suspend fun <T> exclusively(block: suspend () -> T): T = uploadLock.withLock { block() }
 
-    private fun post(payload: String): UploadOutcome {
+    private fun post(pairing: DevicePairing, payload: String): UploadOutcome {
         val uploadUrl = settings.current().uploadUrl
 
         val connection = (URL(uploadUrl).openConnection() as HttpURLConnection).apply {
@@ -89,8 +114,15 @@ class TelemetryUploader(
             doOutput = true
             setRequestProperty("Content-Type", "application/json; charset=UTF-8")
             setRequestProperty("Content-Encoding", "gzip")
-            setRequestProperty("User-Agent", "CarSensors/1.0")
-            setRequestProperty("X-Device-ID", loadDeviceId())
+            setRequestProperty("User-Agent", USER_AGENT)
+
+            /*
+             * The identity names the row; the bearer token proves the request
+             * came from this phone. Spelled the way RFC 6750 and RFC 6648 ask
+             * for, which is also what `ingest` reads.
+             */
+            setRequestProperty("Device-Id", pairing.deviceId)
+            setRequestProperty("Authorization", "Bearer ${pairing.token}")
         }
 
         return try {
@@ -100,8 +132,15 @@ class TelemetryUploader(
             }
 
             val code = connection.responseCode
+
+            /*
+             * Read before the connection is closed. RFC 6750 puts the reason a
+             * request was turned away in the challenge, not in the status.
+             */
+            val challenge = connection.getHeaderField("WWW-Authenticate")
+
             Log.i(TAG, "$uploadUrl answered $code")
-            UploadOutcome.forResponseCode(code)
+            UploadOutcome.forResponseCode(code, challenge)
         } finally {
             connection.disconnect()
         }
@@ -200,7 +239,8 @@ class TelemetryUploader(
             return TelemetryUploader(
                 dao = AppDatabase.getInstance(appContext).telemetryDao(),
                 settings = SettingsRepository(appContext),
-                loadDeviceId = { DeviceIdProvider.getOrCreateDeviceId(appContext) }
+                loadPairing = { PairingRepository(appContext).current() },
+                recordRejection = { PairingRepository(appContext).recordRejection(it) }
             )
         }
     }

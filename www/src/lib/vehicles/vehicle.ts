@@ -10,7 +10,20 @@ export type VehicleStatus = 'online' | 'stale' | 'offline';
 export interface VehicleSummary {
 	id: string;
 	name: string;
+
+	/** When the device was last heard from, whatever it had to say. */
 	lastSeenAt?: Date | string | null;
+
+	/**
+	 * When the position below was recorded, which is not always when the device
+	 * was last heard from.
+	 *
+	 * Event rows carry no coordinates and neither does a sample whose fix had
+	 * gone stale, so a device can go on reporting while the newest position
+	 * anyone has stays where it last had one.
+	 */
+	positionAt?: Date | string | null;
+
 	latitude?: number | null;
 	longitude?: number | null;
 	bearing?: number | null;

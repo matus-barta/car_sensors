@@ -5,9 +5,12 @@ import { z } from 'zod';
 
 import { liveTracking, type LiveSample } from '$lib/server/live-tracking';
 import {
+	type CreatedVehicle,
 	createVehicle as createVehicleRecord,
-	DuplicateDeviceIdError,
-	getVehicleSummaries
+	type IssuedCredential,
+	getVehicleSummaries,
+	rotateDeviceToken,
+	UnknownVehicleError
 } from '$lib/server/vehicles/vehicle-service';
 
 import type { VehicleLivePosition, VehicleSummary } from './vehicle';
@@ -18,12 +21,6 @@ const createVehicleSchema = z.object({
 		.trim()
 		.min(1, 'Enter a vehicle name.')
 		.max(120, 'The vehicle name must not exceed 120 characters.'),
-
-	deviceId: z
-		.string()
-		.trim()
-		.min(1, 'Enter a device ID.')
-		.max(255, 'The device ID must not exceed 255 characters.'),
 
 	notes: z
 		.string()
@@ -95,7 +92,7 @@ export const watchVehicle = query.live(z.string().min(1), async function* (devic
 
 export const createVehicle = command(
 	createVehicleSchema,
-	async (input): Promise<VehicleSummary> => {
+	async (input): Promise<CreatedVehicle> => {
 		requireAuthenticatedUser();
 
 		try {
@@ -106,13 +103,35 @@ export const createVehicle = command(
 			 * generic "Internal Error", so anything the user should read has to be
 			 * raised through `error()`.
 			 */
-			if (cause instanceof DuplicateDeviceIdError) {
-				error(409, cause.message);
-			}
-
 			console.error('Failed to create vehicle:', cause);
 
 			error(500, 'The vehicle could not be created.');
+		}
+	}
+);
+
+/**
+ * Issues a fresh token for a vehicle, invalidating the one it had.
+ *
+ * The same command serves pairing a replacement handset and withdrawing a lost
+ * one, because they are the same act: the vehicle keeps its identity and its
+ * history, and only the credential that reaches it changes.
+ */
+export const pairNewPhone = command(
+	z.string().trim().min(1),
+	async (deviceId): Promise<IssuedCredential> => {
+		requireAuthenticatedUser();
+
+		try {
+			return await rotateDeviceToken(deviceId);
+		} catch (cause) {
+			if (cause instanceof UnknownVehicleError) {
+				error(404, cause.message);
+			}
+
+			console.error('Failed to rotate the device token:', cause);
+
+			error(500, 'A new token could not be issued for this vehicle.');
 		}
 	}
 );

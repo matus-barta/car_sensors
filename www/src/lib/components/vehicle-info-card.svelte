@@ -9,6 +9,7 @@
 	import type { VehicleWithStatus } from '$lib/vehicles/vehicle';
 	import { clock } from '$lib/utils/clock.svelte';
 	import { formatRelativeTime } from '$lib/utils/date';
+	import { positionTrailsContact } from '$lib/vehicles/vehicle-position-age';
 	import VehicleStatusBadge from '$lib/components/vehicle-status-badge.svelte';
 
 	interface Props {
@@ -26,6 +27,19 @@
 			typeof vehicle.longitude === 'number' &&
 			Number.isFinite(vehicle.longitude)
 			? `${vehicle.latitude.toFixed(5)}, ${vehicle.longitude.toFixed(5)}`
+			: null
+	);
+
+	/*
+	 * Only said when the position is meaningfully older than the last contact.
+	 * The two are usually the same event, and repeating it under every reading
+	 * would bury the case that matters: a vehicle reporting as online beside
+	 * coordinates from weeks ago, because everything it has sent since was an
+	 * event row or a sample with no fix.
+	 */
+	const positionAge = $derived(
+		positionTrailsContact(vehicle.lastSeenAt, vehicle.positionAt)
+			? formatRelativeTime(vehicle.positionAt, clock.now)
 			: null
 	);
 
@@ -81,17 +95,25 @@
 				</span>
 			</div>
 
-			<div class="flex min-w-0 items-center gap-3">
-				<MapPin class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+			<div class="grid gap-0.5">
+				<div class="flex min-w-0 items-center gap-3">
+					<MapPin class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
 
-				<span class="shrink-0 text-muted-foreground"> Location </span>
+					<span class="shrink-0 text-muted-foreground"> Location </span>
 
-				<span
-					class="ml-auto min-w-0 truncate text-right font-mono text-xs font-medium"
-					title={coordinates ?? 'Unavailable'}
-				>
-					{coordinates ?? 'Unavailable'}
-				</span>
+					<span
+						class="ml-auto min-w-0 truncate text-right font-mono text-xs font-medium"
+						title={coordinates ?? 'Unavailable'}
+					>
+						{coordinates ?? 'Unavailable'}
+					</span>
+				</div>
+
+				{#if positionAge}
+					<span class="pl-7 text-xs text-muted-foreground" data-testid="vehicle-position-age">
+						Position from {positionAge}
+					</span>
+				{/if}
 			</div>
 
 			{#if bearing}

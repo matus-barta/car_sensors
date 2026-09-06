@@ -16,9 +16,15 @@ export function mergeLivePosition(
 		return vehicle;
 	}
 
+	/*
+	 * `positionAt` takes the same timestamp: `ingest` only ever announces a
+	 * sample that carries a position, so for a live update the contact and the
+	 * position are the same event.
+	 */
 	return {
 		...vehicle,
 		lastSeenAt: live.lastSeenAt,
+		positionAt: live.lastSeenAt,
 		latitude: live.latitude,
 		longitude: live.longitude,
 		bearing: live.bearing

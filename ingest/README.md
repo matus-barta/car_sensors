@@ -25,17 +25,33 @@ Everything is served under `/api`. The prefix is not stripped and not optional: 
 
 ### Authentication
 
-A device identifies itself with an `X-Device-ID` header, checked against an active row in `known_devices`. There is nothing else: the identifier is also the credential. That is a deliberate decision for a private deployment rather than an oversight, and `todo.md` carries the case for replacing it with a per-device token.
+A device presents two things, and they do different jobs:
 
-The answers are meant to be told apart by a client:
+```http
+Device-Id: 00000000-0000-4000-8000-000000000000
+Authorization: Bearer <token>
+```
 
-- **401** - no header, or a device this server does not know
-- **403** - a device it knows and has deactivated
-- **400** - a body it could not parse
-- **413** - a body larger than the limits below
-- **500** - the database refused the batch
+`Device-Id` names the row in `known_devices` and is not a secret. The token is, and it is what proves the request came from the phone that row belongs to. Only its SHA-256 is stored, as lowercase hex, so a copy of the database yields nothing that can be replayed. The token is 32 random bytes rendered as unpadded base64url, and the hash covers that string exactly as it arrives, so both ends must agree on the encoding.
 
-The distinction matters at the other end: "send smaller batches" and "this will never be accepted" call for different behaviour, and 401/403/404 say nothing about the rows at all.
+Keeping them apart is what makes a credential withdrawable. Rotating a token leaves `device_id` alone, so replacing a handset or locking out a lost one costs the vehicle none of its history.
+
+A row whose `token_hash` is `NULL` cannot authenticate. That is not a transitional state to be tolerated: accepting an identity on its own is the thing this scheme exists to prevent, so a device registered before tokens existed stops uploading until one is minted for it.
+
+Refusals follow [RFC 6750](https://datatracker.ietf.org/doc/html/rfc6750#section-3) and carry a `WWW-Authenticate: Bearer` challenge, so a client can tell them apart without a private convention:
+
+| Status | `error` | Means |
+| --- | --- | --- |
+| **401** | *(none)* | Nothing was presented - no identity, or no bearer token |
+| **401** | `invalid_token` | A token was presented and refused, or the identity is unknown |
+| **403** | `insufficient_scope` | The token is good and the device is deactivated |
+| **400** | | A body it could not parse |
+| **413** | | A body larger than the limits below |
+| **500** | | The database refused the batch |
+
+An unknown identity is answered exactly as a bad token is, on purpose: distinguishing them would turn the endpoint into a way of discovering which devices exist.
+
+The distinction matters at the other end. "Re-pair this phone" and "this vehicle is retired" call for different behaviour and so do "send smaller batches" and "this will never be accepted", while none of the authentication answers say anything about the rows themselves.
 
 ### Request size
 
@@ -47,7 +63,9 @@ A reverse proxy in front of this needs a body limit at least as large, or it wil
 
 The batch is written to `telemetry_samples` in one transaction, in chunks that stay under PostgreSQL's bind-parameter ceiling. Insertion is `ON CONFLICT DO NOTHING` against `(device_id, id)`, which makes a re-uploaded batch harmless - a device that never received a response is free to send it again.
 
-`known_devices.last_seen_at` is touched at most once per device per **30 seconds**, throttled through Valkey. A device uploading every few seconds does not need to write that column every time.
+`known_devices.last_seen_at` is written at most once per device per **30 seconds**, tracked through Valkey. A device uploading every few seconds does not need to write that column every time.
+
+This limits a column write and nothing else. No request is rejected, delayed or shed by it, and `ingest` has no rate limiting of any kind - see `todo.md`.
 
 If the batch stored anything, the newest sample carrying a position is published to Valkey as the device's live location, under a **15 minute** expiry. That step is best effort: the durable copy is already committed, and a failure to announce leaves the upload successful. It is guarded against a device clock running ahead, and against an older batch arriving after a newer one and dragging a map marker backwards.
 

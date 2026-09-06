@@ -1,38 +1,18 @@
 import {
 	pgTable,
-	index,
-	text,
-	boolean,
-	timestamp,
 	uniqueIndex,
+	index,
 	bigserial,
 	bigint,
+	text,
+	boolean,
 	doublePrecision,
 	real,
 	integer,
+	timestamp,
 	check
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
-
-export const knownDevices = pgTable(
-	'known_devices',
-	{
-		deviceId: text('device_id').primaryKey().notNull(),
-		name: text(),
-		isActive: boolean('is_active').default(true).notNull(),
-		createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' })
-			.defaultNow()
-			.notNull(),
-		lastSeenAt: timestamp('last_seen_at', { withTimezone: true, mode: 'string' }),
-		notes: text()
-	},
-	(table) => [
-		index('idx_known_devices_is_active').using(
-			'btree',
-			table.isActive.asc().nullsLast().op('bool_ops')
-		)
-	]
-);
 
 export const telemetrySamples = pgTable(
 	'telemetry_samples',
@@ -103,6 +83,28 @@ export const telemetrySamples = pgTable(
 			'btree',
 			table.uploaded.asc().nullsLast().op('int8_ops'),
 			table.timestamp.asc().nullsLast().op('int8_ops')
+		)
+	]
+);
+
+export const knownDevices = pgTable(
+	'known_devices',
+	{
+		deviceId: text('device_id').primaryKey().notNull(),
+		name: text(),
+		isActive: boolean('is_active').default(true).notNull(),
+		createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' })
+			.defaultNow()
+			.notNull(),
+		lastSeenAt: timestamp('last_seen_at', { withTimezone: true, mode: 'string' }),
+		notes: text(),
+		tokenHash: text('token_hash'),
+		tokenRotatedAt: timestamp('token_rotated_at', { withTimezone: true, mode: 'string' })
+	},
+	(table) => [
+		index('idx_known_devices_is_active').using(
+			'btree',
+			table.isActive.asc().nullsLast().op('bool_ops')
 		)
 	]
 );
