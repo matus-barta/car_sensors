@@ -166,6 +166,7 @@ dependencies {
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
+    implementation(libs.androidx.material.icons.core)
     testImplementation(libs.junit)
     testImplementation(libs.robolectric)
     testImplementation(libs.kotlinx.coroutines.test)
@@ -184,4 +185,5 @@ dependencies {
     ksp(libs.room.compiler)
 
     implementation(libs.work.runtime)
+    implementation(libs.zxing.android.embedded)
 }

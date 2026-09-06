@@ -41,6 +41,10 @@ private fun reasonFor(health: ServerHealth, settings: TelemetrySettings): String
     is ServerHealth.ServerFault ->
         "The server answered with an error (${health.code})."
 
+    is ServerHealth.NotPaired ->
+        "This phone is not paired with a vehicle, so nothing can be uploaded. Pair it " +
+            "from the web application."
+
     is ServerHealth.Ok -> waitingOnAChoice(settings)
 
     ServerHealth.Unknown, ServerHealth.Checking ->

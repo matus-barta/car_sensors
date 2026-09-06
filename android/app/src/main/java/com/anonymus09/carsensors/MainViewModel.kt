@@ -3,6 +3,8 @@ package com.anonymus09.carsensors
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.anonymus09.carsensors.data.DevicePairing
+import com.anonymus09.carsensors.data.PairingRepository
 import com.anonymus09.carsensors.data.PowerState
 import com.anonymus09.carsensors.data.PowerStateProvider
 import com.anonymus09.carsensors.data.ServerHealth
@@ -23,7 +25,14 @@ import kotlin.time.Duration.Companion.seconds
 
 /** Everything the main screen draws, in one value. */
 data class MainUiState(
-    val deviceId: String = "",
+    /**
+     * The vehicle this phone is paired with, or null while it has none.
+     *
+     * Null is an ordinary state rather than a fault. An unpaired app records
+     * freely - somebody may be driving before the vehicle exists - and simply
+     * never uploads, so the rows wait until an identity is assigned.
+     */
+    val pairing: DevicePairing? = null,
     val settings: TelemetrySettings = TelemetrySettings(),
     val power: PowerState = PowerState(),
     val storage: TelemetryStorage = TelemetryStorage(),
@@ -32,13 +41,11 @@ data class MainUiState(
 
 class MainViewModel(
     private val settingsRepository: SettingsRepository,
-    telemetryRepository: TelemetryRepository,
+    private val telemetryRepository: TelemetryRepository,
     powerStateProvider: PowerStateProvider,
     private val healthChecker: ServerHealthChecker,
-    loadDeviceId: suspend () -> String
+    private val pairingRepository: PairingRepository
 ) : ViewModel() {
-
-    private val deviceId = MutableStateFlow("")
 
     private val _serverHealth = MutableStateFlow<ServerHealth>(ServerHealth.Unknown)
 
@@ -48,17 +55,105 @@ class MainViewModel(
      */
     val serverHealth: StateFlow<ServerHealth> = _serverHealth.asStateFlow()
 
-    init {
-        // Reading it creates it on first run, so this is disk work, not a getter.
-        viewModelScope.launch { deviceId.value = loadDeviceId() }
+    /**
+     * How many recorded rows have never reached a server, asked when pairing
+     * begins and cleared once it is answered.
+     *
+     * Non-null means the question is on screen. Those rows will go up under
+     * whatever identity is adopted next, so the one moment to ask about them is
+     * before that identity exists - afterwards nothing can tell which vehicle
+     * they belonged to.
+     */
+    private val _untaggedRowsPendingDecision = MutableStateFlow<Int?>(null)
+    val untaggedRowsPendingDecision: StateFlow<Int?> =
+        _untaggedRowsPendingDecision.asStateFlow()
 
+    private val pendingPairing = MutableStateFlow<DevicePairing?>(null)
+
+    init {
         checkServerHealth()
     }
 
-    fun checkServerHealth() {
+    /**
+     * Adopts a scanned or pasted pairing, asking about orphaned rows first.
+     *
+     * Rows recorded before this point belong to nobody in particular. Attaching
+     * them to the vehicle being paired is right when the phone has been sitting
+     * in that car all along, and wrong when it recorded somebody else's trip,
+     * and only the person holding it knows which - so the pairing waits until
+     * they say.
+     */
+    fun startPairing(pairing: DevicePairing) {
+        viewModelScope.launch {
+            val waiting = telemetryRepository.pendingUploadCount()
+
+            if (waiting > 0) {
+                pendingPairing.value = pairing
+                _untaggedRowsPendingDecision.value = waiting
+
+                return@launch
+            }
+
+            commitPairing(pairing)
+        }
+    }
+
+    /** Keeps the waiting rows, which will upload as the vehicle just paired. */
+    fun keepUntaggedRows() {
+        val pairing = pendingPairing.value ?: return
+
+        _untaggedRowsPendingDecision.value = null
+        pendingPairing.value = null
+
+        commitPairing(pairing)
+    }
+
+    /** Discards the waiting rows, then pairs. */
+    fun discardUntaggedRows() {
+        val pairing = pendingPairing.value ?: return
+
+        _untaggedRowsPendingDecision.value = null
+        pendingPairing.value = null
+
+        viewModelScope.launch {
+            telemetryRepository.deleteNotUploaded()
+
+            commitPairing(pairing)
+        }
+    }
+
+    /** Abandons the pairing rather than answering the question. */
+    fun cancelPairing() {
+        _untaggedRowsPendingDecision.value = null
+        pendingPairing.value = null
+    }
+
+    /** Returns the app to being unpaired. Recording continues; uploading stops. */
+    fun unpair() {
+        pairingRepository.clear()
+
+        _serverHealth.value = ServerHealth.NotPaired
+    }
+
+    private fun commitPairing(pairing: DevicePairing) {
+        pairingRepository.save(pairing)
+
+        // A new credential is exactly when its correctness is worth knowing.
+        checkServerHealth()
+    }
+
+    /**
+     * Checks [baseUrl], defaulting to the address in force.
+     *
+     * The screen passes what is in the field rather than what was last saved,
+     * so an address can be tried before committing to it.
+     */
+    fun checkServerHealth(baseUrl: String? = null) {
         viewModelScope.launch {
             _serverHealth.value = ServerHealth.Checking
-            _serverHealth.value = healthChecker.check()
+            _serverHealth.value = healthChecker.check(
+                baseUrl ?: settingsRepository.current().serverBaseUrl
+            )
         }
     }
 
@@ -74,14 +169,14 @@ class MainViewModel(
      * away, which is what the hand-rolled repeatOnLifecycle loop was for.
      */
     val uiState: StateFlow<MainUiState> = combine(
-        deviceId,
+        pairingRepository.observe(),
         settingsRepository.observe(),
         powerStateProvider.observe(),
         telemetryRepository.observeStorage(DB_STATS_REFRESH_RATE.seconds),
         TelemetryForegroundService.loggerState
-    ) { deviceId, settings, power, storage, loggerState ->
+    ) { pairing, settings, power, storage, loggerState ->
         MainUiState(
-            deviceId = deviceId,
+            pairing = pairing,
             settings = settings,
             power = power,
             storage = storage,
@@ -126,7 +221,7 @@ class MainViewModelFactory(
     private val telemetryRepository: TelemetryRepository,
     private val powerStateProvider: PowerStateProvider,
     private val healthChecker: ServerHealthChecker,
-    private val loadDeviceId: suspend () -> String
+    private val pairingRepository: PairingRepository
 ) : ViewModelProvider.Factory {
 
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -140,7 +235,7 @@ class MainViewModelFactory(
             telemetryRepository,
             powerStateProvider,
             healthChecker,
-            loadDeviceId
+            pairingRepository
         ) as T
     }
 }

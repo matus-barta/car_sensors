@@ -34,6 +34,7 @@ import androidx.core.content.ContextCompat
 import com.anonymus09.carsensors.data.AppDatabase
 import com.anonymus09.carsensors.data.PowerState
 import com.anonymus09.carsensors.data.PowerTier
+import com.anonymus09.carsensors.data.PairingRepository
 import com.anonymus09.carsensors.data.PowerStateProvider
 import com.anonymus09.carsensors.data.ServerHealthChecker
 import com.anonymus09.carsensors.data.SettingsRepository
@@ -74,7 +75,6 @@ import com.anonymus09.carsensors.util.AppConfig.UPLOAD_CHECK_EVERY_N_SAMPLES
 import com.anonymus09.carsensors.util.AppConfig.UPLOAD_MAX_ATTEMPTS
 import com.anonymus09.carsensors.util.AppConfig.UPLOAD_SILENCE_RENOTIFY_MS
 import com.anonymus09.carsensors.util.AppConfig.UPLOAD_SILENCE_WARNING_MS
-import com.anonymus09.carsensors.util.DeviceIdProvider
 import com.anonymus09.carsensors.util.GpsClock
 import com.anonymus09.carsensors.util.ageMs
 import com.anonymus09.carsensors.util.AppConfig.UPLOAD_TRIGGER_PENDING_ROWS
@@ -172,6 +172,7 @@ class TelemetryForegroundService : Service(), SensorEventListener {
     private val gpsClock = GpsClock()
 
     private val settings by lazy { SettingsRepository(this) }
+    private val pairings by lazy { PairingRepository(this) }
     private val uploader by lazy { TelemetryUploader.create(this) }
     private val uploadSilenceNotifier by lazy { UploadSilenceNotifier(this) }
 
@@ -1048,9 +1049,8 @@ class TelemetryForegroundService : Service(), SensorEventListener {
          * wrong with it - the answer decides the wording, and this is rare
          * enough for a network round trip to cost nothing.
          */
-        val health = ServerHealthChecker(settings) {
-            DeviceIdProvider.getOrCreateDeviceId(this)
-        }.check()
+        val health = ServerHealthChecker { pairings.current() }
+            .check(settings.current().serverBaseUrl)
 
         uploadSilenceNotifier.warn(
             uploadSilenceMessage(health, settings.current(), progress.pendingRows, waiting)

@@ -21,7 +21,16 @@ enum class UploadOutcome {
     REFUSED,
 
     /** The server understood the request and rejected this body. */
-    MALFORMED;
+    MALFORMED,
+
+    /**
+     * The phone has no pairing, so there is nothing to authenticate with.
+     *
+     * Never reaches the network. An upload without a credential is a certain
+     * rejection, and counting it against the rows would quarantine perfectly
+     * good data for the app's own lack of setup.
+     */
+    NOT_PAIRED;
 
     companion object {
         /** No constants for these two in [HttpURLConnection]. */

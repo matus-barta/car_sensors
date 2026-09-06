@@ -41,6 +41,12 @@ import androidx.compose.ui.unit.dp
 import com.anonymus09.carsensors.LoggerState
 import com.anonymus09.carsensors.MainUiState
 import com.anonymus09.carsensors.TelemetryLocationStatus
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+
+import com.anonymus09.carsensors.data.DevicePairing
 import com.anonymus09.carsensors.data.PowerState
 import com.anonymus09.carsensors.data.PowerTier
 import com.anonymus09.carsensors.data.ServerHealth
@@ -69,9 +75,10 @@ fun CarSensorsScreen(
     onWifiOnlyChange: (Boolean) -> Unit,
     onLiveUploadChange: (Boolean) -> Unit,
     onServerBaseUrlSave: (String) -> Unit,
-    onCheckServer: () -> Unit,
+    onCheckServer: (String) -> Unit,
     onForceUpload: () -> Unit,
     onRestartService: () -> Unit,
+    onManagePairing: () -> Unit,
     allowCleartext: Boolean,
     modifier: Modifier = Modifier
 ) {
@@ -102,7 +109,8 @@ fun CarSensorsScreen(
             onRecordOnBatteryChange = onRecordOnBatteryChange,
             onUploadOnBatteryChange = onUploadOnBatteryChange,
             onWifiOnlyChange = onWifiOnlyChange,
-            onLiveUploadChange = onLiveUploadChange
+            onLiveUploadChange = onLiveUploadChange,
+            onManagePairing = onManagePairing
         )
 
         SectionDivider()
@@ -260,13 +268,14 @@ private fun SetupSection(
     serverHealth: ServerHealth,
     allowCleartext: Boolean,
     onServerBaseUrlSave: (String) -> Unit,
-    onCheckServer: () -> Unit,
+    onCheckServer: (String) -> Unit,
     onWakeOnMotionChange: (Boolean) -> Unit,
     onAutoStartOnBootChange: (Boolean) -> Unit,
     onRecordOnBatteryChange: (Boolean) -> Unit,
     onUploadOnBatteryChange: (Boolean) -> Unit,
     onWifiOnlyChange: (Boolean) -> Unit,
-    onLiveUploadChange: (Boolean) -> Unit
+    onLiveUploadChange: (Boolean) -> Unit,
+    onManagePairing: () -> Unit
 ) {
     Text(text = "Setup", style = MaterialTheme.typography.titleLarge)
 
@@ -279,8 +288,7 @@ private fun SetupSection(
         onCheck = onCheckServer
     )
 
-    Text(text = "Device id", style = MaterialTheme.typography.labelMedium)
-    Text(text = state.deviceId, style = MaterialTheme.typography.bodySmall)
+    PairingStatus(pairing = state.pairing, onManage = onManagePairing)
 
     Spacer(modifier = Modifier.height(4.dp))
 
@@ -361,6 +369,48 @@ private fun SetupSection(
  * The draft is local until saved so a half-typed address is never stored, and
  * it is keyed on the persisted value so an edit made elsewhere replaces it.
  */
+/**
+ * Which vehicle this phone is paired with, and how to change it.
+ *
+ * Pairing is deliberately repeatable rather than a one-off. A phone moves
+ * between cars, a token is withdrawn, an app is reinstalled - the flow that
+ * assigns an identity is the flow that reassigns one, so it stays reachable
+ * whether or not there is a pairing already.
+ */
+@Composable
+private fun PairingStatus(pairing: DevicePairing?, onManage: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(text = "Paired vehicle", style = MaterialTheme.typography.labelMedium)
+
+            if (pairing == null) {
+                Text(
+                    text = "Not paired. Recording still works and the rows are kept, but " +
+                        "nothing is uploaded.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error
+                )
+            } else {
+                Text(text = pairing.deviceId, style = MaterialTheme.typography.bodySmall)
+            }
+        }
+
+        IconButton(onClick = onManage) {
+            Icon(
+                imageVector = Icons.Default.Edit,
+                contentDescription = if (pairing == null) {
+                    "Pair with a vehicle"
+                } else {
+                    "Change the paired vehicle"
+                }
+            )
+        }
+    }
+}
+
 @Composable
 private fun ServerAddress(
     serverBaseUrl: String,
@@ -368,7 +418,7 @@ private fun ServerAddress(
     serverHealth: ServerHealth,
     allowCleartext: Boolean,
     onSave: (String) -> Unit,
-    onCheck: () -> Unit
+    onCheck: (String) -> Unit
 ) {
     var draft by rememberSaveable(serverBaseUrl) { mutableStateOf(serverBaseUrl) }
 
@@ -409,7 +459,17 @@ private fun ServerAddress(
             Text("Save")
         }
 
-        OutlinedButton(onClick = onCheck, modifier = Modifier.weight(1f)) {
+        /*
+         * Tests what is in the field rather than what was last saved. Checking
+         * the saved address after editing answers a question nobody asked, and
+         * the check costs a couple of requests - so there is no reason to make
+         * somebody save a value to find out whether it works.
+         */
+        OutlinedButton(
+            onClick = { valid?.let { onCheck(it.normalized) } },
+            enabled = valid != null,
+            modifier = Modifier.weight(1f)
+        ) {
             Text("Test connection")
         }
     }
@@ -431,8 +491,10 @@ private fun ServerHealthLine(serverHealth: ServerHealth) {
         ServerHealth.NotTheApi ->
             "Answered, but this is not the telemetry API - check the address" to
                 MaterialTheme.colorScheme.error
+        ServerHealth.NotPaired ->
+            "Not paired with a vehicle yet" to MaterialTheme.colorScheme.onSurfaceVariant
         ServerHealth.DeviceUnknown ->
-            "Server reachable, but it does not know this device - register it" to
+            "Server reachable, but it rejected this device's credential - pair it again" to
                 MaterialTheme.colorScheme.error
         ServerHealth.DeviceDeactivated ->
             "Server reachable, but this device has been deactivated" to

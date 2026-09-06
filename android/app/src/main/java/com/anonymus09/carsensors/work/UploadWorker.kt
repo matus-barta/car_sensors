@@ -102,6 +102,17 @@ class UploadWorker(
                     )
                     return Result.failure()
                 }
+
+                UploadOutcome.NOT_PAIRED -> {
+                    /*
+                     * Success rather than a retry: there is nothing to fix by
+                     * trying again, and pairing enqueues this work itself. A
+                     * retry here would back off against a condition no amount
+                     * of waiting resolves.
+                     */
+                    Log.i(TAG, "Not paired with a vehicle yet; leaving the rows for later")
+                    return Result.success()
+                }
             }
         }
 
