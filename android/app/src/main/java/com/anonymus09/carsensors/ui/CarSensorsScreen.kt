@@ -47,6 +47,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 
 import com.anonymus09.carsensors.data.DevicePairing
+import com.anonymus09.carsensors.data.PairingRejection
 import com.anonymus09.carsensors.data.PowerState
 import com.anonymus09.carsensors.data.PowerTier
 import com.anonymus09.carsensors.data.ServerHealth
@@ -288,7 +289,11 @@ private fun SetupSection(
         onCheck = onCheckServer
     )
 
-    PairingStatus(pairing = state.pairing, onManage = onManagePairing)
+    PairingStatus(
+        pairing = state.pairing,
+        rejection = state.pairingRejection,
+        onManage = onManagePairing
+    )
 
     Spacer(modifier = Modifier.height(4.dp))
 
@@ -378,7 +383,11 @@ private fun SetupSection(
  * whether or not there is a pairing already.
  */
 @Composable
-private fun PairingStatus(pairing: DevicePairing?, onManage: () -> Unit) {
+private fun PairingStatus(
+    pairing: DevicePairing?,
+    rejection: PairingRejection?,
+    onManage: () -> Unit
+) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically
@@ -395,6 +404,27 @@ private fun PairingStatus(pairing: DevicePairing?, onManage: () -> Unit) {
                 )
             } else {
                 Text(text = pairing.deviceId, style = MaterialTheme.typography.bodySmall)
+            }
+
+            /*
+             * Said here rather than left in a log, and said as a remedy rather
+             * than as a status: one of these is fixed by pairing again and the
+             * other never will be, which is the whole reason they are told
+             * apart.
+             */
+            if (rejection != null) {
+                Text(
+                    text = when (rejection) {
+                        PairingRejection.CREDENTIAL_REJECTED ->
+                            "The server refused this credential. Pair the phone again."
+
+                        PairingRejection.DEVICE_RETIRED ->
+                            "This vehicle has been retired on the server. Nothing will be " +
+                                "uploaded again until it is re-activated there."
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error
+                )
             }
         }
 

@@ -31,9 +31,11 @@ import com.anonymus09.carsensors.data.devicePairingOrNull
 @Composable
 fun PairingOptionsDialog(
     isPaired: Boolean,
+    canDiscardPendingRows: Boolean,
     onScan: () -> Unit,
     onEnterCode: () -> Unit,
     onUnpair: () -> Unit,
+    onDiscardPendingRows: () -> Unit,
     onDismiss: () -> Unit
 ) {
     AlertDialog(
@@ -58,6 +60,21 @@ fun PairingOptionsDialog(
                         label = "Unpair",
                         description = "Stop uploading. Recording carries on.",
                         onClick = onUnpair,
+                        destructive = true
+                    )
+                }
+
+                /*
+                 * Only offered once the server has said the vehicle is retired.
+                 * Until then the rows have every prospect of being accepted,
+                 * and a button that throws away the only copy of something does
+                 * not belong within reach.
+                 */
+                if (canDiscardPendingRows) {
+                    PairingOption(
+                        label = "Discard unsent recordings",
+                        description = "They will never be accepted by this server.",
+                        onClick = onDiscardPendingRows,
                         destructive = true
                     )
                 }
@@ -236,6 +253,40 @@ fun ConfirmUnpairDialog(
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
+}
+
+/**
+ * Confirms throwing away rows that cannot be uploaded.
+ *
+ * The alternative to asking is letting a storage ceiling decide, which is the
+ * one outcome nobody chose. Keeping them costs only space - there is nowhere to
+ * send them from the phone - so the question is put plainly and left at that.
+ */
+@Composable
+fun ConfirmDiscardPendingRowsDialog(
+    rowCount: Int,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Discard unsent recordings?") },
+        text = {
+            Text(
+                "$rowCount recorded ${if (rowCount == 1) "sample" else "samples"} will be " +
+                    "deleted from this phone. They are the only copy, and this cannot be " +
+                    "undone.\n\nKeeping them costs storage and nothing else."
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirm) {
+                Text(text = "Discard", color = MaterialTheme.colorScheme.error)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Keep") }
         }
     )
 }
