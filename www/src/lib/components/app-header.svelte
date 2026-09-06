@@ -8,6 +8,8 @@
 
 	import * as Alert from '$lib/components/ui/alert';
 	import { Button } from '$lib/components/ui/button';
+	import QrCode from '@lucide/svelte/icons/qr-code';
+
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
 	import * as Empty from '$lib/components/ui/empty';
 	import * as Popover from '$lib/components/ui/popover';
@@ -40,6 +42,7 @@
 		selectedVehicleId?: string | null;
 		onVehicleSelect?: (vehicleId: string) => void;
 		onAddVehicle?: () => void;
+		onPairPhone?: (vehicleId: string, vehicleName: string) => void;
 		onSignOut?: () => void | Promise<void>;
 	}
 
@@ -51,6 +54,7 @@
 		selectedVehicleId = null,
 		onVehicleSelect,
 		onAddVehicle,
+		onPairPhone,
 		onSignOut
 	}: Props = $props();
 
@@ -70,6 +74,15 @@
 	function addVehicle() {
 		vehicleMenuOpen = false;
 		onAddVehicle?.();
+	}
+
+	function pairPhone() {
+		const vehicle = selectedVehicle;
+
+		if (!vehicle) return;
+
+		vehicleMenuOpen = false;
+		onPairPhone?.(vehicle.id, vehicle.name);
 	}
 
 	async function signOut() {
@@ -225,6 +238,18 @@
 						<Plus aria-hidden="true" />
 						Add vehicle
 					</Button>
+
+					{#if selectedVehicle}
+						<Button
+							variant="ghost"
+							class="w-full justify-start"
+							data-testid="pair-phone"
+							onclick={pairPhone}
+						>
+							<QrCode aria-hidden="true" />
+							Pair a phone
+						</Button>
+					{/if}
 				</Popover.Content>
 			</Popover.Root>
 		{/if}
@@ -274,6 +299,13 @@
 				<Plus aria-hidden="true" />
 				Add vehicle
 			</DropdownMenu.Item>
+
+			{#if selectedVehicle}
+				<DropdownMenu.Item onclick={pairPhone}>
+					<QrCode aria-hidden="true" />
+					Pair a phone
+				</DropdownMenu.Item>
+			{/if}
 
 			<DropdownMenu.Separator />
 

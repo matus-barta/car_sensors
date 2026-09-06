@@ -33,7 +33,7 @@
 		"db:format": "prettier --write \"src/lib/server/db/generated/*.ts\"",
 		"db:sync": "pnpm db:pull && pnpm db:cleanup && pnpm auth:schema:generate && pnpm db:format",
 		"db:check": "pnpm db:sync && git diff --exit-code -- src/lib/server/db/generated",
-		"auth:schema:generate": "auth generate --config src/lib/server/auth.ts --output src/lib/server/db/generated/auth.schema.ts --yes"
+		"auth:schema:generate": "node --env-file-if-exists=../.env ./node_modules/auth/dist/index.mjs generate --config src/lib/server/auth.ts --output src/lib/server/db/generated/auth.schema.ts --yes"
 	},
 	"devDependencies": {
 		"@eslint/js": "^10.0.1",
@@ -47,6 +47,7 @@
 		"@tailwindcss/vite": "^4.3.0",
 		"@types/geojson": "^7946.0.16",
 		"@types/node": "^24",
+		"@types/qrcode": "^1.5.6",
 		"@vitest/browser-playwright": "^4.1.8",
 		"auth": "^1.6.23",
 		"bits-ui": "^2.18.1",
@@ -61,6 +62,7 @@
 		"prettier": "^3.8.3",
 		"prettier-plugin-svelte": "^4.1.0",
 		"prettier-plugin-tailwindcss": "^0.8.0",
+		"qrcode": "^1.5.4",
 		"shadcn-svelte": "^1.5.0",
 		"svelte": "^5.56.1",
 		"svelte-check": "^4.6.0",

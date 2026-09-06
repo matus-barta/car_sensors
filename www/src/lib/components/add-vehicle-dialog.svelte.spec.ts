@@ -6,7 +6,6 @@ import AddVehicleDialogHarness from './test/add-vehicle-dialog-harness.svelte';
 
 interface VehicleInput {
 	name: string;
-	deviceId: string;
 	notes: string | null;
 }
 
@@ -45,13 +44,6 @@ function getOpenButton() {
 function getVehicleNameInput() {
 	return page.getByRole('textbox', {
 		name: 'Vehicle name',
-		exact: true
-	});
-}
-
-function getDeviceIdInput() {
-	return page.getByRole('textbox', {
-		name: 'Device ID',
 		exact: true
 	});
 }
@@ -96,7 +88,6 @@ describe('AddVehicleDialog', () => {
 
 		await expect.element(getDialogHeading()).toBeInTheDocument();
 		await expect.element(getVehicleNameInput()).toBeInTheDocument();
-		await expect.element(getDeviceIdInput()).toBeInTheDocument();
 		await expect.element(getNotesInput()).toBeInTheDocument();
 	});
 
@@ -106,13 +97,25 @@ describe('AddVehicleDialog', () => {
 		await expect.element(getSubmitButton()).toBeDisabled();
 	});
 
-	it('enables submission after entering required fields', async () => {
+	it('enables submission once the vehicle has a name', async () => {
 		renderDialog();
 
 		await getVehicleNameInput().fill('Test Vehicle');
-		await getDeviceIdInput().fill('device-001');
 
 		await expect.element(getSubmitButton()).toBeEnabled();
+	});
+
+	it('does not ask for a device identifier', async () => {
+		renderDialog();
+
+		/*
+		 * The server mints the identity and shows it as a pairing code. The
+		 * field this replaces accepted any string at all, so a typo registered
+		 * a vehicle that silently never received telemetry.
+		 */
+		await expect
+			.element(page.getByRole('textbox', { name: 'Device ID', exact: true }))
+			.not.toBeInTheDocument();
 	});
 
 	it('normalizes input and submits the vehicle', async () => {
@@ -123,7 +126,6 @@ describe('AddVehicleDialog', () => {
 		});
 
 		await getVehicleNameInput().fill('  Test Vehicle  ');
-		await getDeviceIdInput().fill('  device-001  ');
 		await getNotesInput().fill('  Development vehicle  ');
 
 		await getSubmitButton().click();
@@ -134,7 +136,6 @@ describe('AddVehicleDialog', () => {
 
 		expect(onSubmit).toHaveBeenCalledWith({
 			name: 'Test Vehicle',
-			deviceId: 'device-001',
 			notes: 'Development vehicle'
 		});
 
@@ -151,7 +152,6 @@ describe('AddVehicleDialog', () => {
 		});
 
 		await getVehicleNameInput().fill('Test Vehicle');
-		await getDeviceIdInput().fill('device-001');
 
 		await getSubmitButton().click();
 
@@ -161,7 +161,6 @@ describe('AddVehicleDialog', () => {
 
 		expect(onSubmit).toHaveBeenCalledWith({
 			name: 'Test Vehicle',
-			deviceId: 'device-001',
 			notes: null
 		});
 
@@ -176,7 +175,6 @@ describe('AddVehicleDialog', () => {
 		});
 
 		await getVehicleNameInput().fill('Test Vehicle');
-		await getDeviceIdInput().fill('device-001');
 
 		await getSubmitButton().click();
 
@@ -199,7 +197,6 @@ describe('AddVehicleDialog', () => {
 		});
 
 		await getVehicleNameInput().fill('Test Vehicle');
-		await getDeviceIdInput().fill('device-001');
 
 		await getSubmitButton().click();
 
@@ -231,7 +228,6 @@ describe('AddVehicleDialog', () => {
 		renderDialog();
 
 		await getVehicleNameInput().fill('Temporary Vehicle');
-		await getDeviceIdInput().fill('temporary-device');
 		await getNotesInput().fill('Temporary notes');
 
 		await getCancelButton().click();
@@ -244,7 +240,6 @@ describe('AddVehicleDialog', () => {
 
 		await expect.element(getDialogHeading()).toBeInTheDocument();
 		await expect.element(getVehicleNameInput()).toHaveValue('');
-		await expect.element(getDeviceIdInput()).toHaveValue('');
 		await expect.element(getNotesInput()).toHaveValue('');
 
 		await getCancelButton().click();

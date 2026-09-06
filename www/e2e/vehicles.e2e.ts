@@ -3,7 +3,7 @@ import { expect, test, type Page } from '@playwright/test';
 import {
 	createTestTelemetry,
 	createTestVehicle,
-	getKnownDeviceById,
+	getKnownDeviceByName,
 	resetDatabase
 } from './fixtures/database';
 
@@ -101,6 +101,97 @@ test.describe('vehicle selection and creation', () => {
 		await expect(getVehicleInfoCard(page)).toContainText('Škoda Octavia');
 	});
 
+	test('keeps showing the last known location when the newest rows carry none', async ({
+		page
+	}) => {
+		/*
+		 * What a parked car looks like: the last thing it did was arm the
+		 * logger, and event rows carry no position. A stale fix stores none
+		 * either. Reading coordinates off the newest row of any kind therefore
+		 * loses the location of almost every vehicle that is not moving.
+		 */
+		await createTestTelemetry({
+			deviceId: 'car-1',
+			id: 2,
+			timestamp: Date.now(),
+			event: 'logger_armed',
+			latitude: null,
+			longitude: null
+		});
+
+		await page.reload();
+
+		const vehicleInfoCard = getVehicleInfoCard(page);
+
+		await expect(vehicleInfoCard).toContainText('Škoda Octavia');
+
+		// The older located sample, not nothing at all.
+		await expect(vehicleInfoCard).toContainText('48.14860');
+		await expect(vehicleInfoCard).toContainText('17.10770');
+	});
+
+	test('says how old a position is when the device has reported since without one', async ({
+		page
+	}) => {
+		const now = Date.now();
+
+		await createTestVehicle({
+			deviceId: 'car-parked',
+			name: 'Parked Car',
+			lastSeenAt: new Date(now)
+		});
+
+		// Its only position is two months old...
+		await createTestTelemetry({
+			deviceId: 'car-parked',
+			id: 1,
+			timestamp: now - 60 * 24 * 60 * 60 * 1000,
+			latitude: 48.2,
+			longitude: 17.2
+		});
+
+		// ...while it has gone on reporting rows that carry none.
+		await createTestTelemetry({
+			deviceId: 'car-parked',
+			id: 2,
+			timestamp: now,
+			event: 'logger_armed',
+			latitude: null,
+			longitude: null
+		});
+
+		await page.reload();
+
+		await getVehicleSelector(page).click();
+
+		await page
+			.getByRole('button', {
+				name: /Parked Car/
+			})
+			.click();
+
+		const vehicleInfoCard = getVehicleInfoCard(page);
+
+		await expect(vehicleInfoCard).toContainText('48.20000');
+
+		/*
+		 * The badge says online, because the device really is reporting. Without
+		 * this line the coordinates beside it would read as current.
+		 */
+		await expect(getVehicleStatusBadge(page)).toHaveText('Online');
+		await expect(page.getByTestId('vehicle-position-age')).toContainText('Position from');
+	});
+
+	test('does not label the position age when it arrived with the last contact', async ({
+		page
+	}) => {
+		// Škoda Octavia's newest row is its located sample, so there is nothing
+		// to disambiguate and the extra line would only be noise.
+		await expect(getVehicleInfoCard(page)).toContainText('48.14860');
+
+		await expect(page.getByTestId('vehicle-position-age')).toHaveCount(0);
+	});
+
 	test('shows the initially selected vehicle', async ({ page }) => {
 		const vehicleSelector = getVehicleSelector(page);
 		const vehicleInfoCard = getVehicleInfoCard(page);
@@ -140,7 +231,7 @@ test.describe('vehicle selection and creation', () => {
 		await expect(getVehicleStatusBadge(page)).toHaveText('Stale');
 	});
 
-	test('adds a vehicle, persists it and selects it', async ({ page }) => {
+	test('adds a vehicle, issues a pairing code and selects it', async ({ page }) => {
 		const vehicleSelector = getVehicleSelector(page);
 		const vehicleInfoCard = getVehicleInfoCard(page);
 		const dialog = await openAddVehicleDialog(page);
@@ -151,11 +242,12 @@ test.describe('vehicle selection and creation', () => {
 			})
 			.fill('Development Vehicle');
 
-		await dialog
-			.getByLabel('Device ID', {
+		// No device identifier is asked for: the server mints one.
+		await expect(
+			dialog.getByLabel('Device ID', {
 				exact: true
 			})
-			.fill('device-e2e-001');
+		).toHaveCount(0);
 
 		await dialog.getByLabel(/Notes/).fill('Created by the Playwright E2E suite');
 
@@ -166,23 +258,47 @@ test.describe('vehicle selection and creation', () => {
 			})
 			.click();
 
-		await expect(dialog).not.toBeVisible();
+		await expect.poll(() => getKnownDeviceByName('Development Vehicle')).not.toBeNull();
 
-		const createdVehicle = await getKnownDeviceById('device-e2e-001');
-
-		expect(createdVehicle).not.toBeNull();
+		const createdVehicle = await getKnownDeviceByName('Development Vehicle');
 
 		expect(createdVehicle).toMatchObject({
-			device_id: 'device-e2e-001',
 			name: 'Development Vehicle',
 			is_active: true,
 			notes: 'Created by the Playwright E2E suite'
 		});
 
+		const deviceId = String(createdVehicle?.device_id);
+
+		// A generated identity, not one anybody typed.
+		expect(deviceId).toMatch(
+			/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+		);
+
+		// Only the hash is kept, so the token itself is never recoverable.
+		expect(String(createdVehicle?.token_hash)).toMatch(/^[0-9a-f]{64}$/);
+		expect(createdVehicle?.token_rotated_at).not.toBeNull();
+
+		// Creation hands straight to pairing; a vehicle nothing can upload to
+		// is only half made.
+		const pairingToken = page.getByTestId('device-pairing-token');
+
+		await expect(pairingToken).toBeVisible();
+		await expect(page.getByTestId('device-pairing-device-id')).toHaveText(deviceId);
+		await expect(pairingToken).toHaveText(/^[A-Za-z0-9_-]{43}$/);
+		await expect(page.getByTestId('device-pairing-qr')).toBeVisible();
+
+		await page
+			.getByRole('button', {
+				name: 'Done',
+				exact: true
+			})
+			.click();
+
 		await expect(vehicleSelector).toContainText('Development Vehicle');
 
 		await expect(vehicleInfoCard).toContainText('Development Vehicle');
-		await expect(vehicleInfoCard).toContainText('device-e2e-001');
+		await expect(vehicleInfoCard).toContainText(deviceId);
 
 		await expect(getVehicleStatusBadge(page)).toHaveText('Offline');
 
@@ -193,9 +309,34 @@ test.describe('vehicle selection and creation', () => {
 		await expect(getVehicleSelector(page)).toContainText('Development Vehicle');
 
 		await expect(getVehicleInfoCard(page)).toContainText('Development Vehicle');
-		await expect(getVehicleInfoCard(page)).toContainText('device-e2e-001');
 
 		await expect(getVehicleStatusBadge(page)).toHaveText('Offline');
+	});
+
+	test('issues a new token when a replacement phone is paired', async ({ page }) => {
+		const before = await getKnownDeviceByName('Škoda Octavia');
+
+		await getVehicleSelector(page).click();
+
+		await page.getByTestId('pair-phone').click();
+
+		await expect(page.getByTestId('device-pairing-token')).toBeVisible();
+
+		/*
+		 * The identity is deliberately unchanged. That is what lets a vehicle
+		 * survive a replaced handset with its whole history: only the
+		 * credential is withdrawn.
+		 */
+		await expect(page.getByTestId('device-pairing-device-id')).toHaveText('car-1');
+
+		await expect
+			.poll(async () => (await getKnownDeviceByName('Škoda Octavia'))?.token_hash)
+			.not.toBe(before?.token_hash);
+
+		const after = await getKnownDeviceByName('Škoda Octavia');
+
+		expect(after?.device_id).toBe('car-1');
+		expect(String(after?.token_hash)).toMatch(/^[0-9a-f]{64}$/);
 	});
 
 	test('does not add a vehicle when the dialog is cancelled', async ({ page }) => {
@@ -209,12 +350,6 @@ test.describe('vehicle selection and creation', () => {
 			.fill('Cancelled Vehicle');
 
 		await dialog
-			.getByLabel('Device ID', {
-				exact: true
-			})
-			.fill('cancelled-device');
-
-		await dialog
 			.getByRole('button', {
 				name: 'Cancel',
 				exact: true
@@ -224,9 +359,7 @@ test.describe('vehicle selection and creation', () => {
 		await expect(dialog).not.toBeVisible();
 		await expect(vehicleSelector).toContainText('Škoda Octavia');
 
-		const cancelledVehicle = await getKnownDeviceById('cancelled-device');
-
-		expect(cancelledVehicle).toBeNull();
+		expect(await getKnownDeviceByName('Cancelled Vehicle')).toBeNull();
 
 		await vehicleSelector.click();
 
@@ -235,42 +368,6 @@ test.describe('vehicle selection and creation', () => {
 				exact: true
 			})
 		).not.toBeVisible();
-	});
-
-	test('explains that a device ID is already registered', async ({ page }) => {
-		const dialog = await openAddVehicleDialog(page);
-
-		await dialog
-			.getByLabel('Vehicle name', {
-				exact: true
-			})
-			.fill('Duplicate Vehicle');
-
-		await dialog
-			.getByLabel('Device ID', {
-				exact: true
-			})
-			.fill('car-1');
-
-		await dialog
-			.getByRole('button', {
-				name: 'Add vehicle',
-				exact: true
-			})
-			.click();
-
-		await expect(dialog.getByRole('alert')).toHaveText(
-			'A vehicle with this device ID already exists.'
-		);
-
-		await expect(dialog).toBeVisible();
-
-		await dialog
-			.getByRole('button', {
-				name: 'Cancel',
-				exact: true
-			})
-			.click();
 	});
 
 	test('loads a fresh vehicle list after signing out and back in', async ({ page }) => {
@@ -361,12 +458,6 @@ test.describe('vehicle selection and creation', () => {
 			})
 			.fill('Temporary Vehicle');
 
-		await dialog
-			.getByLabel('Device ID', {
-				exact: true
-			})
-			.fill('temporary-device');
-
 		await dialog.getByLabel(/Notes/).fill('Temporary notes');
 
 		await dialog
@@ -382,12 +473,6 @@ test.describe('vehicle selection and creation', () => {
 
 		await expect(
 			reopenedDialog.getByLabel('Vehicle name', {
-				exact: true
-			})
-		).toHaveValue('');
-
-		await expect(
-			reopenedDialog.getByLabel('Device ID', {
 				exact: true
 			})
 		).toHaveValue('');

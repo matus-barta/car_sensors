@@ -13,7 +13,6 @@
 
 	export interface AddVehicleInput {
 		name: string;
-		deviceId: string;
 		notes: string | null;
 	}
 
@@ -25,14 +24,12 @@
 	let { open = $bindable(false), onSubmit }: Props = $props();
 
 	let name = $state('');
-	let deviceId = $state('');
 	let notes = $state('');
 	let submitting = $state(false);
 	let errorMessage = $state<string | null>(null);
 
 	function resetForm() {
 		name = '';
-		deviceId = '';
 		notes = '';
 		errorMessage = null;
 	}
@@ -53,7 +50,7 @@
 	}
 
 	function canSubmit(): boolean {
-		return name.trim().length > 0 && deviceId.trim().length > 0 && !submitting;
+		return name.trim().length > 0 && !submitting;
 	}
 
 	async function submit(event: SubmitEvent) {
@@ -64,16 +61,10 @@
 		errorMessage = null;
 
 		const normalizedName = name.trim();
-		const normalizedDeviceId = deviceId.trim();
 		const normalizedNotes = notes.trim();
 
 		if (!normalizedName) {
 			errorMessage = 'Enter a vehicle name.';
-			return;
-		}
-
-		if (!normalizedDeviceId) {
-			errorMessage = 'Enter the device ID associated with the vehicle.';
 			return;
 		}
 
@@ -82,7 +73,6 @@
 		try {
 			await onSubmit?.({
 				name: normalizedName,
-				deviceId: normalizedDeviceId,
 				notes: normalizedNotes || null
 			});
 
@@ -112,7 +102,9 @@
 					<div class="flex flex-col gap-1">
 						<Dialog.Title>Add vehicle</Dialog.Title>
 
-						<Dialog.Description>Associate a vehicle with a telemetry device.</Dialog.Description>
+						<Dialog.Description>
+							A pairing code is issued once the vehicle exists.
+						</Dialog.Description>
 					</div>
 				</div>
 			</Dialog.Header>
@@ -134,24 +126,6 @@
 					<p class="text-xs text-muted-foreground">
 						A recognizable name used throughout the application.
 					</p>
-				</div>
-
-				<div class="grid gap-2">
-					<Label for="add-vehicle-device-id">Device ID</Label>
-
-					<Input
-						id="add-vehicle-device-id"
-						name="deviceId"
-						bind:value={deviceId}
-						placeholder="Enter the device identifier"
-						autocomplete="off"
-						autocapitalize="none"
-						spellcheck="false"
-						disabled={submitting}
-						required
-					/>
-
-					<p class="text-xs text-muted-foreground">The identifier sent by the telemetry device.</p>
 				</div>
 
 				<div class="grid gap-2">
