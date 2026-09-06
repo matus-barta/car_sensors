@@ -298,6 +298,40 @@ server-only change.
 
 ## Device authentication
 
+### Let the phone act on why a request was refused
+
+The server half of this shipped and the phone half did not, which is the worst
+place to leave it: `ingest` now says precisely why it turned a request away and
+the phone throws the answer on the floor.
+
+Since the bearer token landed, refusals follow RFC 6750. A 401 carrying
+`error="invalid_token"` means the credential was refused - an unknown identity
+or a rotated token - and re-pairing fixes it. A 401 with no error code means
+nothing was presented, which for a paired phone should not happen. A 403 with
+`error="insufficient_scope"` means the token is perfectly good and the vehicle
+has been deactivated, which re-pairing will never fix.
+
+`UploadOutcome.forResponseCode` maps every one of them to `REFUSED`, and nothing
+reads `WWW-Authenticate` at all. `REFUSED` deliberately does not count against
+the rows, which is right for a mistyped address and wrong for a device that has
+been retired for good: the backlog then grows to the storage ceiling with no
+prospect of ever being accepted, and nothing on the screen says so.
+
+What it needs. Separate outcomes for "this credential was refused" and "this
+vehicle is retired", decided from the status and the challenge rather than the
+status alone - `forResponseCode` would take the header as well, and stays
+testable without a network either way. Then the state has to reach the screen,
+because the remedies differ: one is a trip to the pairing dialog, the other is
+a decision about what to do with data that will never be uploaded. And the user
+deserves that choice made explicitly - discard the rows, or keep them for
+export - rather than having it made for them by a storage ceiling.
+
+Worth recording how this came to be missed. It was the closing half of an entry
+covering the four ways a phone and a car come together, and when the other
+three were implemented the whole entry was deleted, taking this with it. The
+lesson is about pruning: an entry is only finished when every part of it is,
+and the parts that are not want lifting out before the rest is removed.
+
 ### Tell the phone which car it is paired to
 
 The app shows the raw identity - `f4075710-dae3-420e-89b7-bd8f3e382d9f` - and
