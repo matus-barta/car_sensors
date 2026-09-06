@@ -1,3 +1,5 @@
+import { fileURLToPath } from 'node:url';
+
 import tailwindcss from '@tailwindcss/vite';
 import { defineConfig } from 'vitest/config';
 import { playwright } from '@vitest/browser-playwright';
@@ -18,6 +20,24 @@ export default defineConfig({
 			},
 			experimental: {
 				remoteFunctions: true
+			},
+			/*
+			 * One environment file at the repository root, shared with `ingest`,
+			 * which finds it by walking up from its working directory. Keeping a
+			 * second copy here is how the two came to be pointed at different
+			 * databases, with `www` answering every insert with a missing column
+			 * while every check passed against the other one.
+			 *
+			 * This has to be committed rather than left to a symlink somebody
+			 * creates by hand, because a setup step that can be forgotten
+			 * reproduces exactly the fault it was meant to prevent. A stray
+			 * `www/.env` is now simply not read.
+			 *
+			 * SvelteKit resolves env itself through `kit.env.dir` and ignores
+			 * Vite's `envDir`, so this is the knob rather than that one.
+			 */
+			env: {
+				dir: fileURLToPath(new URL('..', import.meta.url))
 			},
 			adapter: adapter(),
 			typescript: {
