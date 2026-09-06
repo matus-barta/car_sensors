@@ -49,6 +49,7 @@ Rust (workspace at the repo root, members `ingest` and `shared`):
 
 ```bash
 cargo build
+cargo fmt --all --check    # CI runs this first; `cargo fmt --all` fixes it
 cargo clippy --all-targets --all-features -- -D warnings
 cargo test
 cargo test -p ingest <test_name>      # single test
