@@ -811,27 +811,43 @@ refuses to start.
 
 ## Distribution
 
-### Trim the web application image
+### Trim the web application image further
 
-The image is around 380 MB, and roughly 240 MB of that is `node_modules` for six
-runtime dependencies. `pnpm install --prod` is already used rather than pruning
-a build stage, which removed the worst of it, but the graph still drags in
-`typescript`, a `@rolldown` binding and `playwright-core` as transitive
-dependencies of `drizzle-orm` and `better-auth` - none of which a running server
-touches.
+Down from about 386 MB to 355 MB, and roughly 206 MB of what is left is
+`node_modules` for five runtime dependencies. The saving came from moving
+`maplibre-gl` to `devDependencies`: the server bundle contains no reference to
+it at all, because the map imports it dynamically in the browser and the client
+bundle already carries its own copy. The build still produces that bundle, the
+container still serves it, and the end-to-end test that waits for the map to
+report ready still passes - which is what the move was checked against rather
+than the size.
 
-Worth looking at, but not by guessing. `pnpm deploy --prod` produces a flat
-`node_modules` and might resolve differently; `--no-optional` would drop more
-and could equally drop something needed. Whatever is tried has to be checked by
-running the image against a real database rather than by reading the size,
-because the failure mode is a module that is missing only on a path nobody
-exercised.
+What is left is mostly not ours. `better-auth` is a runtime dependency that
+declares `@sveltejs/kit`, `vite` and `vitest` as peers, and pnpm installs peers
+automatically, so the production tree drags in `typescript`, a `@rolldown`
+native binding and `playwright-core` - roughly 55 MB of things a running server
+never opens. `pnpm why --prod` shows the whole chain.
 
-Also worth noticing: `maplibre-gl` is a runtime dependency and about 20 MB of
-it, yet the server never loads it - it is dynamically imported in the browser
-from the already-built client bundle. Moving it to `devDependencies` may be
-correct and may break the build, which is exactly the kind of thing to try
-against the container rather than reason about.
+Two obvious ways out are both closed at the moment, and it is worth writing down
+why so they are not tried again from scratch.
+
+`pnpm install --prod --config.auto-install-peers=false` is refused outright:
+pnpm records the setting in the lockfile and rejects a frozen install whose
+configuration disagrees with it. Getting past that means regenerating the
+lockfile with peers off, which changes resolution for development and CI too -
+far more than an image is worth.
+
+`pnpm deploy --prod`, which would produce a flat production tree, needs a
+workspace with named projects to select from. `www/pnpm-workspace.yaml` exists
+only to carry `allowBuilds`, so there is nothing to deploy and pnpm says so.
+Making `www` a real workspace member might be worth it for other reasons, but
+not for this alone.
+
+What would actually work is bundling the server's dependencies instead of
+leaving them external - `ssr.noExternal` - so that `node_modules` need not ship
+at all. That is a real change in how the server is built rather than a
+packaging flag, and it wants testing against every path that loads a dependency
+lazily, `better-auth` in particular.
 
 ### Publish signed builds to GitHub Releases for Obtainium
 
