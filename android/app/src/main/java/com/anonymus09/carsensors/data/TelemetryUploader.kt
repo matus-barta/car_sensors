@@ -23,7 +23,8 @@ import java.util.zip.GZIPOutputStream
 class TelemetryUploader(
     private val dao: TelemetryDao,
     private val settings: SettingsRepository,
-    private val loadPairing: () -> DevicePairing?
+    private val loadPairing: () -> DevicePairing?,
+    private val recordRejection: (PairingRejection?) -> Unit
 ) {
 
     /**
@@ -54,8 +55,25 @@ class TelemetryUploader(
         }
 
         when (outcome) {
-            UploadOutcome.STORED -> dao.markUploaded(ids, System.currentTimeMillis())
+            UploadOutcome.STORED -> {
+                dao.markUploaded(ids, System.currentTimeMillis())
+
+                // Whatever was wrong with the credential plainly is not now.
+                recordRejection(null)
+            }
+
             UploadOutcome.MALFORMED -> dao.incrementUploadAttempts(ids)
+
+            /*
+             * Recorded rather than only logged: the screen has to be able to
+             * say which of the two happened, because pairing again fixes one
+             * and will never fix the other.
+             */
+            UploadOutcome.CREDENTIAL_REJECTED ->
+                recordRejection(PairingRejection.CREDENTIAL_REJECTED)
+
+            UploadOutcome.DEVICE_RETIRED -> recordRejection(PairingRejection.DEVICE_RETIRED)
+
             else -> Unit
         }
 
@@ -114,8 +132,15 @@ class TelemetryUploader(
             }
 
             val code = connection.responseCode
+
+            /*
+             * Read before the connection is closed. RFC 6750 puts the reason a
+             * request was turned away in the challenge, not in the status.
+             */
+            val challenge = connection.getHeaderField("WWW-Authenticate")
+
             Log.i(TAG, "$uploadUrl answered $code")
-            UploadOutcome.forResponseCode(code)
+            UploadOutcome.forResponseCode(code, challenge)
         } finally {
             connection.disconnect()
         }
@@ -214,7 +239,8 @@ class TelemetryUploader(
             return TelemetryUploader(
                 dao = AppDatabase.getInstance(appContext).telemetryDao(),
                 settings = SettingsRepository(appContext),
-                loadPairing = { PairingRepository(appContext).current() }
+                loadPairing = { PairingRepository(appContext).current() },
+                recordRejection = { PairingRepository(appContext).recordRejection(it) }
             )
         }
     }

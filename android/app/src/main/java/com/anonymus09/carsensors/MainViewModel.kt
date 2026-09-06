@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.anonymus09.carsensors.data.DevicePairing
+import com.anonymus09.carsensors.data.PairingRejection
 import com.anonymus09.carsensors.data.PairingRepository
 import com.anonymus09.carsensors.data.PowerState
 import com.anonymus09.carsensors.data.PowerStateProvider
@@ -33,6 +34,15 @@ data class MainUiState(
      * never uploads, so the rows wait until an identity is assigned.
      */
     val pairing: DevicePairing? = null,
+
+    /**
+     * Why the server last refused this phone, if it did.
+     *
+     * Separate from [pairing] because a pairing can be perfectly well formed
+     * and still be turned away - and which of the two reasons it was decides
+     * whether pairing again is the remedy or a waste of time.
+     */
+    val pairingRejection: PairingRejection? = null,
     val settings: TelemetrySettings = TelemetrySettings(),
     val power: PowerState = PowerState(),
     val storage: TelemetryStorage = TelemetryStorage(),
@@ -128,6 +138,18 @@ class MainViewModel(
         pendingPairing.value = null
     }
 
+    /**
+     * Throws away every row that has not been uploaded.
+     *
+     * Offered when the vehicle has been retired on the server, because those
+     * rows will never be accepted and the alternative is letting a storage
+     * ceiling decide. Nothing calls this on its own - see
+     * `discardUntaggedRows` for the other place the user is asked.
+     */
+    fun discardPendingRows() {
+        viewModelScope.launch { telemetryRepository.deleteNotUploaded() }
+    }
+
     /** Returns the app to being unpaired. Recording continues; uploading stops. */
     fun unpair() {
         pairingRepository.clear()
@@ -174,9 +196,10 @@ class MainViewModel(
         powerStateProvider.observe(),
         telemetryRepository.observeStorage(DB_STATS_REFRESH_RATE.seconds),
         TelemetryForegroundService.loggerState
-    ) { pairing, settings, power, storage, loggerState ->
+    ) { pairingStatus, settings, power, storage, loggerState ->
         MainUiState(
-            pairing = pairing,
+            pairing = pairingStatus.pairing,
+            pairingRejection = pairingStatus.rejection,
             settings = settings,
             power = power,
             storage = storage,

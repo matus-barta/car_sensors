@@ -21,6 +21,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.anonymus09.carsensors.data.AppDatabase
 import com.anonymus09.carsensors.data.PowerStateProvider
+import com.anonymus09.carsensors.data.PairingRejection
 import com.anonymus09.carsensors.data.PairingRepository
 import com.anonymus09.carsensors.data.ServerHealthChecker
 import com.anonymus09.carsensors.data.SettingsRepository
@@ -129,13 +130,15 @@ class MainActivity : ComponentActivity() {
             open = showPairingOptions,
             onOpenChange = { showPairingOptions = it },
             isPaired = state.pairing != null,
-            hasPendingRows = state.storage.stats.pendingUpload > 0,
+            pendingRows = state.storage.stats.pendingUpload,
+            isRetired = state.pairingRejection == PairingRejection.DEVICE_RETIRED,
             untaggedRowsPendingDecision = untaggedRows,
             onPair = viewModel::startPairing,
             onKeepUntaggedRows = viewModel::keepUntaggedRows,
             onDiscardUntaggedRows = viewModel::discardUntaggedRows,
             onCancelPairing = viewModel::cancelPairing,
-            onUnpair = viewModel::unpair
+            onUnpair = viewModel::unpair,
+            onDiscardPendingRows = viewModel::discardPendingRows
         )
     }
 

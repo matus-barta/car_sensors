@@ -17,6 +17,26 @@ data class DevicePairing(
 )
 
 /**
+ * Why the server last turned this phone's credential away, if it did.
+ *
+ * Kept beside the pairing because it is a fact about that pairing, and cleared
+ * the moment a new one is adopted or an upload succeeds.
+ */
+enum class PairingRejection {
+    /** Pairing again fixes it - the identity or the token is no longer valid. */
+    CREDENTIAL_REJECTED,
+
+    /** Pairing again will not fix it - the vehicle is deactivated on the server. */
+    DEVICE_RETIRED
+}
+
+/** The pairing in force and whatever the server last said about it. */
+data class PairingStatus(
+    val pairing: DevicePairing? = null,
+    val rejection: PairingRejection? = null
+)
+
+/**
  * The payload version this build understands.
  *
  * The server writing the code ships separately from the app reading it, so a

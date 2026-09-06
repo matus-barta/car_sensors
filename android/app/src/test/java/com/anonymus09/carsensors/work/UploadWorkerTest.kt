@@ -200,6 +200,51 @@ class UploadWorkerTest {
     }
 
     @Test
+    fun `a retired vehicle stops the run without blaming the rows`() = runTest {
+        seed(count = 3)
+
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(403)
+                .setHeader(
+                    "WWW-Authenticate",
+                    """Bearer realm="telemetry", error="insufficient_scope""""
+                )
+        )
+
+        val result = runWorker()
+
+        /*
+         * The rows are untouched. Counting an attempt against them would
+         * quarantine perfectly good data for something the server decided about
+         * the vehicle, and the screen is what offers to do anything about it.
+         */
+        assertEquals(ListenableWorker.Result.failure(), result)
+        assertEquals(0, maxAttempts())
+        assertEquals(3, dao.getPendingUploadCount(99))
+    }
+
+    @Test
+    fun `a refused credential stops the run without blaming the rows`() = runTest {
+        seed(count = 2)
+
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(401)
+                .setHeader(
+                    "WWW-Authenticate",
+                    """Bearer realm="telemetry", error="invalid_token""""
+                )
+        )
+
+        val result = runWorker()
+
+        assertEquals(ListenableWorker.Result.failure(), result)
+        assertEquals(0, maxAttempts())
+        assertEquals(2, dao.getPendingUploadCount(99))
+    }
+
+    @Test
     fun `sends nothing at all while the phone is unpaired`() = runTest {
         PairingRepository(RuntimeEnvironment.getApplication()).clear()
 

@@ -32,17 +32,20 @@ fun PairingFlow(
     open: Boolean,
     onOpenChange: (Boolean) -> Unit,
     isPaired: Boolean,
-    hasPendingRows: Boolean,
+    pendingRows: Int,
+    isRetired: Boolean,
     untaggedRowsPendingDecision: Int?,
     onPair: (DevicePairing) -> Unit,
     onKeepUntaggedRows: () -> Unit,
     onDiscardUntaggedRows: () -> Unit,
     onCancelPairing: () -> Unit,
-    onUnpair: () -> Unit
+    onUnpair: () -> Unit,
+    onDiscardPendingRows: () -> Unit
 ) {
     var showManualPairing by remember { mutableStateOf(false) }
     var showInvalidCode by remember { mutableStateOf(false) }
     var showConfirmUnpair by remember { mutableStateOf(false) }
+    var showConfirmDiscard by remember { mutableStateOf(false) }
 
     /*
      * ZXing's capture activity asks for the camera itself, so there is no
@@ -63,6 +66,7 @@ fun PairingFlow(
     if (open) {
         PairingOptionsDialog(
             isPaired = isPaired,
+            canDiscardPendingRows = isRetired && pendingRows > 0,
             onScan = {
                 onOpenChange(false)
                 scanLauncher.launch(pairingScanOptions())
@@ -74,6 +78,10 @@ fun PairingFlow(
             onUnpair = {
                 onOpenChange(false)
                 showConfirmUnpair = true
+            },
+            onDiscardPendingRows = {
+                onOpenChange(false)
+                showConfirmDiscard = true
             },
             onDismiss = { onOpenChange(false) }
         )
@@ -102,9 +110,20 @@ fun PairingFlow(
         InvalidPairingCodeDialog(onDismiss = { showInvalidCode = false })
     }
 
+    if (showConfirmDiscard) {
+        ConfirmDiscardPendingRowsDialog(
+            rowCount = pendingRows,
+            onConfirm = {
+                showConfirmDiscard = false
+                onDiscardPendingRows()
+            },
+            onDismiss = { showConfirmDiscard = false }
+        )
+    }
+
     if (showConfirmUnpair) {
         ConfirmUnpairDialog(
-            hasPendingRows = hasPendingRows,
+            hasPendingRows = pendingRows > 0,
             onConfirm = {
                 showConfirmUnpair = false
                 onUnpair()
