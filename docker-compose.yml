@@ -74,10 +74,63 @@ services:
       - cache
     healthcheck:
       test: ["CMD", "/usr/bin/curl", "-f", "http://localhost:3000/api/health"]
+
+      # Timed rather than left on Docker's defaults, because `www` now waits
+      # for this to pass before it starts. A 30 second interval with no start
+      # period would hold the web application back by at least that long on
+      # every boot, for a service that is ready in about a second.
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     environment:
       DATABASE_URL: "postgres://postgres:postgres@postgres/postgres"
       REDIS_URL: "redis://valkey"
       SERVER_IP_PORT: "0.0.0.0:3000"
+
+  www:
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+      # Not because `www` calls it - they only ever meet through the database -
+      # but because `ingest` is what applies the migrations, embedded in its
+      # binary and run when it connects. Waiting for it to report healthy is
+      # what stops the web application querying a column that a pending
+      # migration has not added yet.
+      ingest:
+        condition: service_healthy
+    container_name: www
+    image: ghcr.io/matus-barta/car-sensors-www:latest
+    restart: unless-stopped
+    ports:
+      - 3001:3000
+    networks:
+      - db
+      - cache
+    environment:
+      DATABASE_URL: "postgres://postgres:postgres@postgres/postgres"
+
+      # Valkey is optional here: without it the vehicle list still updates
+      # through its periodic poll, it just loses live tracking of the selected
+      # vehicle.
+      REDIS_URL: "redis://valkey"
+
+      # Where the application is actually reached. Better Auth checks it, so a
+      # value that does not match the address in the browser rejects sign-in.
+      ORIGIN: "${ORIGIN:?set ORIGIN to the URL this is served on}"
+
+      # No default, on purpose. A predictable signing key is worse than a
+      # service that refuses to start, so the substitution fails the whole
+      # command rather than quietly starting with something guessable.
+      # Generate one with: openssl rand -base64 32
+      BETTER_AUTH_SECRET: "${BETTER_AUTH_SECRET:?generate one with openssl rand -base64 32}"
+
+      # Read at run time rather than baked in, which is what lets one image
+      # serve every deployment. Both fall back to the public OpenStreetMap
+      # vector server when unset.
+      PUBLIC_OSM_VECTOR_TILE_URL: "${PUBLIC_OSM_VECTOR_TILE_URL:-}"
+      PUBLIC_OSM_STYLE_URL: "${PUBLIC_OSM_STYLE_URL:-}"
 
 volumes:
   postgres_data:
