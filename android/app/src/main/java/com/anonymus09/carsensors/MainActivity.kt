@@ -5,27 +5,38 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.anonymus09.carsensors.data.AppDatabase
 import com.anonymus09.carsensors.data.PowerStateProvider
+import com.anonymus09.carsensors.data.PairingRepository
 import com.anonymus09.carsensors.data.ServerHealthChecker
 import com.anonymus09.carsensors.data.SettingsRepository
 import com.anonymus09.carsensors.data.TelemetryRepository
+import com.anonymus09.carsensors.data.parsePairingPayload
 import com.anonymus09.carsensors.ui.CarSensorsScreen
+import com.anonymus09.carsensors.ui.ConfirmUnpairDialog
+import com.anonymus09.carsensors.ui.InvalidPairingCodeDialog
+import com.anonymus09.carsensors.ui.ManualPairingDialog
+import com.anonymus09.carsensors.ui.PairingOptionsDialog
+import com.anonymus09.carsensors.ui.UntaggedRowsDialog
 import com.anonymus09.carsensors.ui.theme.CarSensorsTheme
-import com.anonymus09.carsensors.util.DeviceIdProvider
 import com.anonymus09.carsensors.work.WifiUploadScheduler
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import com.journeyapps.barcodescanner.ScanContract
+import com.journeyapps.barcodescanner.ScanOptions
 
 class MainActivity : ComponentActivity() {
 
@@ -42,12 +53,9 @@ class MainActivity : ComponentActivity() {
             ),
             powerStateProvider = PowerStateProvider(context),
             healthChecker = ServerHealthChecker(
-                settings = SettingsRepository(context),
-                loadDeviceId = { DeviceIdProvider.getOrCreateDeviceId(context) }
+                loadPairing = { PairingRepository(context).current() }
             ),
-            loadDeviceId = {
-                withContext(Dispatchers.IO) { DeviceIdProvider.getOrCreateDeviceId(context) }
-            }
+            pairingRepository = PairingRepository(context)
         )
     }
 
@@ -80,35 +88,142 @@ class MainActivity : ComponentActivity() {
         setContent {
             CarSensorsTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    val state by viewModel.uiState.collectAsStateWithLifecycle()
-                    val locationStatus by viewModel.locationStatus.collectAsStateWithLifecycle()
-                    val serverHealth by viewModel.serverHealth.collectAsStateWithLifecycle()
-
-                    CarSensorsScreen(
-                        state = state,
-                        locationStatus = locationStatus,
-                        serverHealth = serverHealth,
-                        onAutoStartOnBootChange = viewModel::setAutoStartOnBoot,
-                        onRecordOnBatteryChange = viewModel::setRecordOnBattery,
-                        onUploadOnBatteryChange = viewModel::setUploadOnBattery,
-                        onWifiOnlyChange = viewModel::setWifiOnly,
-                        onLiveUploadChange = viewModel::setLiveUploadEnabled,
-                        onToggleLogging = { toggleLogging(state.loggerState) },
-                        onWakeOnMotionChange = viewModel::setWakeOnMotion,
-                        onForceUpload = { WifiUploadScheduler.enqueueNow(this) },
-                        onRestartService = { TelemetryForegroundService.restartService(this) },
-                        onServerBaseUrlSave = viewModel::setServerBaseUrl,
-                        onCheckServer = viewModel::checkServerHealth,
-                        /*
-                         * Cleartext is only permitted by the debug manifest, so
-                         * the field must refuse http:// anywhere it would not
-                         * actually work.
-                         */
-                        allowCleartext = BuildConfig.DEBUG
-                    )
+                    AppContent()
                 }
             }
         }
+    }
+
+    /**
+     * Everything on the screen, lifted out of `onCreate` so that the lifecycle
+     * method stays about the lifecycle.
+     */
+    @Composable
+    private fun AppContent() {
+        val state by viewModel.uiState.collectAsStateWithLifecycle()
+        val locationStatus by viewModel.locationStatus.collectAsStateWithLifecycle()
+        val serverHealth by viewModel.serverHealth.collectAsStateWithLifecycle()
+
+        val untaggedRows by viewModel.untaggedRowsPendingDecision
+            .collectAsStateWithLifecycle()
+
+        var showManualPairing by remember { mutableStateOf(false) }
+        var showInvalidCode by remember { mutableStateOf(false) }
+        var showConfirmUnpair by remember { mutableStateOf(false) }
+        var showPairingOptions by remember { mutableStateOf(false) }
+
+        /*
+         * ZXing's capture activity asks for the camera itself, so
+         * there is no permission dance to run here first.
+         */
+        val scanLauncher = rememberLauncherForActivityResult(ScanContract()) { result ->
+            val contents = result.contents ?: return@rememberLauncherForActivityResult
+
+            val pairing = parsePairingPayload(contents)
+
+            if (pairing == null) {
+                showInvalidCode = true
+            } else {
+                viewModel.startPairing(pairing)
+            }
+        }
+
+        CarSensorsScreen(
+            state = state,
+            locationStatus = locationStatus,
+            serverHealth = serverHealth,
+            onAutoStartOnBootChange = viewModel::setAutoStartOnBoot,
+            onRecordOnBatteryChange = viewModel::setRecordOnBattery,
+            onUploadOnBatteryChange = viewModel::setUploadOnBattery,
+            onWifiOnlyChange = viewModel::setWifiOnly,
+            onLiveUploadChange = viewModel::setLiveUploadEnabled,
+            onToggleLogging = { toggleLogging(state.loggerState) },
+            onWakeOnMotionChange = viewModel::setWakeOnMotion,
+            onForceUpload = { WifiUploadScheduler.enqueueNow(this) },
+            onRestartService = { TelemetryForegroundService.restartService(this) },
+            onServerBaseUrlSave = viewModel::setServerBaseUrl,
+            onCheckServer = viewModel::checkServerHealth,
+            onManagePairing = { showPairingOptions = true },
+            /*
+             * Cleartext is only permitted by the debug manifest, so
+             * the field must refuse http:// anywhere it would not
+             * actually work.
+             */
+            allowCleartext = BuildConfig.DEBUG
+        )
+
+        if (showPairingOptions) {
+            PairingOptionsDialog(
+                isPaired = state.pairing != null,
+                onScan = {
+                    showPairingOptions = false
+                    scanLauncher.launch(pairingScanOptions())
+                },
+                onEnterCode = {
+                    showPairingOptions = false
+                    showManualPairing = true
+                },
+                onUnpair = {
+                    showPairingOptions = false
+                    showConfirmUnpair = true
+                },
+                onDismiss = { showPairingOptions = false }
+            )
+        }
+
+        if (showManualPairing) {
+            ManualPairingDialog(
+                onSubmit = { pairing ->
+                    showManualPairing = false
+                    viewModel.startPairing(pairing)
+                },
+                onDismiss = { showManualPairing = false }
+            )
+        }
+
+        untaggedRows?.let { rowCount ->
+            UntaggedRowsDialog(
+                rowCount = rowCount,
+                onKeep = viewModel::keepUntaggedRows,
+                onDiscard = viewModel::discardUntaggedRows,
+                onCancel = viewModel::cancelPairing
+            )
+        }
+
+        if (showInvalidCode) {
+            InvalidPairingCodeDialog(onDismiss = { showInvalidCode = false })
+        }
+
+        if (showConfirmUnpair) {
+            ConfirmUnpairDialog(
+                hasPendingRows = state.storage.stats.pendingUpload > 0,
+                onConfirm = {
+                    showConfirmUnpair = false
+                    viewModel.unpair()
+                },
+                onDismiss = { showConfirmUnpair = false }
+            )
+        }
+    }
+
+    /**
+     * How the scanner is presented.
+     *
+     * Locked to QR and with the beep off: this is a setup step somebody runs
+     * standing next to a car, not a checkout till.
+     */
+    private fun pairingScanOptions() = ScanOptions().apply {
+        setDesiredBarcodeFormats(ScanOptions.QR_CODE)
+        setPrompt("Scan the pairing code shown by the web application")
+        setBeepEnabled(false)
+
+        /*
+         * Portrait, through an activity of our own that the manifest locks
+         * that way. ZXing's own follows the sensor, which meant turning the
+         * phone sideways to read a code from an upright screen.
+         */
+        setCaptureActivity(PortraitCaptureActivity::class.java)
+        setOrientationLocked(true)
     }
 
     private fun toggleLogging(loggerState: LoggerState) {

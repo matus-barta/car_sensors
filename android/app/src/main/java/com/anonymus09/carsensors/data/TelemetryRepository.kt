@@ -5,6 +5,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.withContext
 import com.anonymus09.carsensors.util.AppConfig.UPLOAD_MAX_ATTEMPTS
 import java.io.File
 import kotlin.time.Duration
@@ -54,6 +55,15 @@ class TelemetryRepository(
     }.flowOn(Dispatchers.IO)
 
     suspend fun pendingUploadCount(): Int = dao.getPendingUploadCount(UPLOAD_MAX_ATTEMPTS)
+
+    /**
+     * Discards every row that has never been uploaded.
+     *
+     * Offered when a phone is paired while holding rows recorded under no
+     * identity, and only after the question has been put to the user - see
+     * `MainViewModel.discardUntaggedRows`.
+     */
+    suspend fun deleteNotUploaded(): Int = withContext(Dispatchers.IO) { dao.deleteNotUploaded() }
 
     private suspend fun readStorage() = TelemetryStorage(
         stats = dao.getStats(UPLOAD_MAX_ATTEMPTS),

@@ -3,6 +3,8 @@ package com.anonymus09.carsensors.work
 import androidx.work.ListenableWorker
 import androidx.work.testing.TestListenableWorkerBuilder
 import com.anonymus09.carsensors.data.AppDatabase
+import com.anonymus09.carsensors.data.DevicePairing
+import com.anonymus09.carsensors.data.PairingRepository
 import com.anonymus09.carsensors.data.SettingsRepository
 import com.anonymus09.carsensors.data.TelemetryDao
 import com.anonymus09.carsensors.data.TelemetrySampleEntity
@@ -47,6 +49,10 @@ class UploadWorkerTest {
         // The address is a setting, so the worker can be pointed at the fake
         // server exactly the way a user points it at a real one.
         SettingsRepository(context).setServerBaseUrl("http://${server.hostName}:${server.port}")
+
+        // An unpaired phone deliberately never uploads, so every case here
+        // needs a credential to present before it can test anything else.
+        PairingRepository(context).save(DevicePairing(TEST_DEVICE_ID, TEST_TOKEN))
 
         /*
          * The database is a process singleton, so it outlives a single test and
@@ -174,11 +180,53 @@ class UploadWorkerTest {
 
     private fun ok() = MockResponse().setResponseCode(200)
 
+    @Test
+    fun `presents the identity and the bearer token`() = runTest {
+        seed(count = 1)
+        server.enqueue(ok())
+
+        runWorker()
+
+        val request = server.takeRequest()
+
+        /*
+         * The exact spelling matters more than it looks: `ingest` reads these
+         * two headers and nothing else, and they are named the way RFC 6750
+         * and RFC 6648 ask rather than the way this app used to name them.
+         */
+        assertEquals(TEST_DEVICE_ID, request.getHeader("Device-Id"))
+        assertEquals("Bearer $TEST_TOKEN", request.getHeader("Authorization"))
+        assertEquals(null, request.getHeader("X-Device-ID"))
+    }
+
+    @Test
+    fun `sends nothing at all while the phone is unpaired`() = runTest {
+        PairingRepository(RuntimeEnvironment.getApplication()).clear()
+
+        seed(count = 3)
+
+        val result = runWorker()
+
+        /*
+         * Not a retry: no amount of waiting produces a credential, and pairing
+         * enqueues this work itself. The rows stay untouched, because a
+         * rejection the app caused must not count against them.
+         */
+        assertEquals(ListenableWorker.Result.success(), result)
+        assertEquals(0, server.requestCount)
+        assertEquals(0, maxAttempts())
+    }
+
     /** The body is gzipped, which is also worth knowing still happens. */
     private fun samplesIn(request: RecordedRequest): Int {
         assertTrue("body should be gzipped", request.getHeader("Content-Encoding") == "gzip")
 
         val json = GZIPInputStream(request.body.inputStream()).bufferedReader().readText()
         return Regex("\"event\":").findAll(json).count()
+    }
+
+    private companion object {
+        const val TEST_DEVICE_ID = "61d96b75-a9fe-498d-9b7d-056ec07d5630"
+        const val TEST_TOKEN = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8"
     }
 }
