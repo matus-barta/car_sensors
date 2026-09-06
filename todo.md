@@ -811,43 +811,27 @@ refuses to start.
 
 ## Distribution
 
-### Give the web application a container image
+### Trim the web application image
 
-The Compose file starts PostgreSQL, Valkey, pgAdmin and `ingest`, and stops
-there. `www` has no image, so a deployment is only half a deployment: the
-README has to tell an operator to build it themselves and run `node build`
-beside the stack. It already uses `adapter-node`, so the missing pieces are a
-multi-stage Dockerfile, a build workflow shaped like `ingest-build.yml`, and
-the service added to `docker-compose.yml`.
+The image is around 380 MB, and roughly 240 MB of that is `node_modules` for six
+runtime dependencies. `pnpm install --prod` is already used rather than pruning
+a build stage, which removed the worst of it, but the graph still drags in
+`typescript`, a `@rolldown` binding and `playwright-core` as transitive
+dependencies of `drizzle-orm` and `better-auth` - none of which a running server
+touches.
 
-One thing to settle first, because it decides whether a published image is
-worth publishing. The map's tile and style URLs are read through
-`$env/static/public`, which SvelteKit inlines into the bundle at build time
-rather than reading at startup. An image built once therefore carries whichever
-tile server was configured when it was built, and an operator cannot point it
-at their own with an environment variable - they would have to rebuild, which
-is most of the reason to have an image gone. Moving those two to
-`$env/dynamic/public` is what makes one image serve every deployment. There is
-a fallback to the public OpenStreetMap vector server already, so an image built
-with neither set does work; it just works one way only.
+Worth looking at, but not by guessing. `pnpm deploy --prod` produces a flat
+`node_modules` and might resolve differently; `--no-optional` would drop more
+and could equally drop something needed. Whatever is tried has to be checked by
+running the image against a real database rather than by reading the size,
+because the failure mode is a module that is missing only on a path nobody
+exercised.
 
-The secrets are the other half. `DATABASE_URL`, `ORIGIN` and
-`BETTER_AUTH_SECRET` are read at runtime and validated at startup, so they are
-ordinary environment variables - but `BETTER_AUTH_SECRET` must not acquire a
-default, and the Compose file should make its absence a failure rather than
-quietly starting with something predictable.
-
-Worth knowing where `www` now looks for those, because it changed. `kit.env.dir`
-points at the repository root rather than at `www/`, so a `.env` dropped beside
-the application is not read at all. It makes no difference to a running
-container, where these arrive as real environment variables, but the build
-stage resolves `$env/static/public` the same way - so whatever sets the tile
-URLs at build time has to be a real variable or a file at the context root.
-
-Worth doing before the Android release work rather than after: between them
-they are the point at which this project starts having versions, and a badge or
-a release note has something true to say only once both pieces ship the same
-way.
+Also worth noticing: `maplibre-gl` is a runtime dependency and about 20 MB of
+it, yet the server never loads it - it is dynamically imported in the browser
+from the already-built client bundle. Moving it to `devDependencies` may be
+correct and may break the build, which is exactly the kind of thing to try
+against the container rather than reason about.
 
 ### Publish signed builds to GitHub Releases for Obtainium
 
