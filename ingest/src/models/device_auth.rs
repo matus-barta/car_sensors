@@ -65,7 +65,10 @@ impl DeviceCredential {
          * token itself here. `ct_eq` on slices also answers false for differing
          * lengths, so a corrupted row cannot panic.
          */
-        hash_token(presented).as_bytes().ct_eq(stored.as_bytes()).into()
+        hash_token(presented)
+            .as_bytes()
+            .ct_eq(stored.as_bytes())
+            .into()
     }
 }
 
@@ -133,13 +136,9 @@ impl DeviceAuthRejection {
         match self {
             Self::MissingCredentials => Some(r#"Bearer realm="telemetry""#),
 
-            Self::InvalidToken => Some(
-                r#"Bearer realm="telemetry", error="invalid_token", "#,
-            ),
+            Self::InvalidToken => Some(r#"Bearer realm="telemetry", error="invalid_token", "#),
 
-            Self::Deactivated => Some(
-                r#"Bearer realm="telemetry", error="insufficient_scope", "#,
-            ),
+            Self::Deactivated => Some(r#"Bearer realm="telemetry", error="insufficient_scope", "#),
 
             Self::Unavailable => None,
         }

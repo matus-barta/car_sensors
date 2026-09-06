@@ -1,10 +1,4 @@
-use axum::{
-    body::Body,
-    extract::State,
-    http::Request,
-    middleware::Next,
-    response::Response,
-};
+use axum::{body::Body, extract::State, http::Request, middleware::Next, response::Response};
 use shared::cache::{get_key, set_key_w_ttl};
 use shared::sqlx::{Error, Pool, Postgres, Row, query};
 
