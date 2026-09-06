@@ -5,7 +5,6 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
@@ -26,17 +25,10 @@ import com.anonymus09.carsensors.data.PairingRepository
 import com.anonymus09.carsensors.data.ServerHealthChecker
 import com.anonymus09.carsensors.data.SettingsRepository
 import com.anonymus09.carsensors.data.TelemetryRepository
-import com.anonymus09.carsensors.data.parsePairingPayload
 import com.anonymus09.carsensors.ui.CarSensorsScreen
-import com.anonymus09.carsensors.ui.ConfirmUnpairDialog
-import com.anonymus09.carsensors.ui.InvalidPairingCodeDialog
-import com.anonymus09.carsensors.ui.ManualPairingDialog
-import com.anonymus09.carsensors.ui.PairingOptionsDialog
-import com.anonymus09.carsensors.ui.UntaggedRowsDialog
+import com.anonymus09.carsensors.ui.PairingFlow
 import com.anonymus09.carsensors.ui.theme.CarSensorsTheme
 import com.anonymus09.carsensors.work.WifiUploadScheduler
-import com.journeyapps.barcodescanner.ScanContract
-import com.journeyapps.barcodescanner.ScanOptions
 
 class MainActivity : ComponentActivity() {
 
@@ -107,26 +99,7 @@ class MainActivity : ComponentActivity() {
         val untaggedRows by viewModel.untaggedRowsPendingDecision
             .collectAsStateWithLifecycle()
 
-        var showManualPairing by remember { mutableStateOf(false) }
-        var showInvalidCode by remember { mutableStateOf(false) }
-        var showConfirmUnpair by remember { mutableStateOf(false) }
         var showPairingOptions by remember { mutableStateOf(false) }
-
-        /*
-         * ZXing's capture activity asks for the camera itself, so
-         * there is no permission dance to run here first.
-         */
-        val scanLauncher = rememberLauncherForActivityResult(ScanContract()) { result ->
-            val contents = result.contents ?: return@rememberLauncherForActivityResult
-
-            val pairing = parsePairingPayload(contents)
-
-            if (pairing == null) {
-                showInvalidCode = true
-            } else {
-                viewModel.startPairing(pairing)
-            }
-        }
 
         CarSensorsScreen(
             state = state,
@@ -152,78 +125,18 @@ class MainActivity : ComponentActivity() {
             allowCleartext = BuildConfig.DEBUG
         )
 
-        if (showPairingOptions) {
-            PairingOptionsDialog(
-                isPaired = state.pairing != null,
-                onScan = {
-                    showPairingOptions = false
-                    scanLauncher.launch(pairingScanOptions())
-                },
-                onEnterCode = {
-                    showPairingOptions = false
-                    showManualPairing = true
-                },
-                onUnpair = {
-                    showPairingOptions = false
-                    showConfirmUnpair = true
-                },
-                onDismiss = { showPairingOptions = false }
-            )
-        }
-
-        if (showManualPairing) {
-            ManualPairingDialog(
-                onSubmit = { pairing ->
-                    showManualPairing = false
-                    viewModel.startPairing(pairing)
-                },
-                onDismiss = { showManualPairing = false }
-            )
-        }
-
-        untaggedRows?.let { rowCount ->
-            UntaggedRowsDialog(
-                rowCount = rowCount,
-                onKeep = viewModel::keepUntaggedRows,
-                onDiscard = viewModel::discardUntaggedRows,
-                onCancel = viewModel::cancelPairing
-            )
-        }
-
-        if (showInvalidCode) {
-            InvalidPairingCodeDialog(onDismiss = { showInvalidCode = false })
-        }
-
-        if (showConfirmUnpair) {
-            ConfirmUnpairDialog(
-                hasPendingRows = state.storage.stats.pendingUpload > 0,
-                onConfirm = {
-                    showConfirmUnpair = false
-                    viewModel.unpair()
-                },
-                onDismiss = { showConfirmUnpair = false }
-            )
-        }
-    }
-
-    /**
-     * How the scanner is presented.
-     *
-     * Locked to QR and with the beep off: this is a setup step somebody runs
-     * standing next to a car, not a checkout till.
-     */
-    private fun pairingScanOptions() = ScanOptions().apply {
-        setDesiredBarcodeFormats(ScanOptions.QR_CODE)
-        setPrompt("Scan the pairing code shown by the web application")
-        setBeepEnabled(false)
-
-        /*
-         * Portrait, through an activity of our own that the manifest locks
-         * that way. ZXing's own follows the sensor, which meant turning the
-         * phone sideways to read a code from an upright screen.
-         */
-        setCaptureActivity(PortraitCaptureActivity::class.java)
-        setOrientationLocked(true)
+        PairingFlow(
+            open = showPairingOptions,
+            onOpenChange = { showPairingOptions = it },
+            isPaired = state.pairing != null,
+            hasPendingRows = state.storage.stats.pendingUpload > 0,
+            untaggedRowsPendingDecision = untaggedRows,
+            onPair = viewModel::startPairing,
+            onKeepUntaggedRows = viewModel::keepUntaggedRows,
+            onDiscardUntaggedRows = viewModel::discardUntaggedRows,
+            onCancelPairing = viewModel::cancelPairing,
+            onUnpair = viewModel::unpair
+        )
     }
 
     private fun toggleLogging(loggerState: LoggerState) {

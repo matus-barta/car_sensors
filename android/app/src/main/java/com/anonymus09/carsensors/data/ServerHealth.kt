@@ -2,6 +2,7 @@ package com.anonymus09.carsensors.data
 
 import android.util.Log
 import com.anonymus09.carsensors.util.AppConfig.TELEMETRY_UPLOAD_PATH
+import com.anonymus09.carsensors.util.AppConfig.USER_AGENT
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
@@ -105,7 +106,7 @@ class ServerHealthChecker(
         val connection = (URL(url).openConnection() as HttpURLConnection).apply {
             connectTimeout = TIMEOUT_MS
             readTimeout = TIMEOUT_MS
-            setRequestProperty("User-Agent", "CarSensors/1.0")
+            setRequestProperty("User-Agent", USER_AGENT)
         }
 
         return try {

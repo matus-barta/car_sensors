@@ -1,6 +1,7 @@
 package com.anonymus09.carsensors.data
 
 import android.util.Log
+import com.anonymus09.carsensors.util.AppConfig.USER_AGENT
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.json.JSONArray
@@ -95,7 +96,7 @@ class TelemetryUploader(
             doOutput = true
             setRequestProperty("Content-Type", "application/json; charset=UTF-8")
             setRequestProperty("Content-Encoding", "gzip")
-            setRequestProperty("User-Agent", "CarSensors/1.0")
+            setRequestProperty("User-Agent", USER_AGENT)
 
             /*
              * The identity names the row; the bearer token proves the request
