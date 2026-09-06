@@ -63,7 +63,9 @@ class UploadWorker(
                 return finish(batchesUploaded)
             }
 
-            when (uploader.send(batch)) {
+            val outcome = uploader.send(batch)
+
+            when (outcome) {
                 UploadOutcome.STORED -> {
                     batchesUploaded++
                     Log.i(TAG, "Uploaded ${batch.size} rows")
@@ -102,6 +104,30 @@ class UploadWorker(
                     )
                     return Result.failure()
                 }
+
+                /*
+                 * One branch, because the worker has nothing different to do
+                 * about them: both stop the run and neither counts against the
+                 * rows, which did nothing wrong. The difference between "pair
+                 * again" and "this will never be accepted" matters to the
+                 * person holding the phone, and reaches them through the
+                 * rejection the uploader recorded rather than through here.
+                 */
+                UploadOutcome.CREDENTIAL_REJECTED, UploadOutcome.DEVICE_RETIRED -> {
+                    Log.e(TAG, refusalMessage(outcome))
+                    return Result.failure()
+                }
+
+                UploadOutcome.NOT_PAIRED -> {
+                    /*
+                     * Success rather than a retry: there is nothing to fix by
+                     * trying again, and pairing enqueues this work itself. A
+                     * retry here would back off against a condition no amount
+                     * of waiting resolves.
+                     */
+                    Log.i(TAG, "Not paired with a vehicle yet; leaving the rows for later")
+                    return Result.success()
+                }
             }
         }
 
@@ -113,6 +139,20 @@ class UploadWorker(
         Log.i(TAG, "Stopped after $batchesUploaded batches, more rows still pending")
         return finish(batchesUploaded)
     }
+
+    /**
+     * What to log about a refusal the rows are not to blame for.
+     *
+     * Only the wording differs between the two: the worker stops either way,
+     * and what the person holding the phone is told comes from the rejection
+     * the uploader recorded rather than from here.
+     */
+    private fun refusalMessage(outcome: UploadOutcome): String =
+        if (outcome == UploadOutcome.DEVICE_RETIRED) {
+            "This vehicle has been retired on the server; uploads will not resume"
+        } else {
+            "Server rejected this device's credential; pair the phone again"
+        }
 
     private suspend fun finish(batchesUploaded: Int): Result {
         if (batchesUploaded > 0) {

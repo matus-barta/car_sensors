@@ -2,6 +2,7 @@ package com.anonymus09.carsensors.data
 
 import android.util.Log
 import com.anonymus09.carsensors.util.AppConfig.TELEMETRY_UPLOAD_PATH
+import com.anonymus09.carsensors.util.AppConfig.USER_AGENT
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
@@ -28,8 +29,11 @@ sealed interface ServerHealth {
     /** Something answered but it is not this API - usually the wrong address. */
     data object NotTheApi : ServerHealth
 
-    /** The API is there and does not know this device. */
+    /** The API is there and will not accept this device's credential. */
     data object DeviceUnknown : ServerHealth
+
+    /** There is no pairing yet, so there is nothing to ask about. */
+    data object NotPaired : ServerHealth
 
     /** The API knows this device and has deactivated it. */
     data object DeviceDeactivated : ServerHealth
@@ -47,12 +51,16 @@ sealed interface ServerHealth {
  * whatever the reply.
  */
 class ServerHealthChecker(
-    private val settings: SettingsRepository,
-    private val loadDeviceId: () -> String
+    private val loadPairing: () -> DevicePairing?
 ) {
 
-    suspend fun check(): ServerHealth = withContext(Dispatchers.IO) {
-        val baseUrl = settings.current().serverBaseUrl
+    /**
+     * Asks [baseUrl] whether it is there and whether it wants us.
+     *
+     * The address is a parameter rather than read from the settings, so the
+     * screen can test what somebody has typed before they commit to saving it.
+     */
+    suspend fun check(baseUrl: String): ServerHealth = withContext(Dispatchers.IO) {
 
         val reachable = try {
             statusOf("$baseUrl$HEALTH_PATH") { it.requestMethod = "GET" }
@@ -64,13 +72,20 @@ class ServerHealthChecker(
         if (reachable == HttpURLConnection.HTTP_NOT_FOUND) return@withContext ServerHealth.NotTheApi
         if (reachable !in 200..299) return@withContext ServerHealth.ServerFault(reachable)
 
+        /*
+         * The address is reachable, which is as much as can be established
+         * without a credential to present.
+         */
+        val pairing = loadPairing() ?: return@withContext ServerHealth.NotPaired
+
         val accepted = try {
             statusOf("$baseUrl$TELEMETRY_UPLOAD_PATH") { connection ->
                 connection.requestMethod = "POST"
                 connection.doOutput = true
                 connection.setRequestProperty("Content-Type", "application/json; charset=UTF-8")
                 connection.setRequestProperty("Content-Encoding", "gzip")
-                connection.setRequestProperty("X-Device-ID", loadDeviceId())
+                connection.setRequestProperty("Device-Id", pairing.deviceId)
+                connection.setRequestProperty("Authorization", "Bearer ${pairing.token}")
                 connection.outputStream.use { it.write(gzip(EMPTY_BATCH)) }
             }
         } catch (e: Exception) {
@@ -91,7 +106,7 @@ class ServerHealthChecker(
         val connection = (URL(url).openConnection() as HttpURLConnection).apply {
             connectTimeout = TIMEOUT_MS
             readTimeout = TIMEOUT_MS
-            setRequestProperty("User-Agent", "CarSensors/1.0")
+            setRequestProperty("User-Agent", USER_AGENT)
         }
 
         return try {

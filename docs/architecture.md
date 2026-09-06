@@ -30,7 +30,7 @@ The test for whether such a call is acceptable is what happens when it fails. **
 
 **PostgreSQL** is the record. Everything that matters ends up here, and `db/migrations` is the only thing permitted to change its shape.
 
-**Valkey** carries what is current rather than what is kept: the live position of each device, a cache of which devices are known, and the throttle that stops `last_seen_at` being written on every upload. Losing all of it costs a little latency and nothing else.
+**Valkey** carries what is current rather than what is kept: the live position of each device, a cache of which devices are known, and the marker that stops `last_seen_at` being written on every upload. Losing all of it costs a little latency and nothing else.
 
 **`www`** reads the database for history and subscribes to Valkey for live positions, merging the two so a map updates between polls.
 

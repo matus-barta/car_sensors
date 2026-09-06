@@ -30,10 +30,32 @@ describe('mergeLivePosition', () => {
 			id: 'device-1',
 			name: 'Škoda Octavia',
 			lastSeenAt: '2026-08-21T12:00:00Z',
+			positionAt: '2026-08-21T12:00:00Z',
 			latitude: 48.2,
 			longitude: 17.2,
 			bearing: 180
 		});
+	});
+
+	it('dates the position to the live sample, which is what carried it', () => {
+		/*
+		 * A summary can hold a position far older than its last contact, because
+		 * rows without coordinates still count as contact. A live announcement
+		 * never can: `ingest` only publishes a sample that has a position, so
+		 * both timestamps are the same event and the card has nothing to warn
+		 * about.
+		 */
+		const merged = mergeLivePosition(
+			{ ...vehicle, positionAt: '2026-07-05T14:22:00Z' },
+			{
+				lastSeenAt: '2026-08-21T12:00:00Z',
+				latitude: 48.2,
+				longitude: 17.2,
+				bearing: 180
+			}
+		);
+
+		expect(merged.positionAt).toBe('2026-08-21T12:00:00Z');
 	});
 
 	it('carries a null bearing from the live position through', () => {

@@ -100,6 +100,15 @@ interface TelemetryDao {
     suspend fun deleteUploadedOlderThan(cutoff: Long): Int
 
     /**
+     * Throws away everything that has never reached a server.
+     *
+     * Only ever called after the user has been asked. These rows are the only
+     * copy in existence, so nothing may delete them on its own initiative.
+     */
+    @Query("DELETE FROM telemetry_samples WHERE uploaded = 0")
+    suspend fun deleteNotUploaded(): Int
+
+    /**
      * Every figure the storage panel shows, in one pass over the table.
      *
      * These were seven separate queries driven from the composable. Asking for

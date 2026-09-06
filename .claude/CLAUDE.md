@@ -49,6 +49,7 @@ Rust (workspace at the repo root, members `ingest` and `shared`):
 
 ```bash
 cargo build
+cargo fmt --all --check    # CI runs this first; `cargo fmt --all` fixes it
 cargo clippy --all-targets --all-features -- -D warnings
 cargo test
 cargo test -p ingest <test_name>      # single test
@@ -93,7 +94,7 @@ The root `docker-compose.yml` is the *deployment* file (Postgres, Valkey, pgAdmi
 
 **Vehicle data reaches the browser through remote functions** (`$lib/vehicles/vehicle.remote.ts`, enabled by `experimental.remoteFunctions`). The returned query is the single source of truth: `VehicleState` wraps it, exposing `.current`/`.loading`/`.error`, and owns the selection plus the derived status. Do not mirror query results into separate `$state` — that was a bug once already. Note that the query reports `loading` during refreshes too, so `VehicleState.loading` gates it on `ready` to keep the background poll from flashing skeletons.
 
-**Anything derived from a timestamp is derived in the browser, against `clock`** (`$lib/utils/clock.svelte.ts`). A status computed on the server freezes at the value it had when the response was sent, so `VehicleSummary` carries `lastSeenAt` and no status; `VehicleWithStatus` is what the components receive. The clock's interval only runs while an effect is reading it. Freshness of the data itself comes from `pollWhileVisible()` (`$lib/utils/poll.svelte.ts`) in the app shell, which pauses on a hidden tab; polling faster than 30s is pointless because `ingest` throttles each device's `last_seen_at` write to that.
+**Anything derived from a timestamp is derived in the browser, against `clock`** (`$lib/utils/clock.svelte.ts`). A status computed on the server freezes at the value it had when the response was sent, so `VehicleSummary` carries `lastSeenAt` and no status; `VehicleWithStatus` is what the components receive. The clock's interval only runs while an effect is reading it. Freshness of the data itself comes from `pollWhileVisible()` (`$lib/utils/poll.svelte.ts`) in the app shell, which pauses on a hidden tab; polling faster than 30s is pointless because `ingest` writes each device's `last_seen_at` at most that often. That limits the column write only - it is not a request limit, and `ingest` has none.
 
 **Errors from remote functions must be raised with `error()`.** SvelteKit replaces any other thrown value with a generic `"Internal Error"`, so a plain `throw new Error('...')` silently loses its message. On the client, use `getErrorMessage()` from `$lib/utils/error` — SvelteKit's `HttpError` does not extend `Error` and carries its text on `body.message`.
 
@@ -112,6 +113,14 @@ The root `docker-compose.yml` is the *deployment* file (Postgres, Valkey, pgAdmi
 E2E tests run serially against a real Postgres database whose name must end in `_test`; the fixture refuses anything else and refuses to share a database with `POSTGRES_ADMIN_URL`. Each test truncates and reseeds. They need a running Postgres and the SQLx CLI on `PATH`.
 
 ## Conventions
+
+**CSS that belongs to one component lives in that component.** `www` styles with Tailwind, so most of the time there is no CSS to place at all - this is not an invitation to move utility classes into `<style>` blocks. It is about the custom CSS that is left over. MapLibre's stylesheet and the hundred-odd lines restyling its controls used to sit in `src/routes/layout.css`, loaded by every route, to serve one component; they now sit in `vehicle-map.svelte`.
+
+Third-party widgets that build their DOM imperatively cannot be reached by an ordinary scoped selector, since that DOM never gets Svelte's scoping attribute. Anchor a `:global` block under a class on the component's own root instead - `.vehicle-map :global { … }` - which keeps the rules from escaping while still matching. `layout.css` is for what is genuinely global: the theme tokens, the font, and element defaults.
+
+**Colours come from the theme, never from a literal.** No component in `www` or the Android app may write a colour value - a hex string, `rgb()`, `Color(0x…)`, a Tailwind palette class such as `bg-emerald-500`, or a stock colour with an opacity applied to approximate a shade. Both applications support a light and a dark theme and the Android one opts into dynamic colour, and a literal follows none of that: it looks deliberate against the theme it was picked on and wrong on the other.
+
+`www` keeps its tokens in `src/routes/layout.css`; the Android app keeps its in `ui/theme/Color.kt`, wired up in `Theme.kt`. If a component seems to need a colour the theme does not offer, **say so and ask** - a new colour is added to the theme only after a human has agreed to it, so the palette stays something that was decided rather than something that accumulated one component at a time.
 
 Prettier runs only inside `www/` (tabs, single quotes, no trailing commas, 100 columns). Generated output — `src/lib/components/ui/` and `src/lib/server/db/generated/` — is excluded from it.
 

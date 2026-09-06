@@ -4,17 +4,98 @@ Work that is understood but not scheduled yet.
 
 ## Web application
 
+### Say on the map that a position is not current
+
+The info card now distinguishes when a vehicle was last heard from and when it
+was last located, because those come apart: rows without coordinates - events,
+and samples whose fix had gone stale - still count as contact, so a device can
+report all day while the newest position anyone has stays where it last had one.
+
+The map does not draw that distinction. A marker's colour comes from the status,
+which is read from the last contact, so a vehicle that has been parked for weeks
+sits at week-old coordinates in confident green. The card explains it if the
+vehicle happens to be selected; the map does not, and the map is what somebody
+looks at first.
+
+What to do about it needs deciding rather than guessing. Colouring the marker by
+the age of the position instead would be wrong the other way, since it would
+report a vehicle as offline while it is demonstrably reporting. Two states are
+being shown through one channel, so the answer is probably a second channel - a
+hollow or dashed marker for a position that is not current, keeping colour for
+whether the device is in touch. Worth sketching before building, and worth
+checking against what the marker already has to say at three zoom levels.
+
+### Give the vehicle states colours the theme knows about
+
+Not a rule violation so much as a gap in the palette. MapLibre's paint
+properties take colour strings and cannot read a CSS custom property, so hex in
+`vehicle-map.svelte` is that library's interface rather than a colour invented
+to dodge the theme. What is worth fixing is that the *values* live in two places
+and agree only because somebody matched them by hand: the map paints `#10b981`,
+`#f59e0b` and `#94a3b8` for the three vehicle states while
+`vehicle-status-style.ts` says `bg-emerald-500`, `bg-amber-500` and
+`bg-slate-400` for the same three.
+
+`layout.css` has nothing to point either of them at. The palette runs to
+`primary`, `muted`, `destructive` and the rest, and none of those means "this
+vehicle reported a minute ago". Tokens for `--vehicle-online`,
+`--vehicle-stale` and `--vehicle-offline` in both the light and dark blocks
+would give the badge and the map one source, but which colours they should be
+is a decision to take rather than a matter of promoting whatever is there now.
+
+The awkward part is the map, and it is worse than it first looks. The styling
+in question is the two `addLayer` calls in `addVehicleLayers`: the marker
+layer's `circle-color`, a `match` on the vehicle's status that picks one of the
+three, plus its white `circle-stroke-color`, and the selected-vehicle ring's
+fill and stroke above it. Those are values in a style object handed to MapLibre
+once, not CSS - nothing re-reads them when a stylesheet changes.
+
+Three separate problems, in increasing order of annoyance.
+
+MapLibre cannot be given `var(--vehicle-online)`; a paint property takes a
+colour string, so a token has to be resolved to a value first.
+
+The obvious way to resolve one does not produce something MapLibre accepts.
+`getComputedStyle(document.documentElement).getPropertyValue('--vehicle-online')`
+hands back the custom property as authored - `oklch(0.7 0.15 160)` - and every
+token in `layout.css` is `oklch`. MapLibre 6.3's colour parser knows `rgb` and
+`hsl` and has no idea what `oklch` is, so that string is rejected outright.
+Reading it back off an element's computed `color` returns `oklch` too, and
+`color-mix(in srgb, …)` only gets as far as `color(srgb …)`, which the parser
+does not know either. What does work is rasterising it - fill one pixel of a
+canvas with the token and read the bytes back with `getImageData`, which gives
+`rgba(35, 186, 125, 1)` and parses fine. That is a real technique rather than a
+hack, but it is a conversion step nobody would guess at from the outside.
+
+And it has to happen again on every theme change, since the same token resolves
+to a different colour under `.dark`. `mode-watcher` toggles that class on the
+document element, so something would have to observe it and call
+`map.setPaintProperty` for each affected property, or the map keeps whatever
+palette it was built with.
+
+Against that, the duplication costs one comment asking that two files be kept in
+step, and there are three states. The tokens are still worth adding so the badge
+has something to name; wiring the map to them is the part to leave until there
+is a fourth state or somebody actually changes a colour.
+
+The Android app has a plainer one: `SectionDivider` in `CarSensorsScreen.kt`
+draws `Color.Gray.copy(alpha = 0.3f)`, which is the "stock colour with an
+opacity to approximate a shade" case the rule in `.claude/CLAUDE.md` names.
+`MaterialTheme.colorScheme.outlineVariant` is what a divider is meant to use and
+needs no new token, so that one is a straight substitution.
+
 ### Expand the vehicle info card, grouped into tabs
 
-`vehicle-info-card.svelte` shows only name, id, status, last seen, coordinates
-and bearing - a small slice of what is already being collected. A telemetry
-row persists the full sensor suite (power and charging state, GPS speed,
-altitude, accuracy and provider, plus accelerometer, gyroscope, magnetometer
-and barometer readings - see `telemetry_samples` in
-`20260614151604_init_telemetry.sql`), and `LiveSample` already carries speed,
-altitude, accuracy, charging and power source over the live stream - none of
-it reaches the card today, since `VehicleSummary`/`VehicleLivePosition` only
-carry lastSeenAt, latitude, longitude and bearing.
+`vehicle-info-card.svelte` shows name, id, status, last seen, coordinates,
+bearing and - when it lags the last contact - how old the position is. That is
+a small slice of what is already being collected. A telemetry row persists the
+full sensor suite (power and charging state, GPS speed, altitude, accuracy and
+provider, plus accelerometer, gyroscope, magnetometer and barometer readings -
+see `telemetry_samples` in `20260614151604_init_telemetry.sql`), and
+`LiveSample` already carries speed, altitude, accuracy, charging and power
+source over the live stream. None of it reaches the card, because
+`VehicleSummary` carries only lastSeenAt, positionAt, latitude, longitude and
+bearing, and `VehicleLivePosition` the same minus positionAt.
 
 Worth growing the card to show more of this, and grouping it into tabs rather
 than one long stacked list once it does - an "Overview" tab for identity,
@@ -48,6 +129,40 @@ anything is broken today.
 
 ## Continuous integration
 
+### Make the schema check name the database it checked
+
+`pnpm db:check` regenerates the Drizzle schema and fails if it differs from what
+is committed, which sounds like it proves the committed schema matches the
+database the application uses. It does not. `drizzle.config.ts` reads
+`process.env.DATABASE_URL`, so the check runs against whatever the shell
+exports, while the running application reads `www/.env` - and those can be two
+different databases without either complaining.
+
+This is not hypothetical. The device token migration was applied with
+`DATABASE_URL` exported for one database, so the schema was regenerated from
+that one and `pnpm db:check` passed, while `www` went on talking to another that
+had never seen the migration and answered every insert with
+`column "token_hash" of relation "known_devices" does not exist`. Everything
+that could have caught it - the check, the unit tests, the end-to-end suite
+against its own throwaway database - was looking somewhere else.
+
+One of the three cheap fixes has since landed on its own. There is now a single
+environment file at the repository root, and both halves of the script default
+to it without being told: `sqlx migrate run` finds it by walking up, and
+`drizzle.config.ts` loads it explicitly. The two ends can no longer be pointed
+at different databases by an exported variable, which is what actually went
+wrong.
+
+Two are left, and the second is the one that catches the general case. Have
+`sync-www-db-schema.sh` print the database it is about to migrate and generate
+from, since a mismatch is obvious the moment it is named out loud. And consider
+a startup check in `www` comparing the applied migration list against the
+migrations on disk, so a database that is behind says so once at boot rather
+than once per failed query - that catches a correct environment pointing at an
+unmigrated database, which fails in exactly the same way and which the shared
+file does nothing about.
+
+
 ### Extract a setup-rust action once a second Rust job exists
 
 `ingest-validation.yml` installs the toolchain with clippy and rustfmt and warms
@@ -68,6 +183,103 @@ would produce one action with flags selecting between unrelated behaviours.
 
 ## Telemetry upload protocol
 
+### Finish the last_seen cache and take it off the critical path
+
+**Next up.** Two halves of the same thing: a cache that was half built, and the
+bookkeeping around it that runs where it should not.
+
+`ingest` used to write `device:last_seen:{device_id}` to Valkey on every
+authenticated request. Nothing ever read it - not `ingest`, not `www` - so it
+was removed rather than left as a write nobody could explain. The intent behind
+it was real though, and worth finishing rather than losing: `www` was meant to
+read it.
+
+**What it was for.** `www` decides whether a vehicle is online from
+`known_devices.last_seen_at`, and that column is deliberately written at most
+once every `LAST_SEEN_WRITE_INTERVAL_SECS`. Add the browser's own 30 second poll
+and the freshness a vehicle is judged on can be a minute behind what the server
+actually knows, against an online threshold of two minutes. A key written on
+every request has no such lag, which is the ordinary division here: Postgres
+holds the durable record, Valkey carries what is live.
+
+The live channel is not a substitute for it. `device:live:{device_id}` is only
+published when a sample carries a position, so a device uploading without a fix
+touches neither it nor anything else, and `watchVehicle` only streams the one
+vehicle that is selected. The rest of the list still needs a cheap way to say
+how recently each device was heard from.
+
+**How it should be written this time.**
+
+- `ingest` sets the key on every authenticated request, with the value as epoch
+  milliseconds to match the live sample's `timestamp`. Like every other key
+  crossing this boundary it is a contract with a service in another language,
+  so it wants naming in both places.
+- The TTL has to outlive the point at which a vehicle reads as offline, which
+  is fifteen minutes in `calculateVehicleStatus`. The old value was ten, so the
+  key expired while a vehicle should still have read as stale. Anything past
+  the stale threshold works, because expiry then means only "no recent contact
+  at all" and the Postgres column answers.
+- `www` reads the keys for the listed devices in one `MGET` and takes whichever
+  of that and `last_seen_at` is newer. It must stay a fallback in both
+  directions: no Valkey, or no key, leaves the database answer standing, the
+  same way live tracking is simply absent when `REDIS_URL` is not configured.
+
+**And move the bookkeeping off the upload path while doing it.**
+`require_known_device` awaits `record_device_seen` before the handler runs, so
+every upload waits for it - normally one cache read, and once per interval a row
+update as well. Sub-millisecond on a local network, but it is bookkeeping whose
+failures are already only logged being paid for synchronously by the one path
+that must never be slow, and the live push travels it every couple of seconds
+while a car is moving. Spawning it would remove that wait entirely: it needs
+nothing from the response, and the cost is a task per request with no ordering
+between two of them, which the update tolerates because it only ever writes
+`NOW()`.
+
+The interval check can also be one round trip instead of two.
+`SET key value NX EX 30` claims the marker atomically and says whether it did,
+where the current code reads the key and then writes it. That also closes a
+small race in which two concurrent uploads both find the marker absent and both
+update the row - harmless today, since the second write is identical to the
+first. The reason it was not written that way is an ordering the current code is
+careful about: the marker must not be claimed before the update succeeds, or a
+failed write would suppress the next attempt for the whole interval. Claiming
+first and deleting the key if the update fails preserves that.
+
+Note on the naming, since it caused real confusion once. This was called
+`update_last_seen_throttled`, gated by `LAST_SEEN_DB_THROTTLE_SECS` and marked
+in Valkey under `device:last_seen_db_throttle:{device_id}`, and "throttle" reads
+as rate limiting - which it never was. It has been renamed to
+`record_device_seen`, `LAST_SEEN_WRITE_INTERVAL_SECS` and
+`device:last_seen_written:{device_id}`, and the word is worth keeping out of
+this area entirely so that the entry below is the only thing it ever refers to.
+
+### Rate limit the upload endpoint
+
+There is no request limiting in `ingest` at all. A request is bounded in size -
+4 MiB on the wire, 32 MiB expanded - and in nothing else, so a paired device may
+post as fast as it can open connections. Authentication narrows who can do that
+to devices holding a valid token, which is most of the protection and is why
+this is not urgent, but it does not narrow how often.
+
+Two cases it would cover. A phone whose uploader misbehaves - a retry loop that
+lost its backoff, say - hammering the service with nobody noticing, which is the
+likelier of the two by a distance. And a token that has leaked, where rotation
+is the real answer but a limit bounds the damage until somebody notices.
+
+The shape to reach for is a token bucket keyed on the device rather than the
+address, since every device behind one home connection shares an address and a
+phone on mobile data does not keep one. `tower-governor` is the usual answer for
+an axum service and would sit as a layer on the protected routes, which is also
+the argument for doing it here rather than in a proxy: the identity to key on is
+one the middleware has already established, and a reverse proxy in front knows
+only the address. Answering 429 is already understood by the phone, which maps
+it to `TRANSIENT` and retries with backoff.
+
+Worth settling when it is written: what the limit should be. The live push is
+capped at one request every two seconds per device, and a backlog drain sends up
+to twenty batches in a run, so the ceiling has to sit clear of both or it will
+punish an ordinary catch-up after an outage.
+
 ### Stream uploads as NDJSON instead of one JSON array
 
 An upload is a single JSON array, and the `Json` extractor buffers the whole
@@ -86,258 +298,80 @@ server-only change.
 
 ## Device authentication
 
-### Issue a per-device token instead of using the id as the credential
+### Let a vehicle be retired from the web application
 
-`X-Device-ID` both names a device and authorises it: the middleware checks the
-value against an active row in `known_devices`, and nothing else is proven. The
-id is a random UUIDv4, so it cannot be guessed, but it is the secret - visible on
-the phone's screen, to anyone signed in to `www`, in the database and in service
-logs. If it leaks, whoever holds it can post telemetry indistinguishable from the
-real device, and revoking it means deactivating the device, which locks out the
-genuine phone too.
+Two thirds of retiring a vehicle exists and the third is missing, which is the
+part an operator would actually touch. `ingest` answers a deactivated row with
+403 and `error="insufficient_scope"`, and the phone now says so plainly and
+offers to discard a backlog that will never be accepted. Nothing in `www` sets
+`is_active` to false - it is written `true` on insert and read in the summary
+query, and that is the whole of it. Retiring a vehicle today means a hand-written
+`UPDATE`.
 
-Decided: the device should carry a real token, separate from the identity that
-names it. Pairing is being rebuilt anyway, and the code that hands out an
-identity is the code that would hand out a token, so doing this later means
-writing that flow twice.
+What it needs is small: an action on the vehicle, a confirmation that says what
+it costs, and the reverse for bringing one back. Worth deciding at the same time
+whether a deactivated vehicle disappears from the list or shows greyed out with
+its history intact - `getVehicleSummaries` filters on `is_active = TRUE`, so
+today it would simply vanish along with every sample it ever sent, which is
+probably not what retiring a car should mean.
 
-The scheme should be dull on purpose. `www` generates 32 random bytes, shows
-them once and stores only their SHA-256 hash on the `known_devices` row; the
-device sends the token and `ingest` hashes what it receives and compares in
-constant time, inside the lookup the middleware already performs. That adds no
-round trip and no measurable time to the upload path.
+**It must clear the credential cache, exactly as rotation does.** `ingest`
+caches a device's credential under `device_credential:{device_id}` for
+`KNOWN_DEVICE_CACHE_TTL_SECS`, and that entry carries `is_active` with it, so a
+row deactivated in the database goes on being accepted until the cache lapses.
+This is not theoretical: it happened while testing the phone's handling of a
+retired device, where the 403 only appeared after the key was deleted by hand.
+`rotateDeviceToken` already calls `forgetDeviceCredential` and reports whether
+it succeeded; deactivating and re-activating both want the same call, and
+re-activating wants it so a vehicle brought back starts uploading at once rather
+than after the window.
 
-Those 32 bytes are rendered as unpadded base64url, which is the ordinary form
-for an opaque bearer token and the one RFC 6750's `b64token` syntax expects. It
-is worth naming because it is a wire decision rather than a presentation one -
-`ingest` hashes the string it receives, so the encoding is part of what the
-hash is of, and changing it later means re-pairing every device. An encoding
-chosen instead for being read aloud, such as Crockford Base32, was considered
-and dropped: it only paid for itself while typing a token by hand was a
-supported path, and it no longer is.
+### Tell the phone which car it is paired to
 
-The token does not expire. It is valid until it is rotated or the device is
-deactivated, and `token_rotated_at` records when it last changed rather than
-setting a deadline. An expiry bounds the damage from a credential that cannot
-be withdrawn, which is the situation a signed token creates and not this one:
-the hash sits on a row `ingest` already reads on every request, so withdrawing
-it is a database write that takes effect at once. Against that, a lifetime buys
-nothing and introduces a way to lock out a phone that has done nothing wrong -
-one parked offline for a fortnight would come back to a credential that had
-lapsed, with no way to renew it that does not need the server it cannot reach.
+The app shows the raw identity - `f4075710-dae3-420e-89b7-bd8f3e382d9f` - and
+that is the one thing about the pairing nobody can read. Somebody holding the
+handset wants to see "Škoda Fabia", which is what the vehicle is called
+everywhere else, and a UUID answers a question only the server is asking.
 
-The caveat is the cache rather than the scheme. While the lookup is served from
-Valkey a withdrawn token keeps working until that entry expires, so "at once"
-is true of the database and only true of the running system once `www` clears
-the key - which is the same point the trap above makes.
+The name can travel with the credential. The pairing payload is already a
+versioned JSON object carrying `deviceId` and `token`, so adding a `name`
+alongside them costs nothing and needs no version bump - a build that does not
+know the field ignores it, and one that does falls back to the identity when it
+is absent. `PairingRepository` would keep it beside the other two, and the
+screen would show the name with the identity underneath in a smaller face,
+since the identity still has to be readable when something needs diagnosing.
 
-A password hash - Argon2, bcrypt - would be the wrong tool despite being the
-usual advice. Those are deliberately slow because passwords have little entropy;
-a 256-bit random token has plenty, and the slowness would land on every upload.
-SHA-256 is also in the standard library of both languages involved, which
-matters because `www` is TypeScript and `ingest` is Rust and anything more
-exotic gets implemented twice.
+Worth being clear that this is a label and not a fact. A vehicle renamed in the
+web application does not tell the phones paired with it, so what is displayed is
+whatever the name was at the moment of pairing. That is acceptable for something
+whose purpose is recognition rather than identification, but it should not be
+used for anything that has to be current, and re-pairing is what refreshes it.
 
-The alternatives, for the record. A signed token - JWT or PASETO, via `jose` and
-`josekit` - would let `ingest` verify without touching the database, but
-revocation then needs a denylist that gives the statelessness back, expiry is
-awkward for a device that may be offline for weeks, and `ingest` reads
-`known_devices` regardless. Better Auth's API key plugin is already in the stack
-for user authentication, but `ingest` would be depending on another framework's
-storage format from another language, which is a poor trade for a hash
-comparison. Mutual TLS remains the strongest answer and the most operational
-work.
+The same payload could reasonably carry the server address too, which would
+remove the other thing that has to be typed into a fresh phone by hand. It is
+not free the way the name is: `www` knows its own origin but not where `ingest`
+listens, so something would have to be configured for it to send - probably an
+`INGEST_PUBLIC_URL` that an operator sets alongside the rest. Worth doing
+together with the name if it is done at all, since both change the same payload
+and the same screen.
 
-Worth being explicit that this stays shared state rather than becoming a
-service. What multiple pieces need is the stored hash, not centrally executed
-behaviour, and `db/migrations` already owns that contract - whereas an
-authentication service would put a network dependency in the one path that must
-never lose data.
-
-No compatibility window when this ships. The obvious caution would be a nullable
-`token_hash` that `ingest` accepts as "the identity alone is enough" until every
-device has been re-paired, but that transitional path is the very hole this
-entry exists to close, and it would outlive the migration that justified it.
-The deployment is one server and one handset in the same hands, so the column,
-the server and the app land together and the phone is re-paired by hand. The
-token is required from the first request that reaches the new `ingest`.
-
-One trap in the middleware as it stands. `require_known_device` caches
-`known_device:{id}` as a bare boolean for five minutes, so a cache hit answers
-"this device is known and active" without the database being consulted at all.
-Adding a token check naively would leave that hit short-circuiting the
-comparison, and a request bearing the wrong token would be accepted for as long
-as the entry lives. The cached value has to become the stored hash rather than a
-boolean, so that the comparison happens on every request whether or not the
-lookup was served from Valkey.
-
-Rotation then needs deciding alongside it: either `www` deletes the cache key
-when it mints a new token - it already talks to Valkey for live tracking - or a
-window of up to `KNOWN_DEVICE_CACHE_TTL_SECS` in which the old token still works
-is accepted and written down. Silently inheriting the second is the outcome to
-avoid, given that locking the previous handset out is the point of rotating.
-
-### Let the server issue the identity and the phone scan it
-
-The phone invents its own UUID on first run, and registering it means reading it
-off the screen and retyping it into `www`'s "Add vehicle" dialog, whose
-`deviceId` field takes any string from 1 to 255 characters without checking that
-it even looks like a UUID. A typo registers a device that will never match what
-the phone uploads, and nothing surfaces that until telemetry silently never
-arrives.
-
-The authority moves to the server. `www` generates the identity and the token
-from the entry above, stores them in `known_devices` and shows both as a QR code
-and as copyable text. The phone starts with nothing and offers to scan.
-
-The fallback when the camera will not cooperate is copy and paste, not typing:
-`www` is on the same network, so the phone opens it in a browser and copies the
-values across. Typing them by hand is not a path worth supporting - an identity
-and a token together are around ninety characters of random data, and nobody
-transcribes that correctly. Signing in to `www` on the phone to reach them
-means a password already known rather than a secret being transcribed, which is
-the whole difference.
-
-If pairing ever has to work where that is not available - the audience widening
-past a single operator, which the Obtainium entry contemplates - the standard
-answer is a short single-use code redeemed over HTTP, the shape RFC 8628 uses
-for televisions and command-line tools: `www` shows something like `K7M2-9QXA`,
-the phone sends it back and receives the real credential. That keeps what is
-typed to a few characters without weakening the token behind it. It is a
-convenience rather than a requirement, and it is a credential-issuing endpoint
-that would need to be single-use, short-lived and rate-limited, so it is not
-worth building before somebody actually needs it.
-`DeviceIdProvider` stops generating anything, which is a real behavioural change
-- an unpaired app has no identity rather than an unregistered one, and every
-screen that assumes one exists has to cope with its absence.
-
-ZXing (`zxing-android-embedded`) reads the code without dragging in Play
-Services, which is the better trade on the old handset this runs on.
-
-Decided: `www` stops accepting a typed device id altogether, and the field goes.
-It had looked as though an escape hatch was needed to adopt devices paired under
-the old flow, but it is not - `www` already owns every one of those rows, so
-giving an existing vehicle a token is a rotation against an id it already holds.
-The id does not change, the history is preserved, and nothing is typed. The same
-is true of a replacement handset and of a phone moving between cars, which
-leaves no ordinary case that wants the field, and one real hazard that goes with
-it: `deviceId` accepts any string of 1 to 255 characters, so a typo registers a
-vehicle that silently never receives telemetry.
-
-The one case it does not cover is a phone holding an identity `www` has no row
-for at all - a lost or restored database. A free-text id would not rescue that
-either, since the hash cannot be recovered without the token, so it wants a
-deliberate "adopt this device" flow taking both values rather than the field
-that exists today. Not worth building until it happens.
-
-Pairing has to be repeatable, not a one-off. A phone moves between cars, a token
-is rotated, an app is reinstalled - the flow that assigns an identity is the
-flow that reassigns one, and it should be reachable from the screen at any time
-rather than only when there is no identity.
-
-Until an identity is present the app is not set up and should say so, at the top
-of the screen alongside the logging state. It should still record - someone who
-drives before pairing should not lose that - but it must not upload, because an
-upload with no identity is a guaranteed rejection that would only burn attempts
-against rows which have done nothing wrong.
-
-An App Link that opens the app straight from `www` would be a nicer path than
-scanning when the browser is on the phone itself, but it is worth less than it
-looks: App Links need `assetlinks.json` served over HTTPS from the domain, which
-a LAN address over plain HTTP cannot do, and a custom scheme any application can
-claim would put a token into browser history. A convenience to add after the QR
-flow works, not an alternative to it.
-
-The token travels as `Authorization: Bearer <token>` and a `Device-Id` header
-keeps carrying the identity, which is the ordinary division rather than an
-invention:
-a bearer token is what RFC 6750 describes, logging and proxy tooling already
-knows to redact that header, and the identity is deliberately not a secret and
-stays a plain greppable value that `ingest` looks the row up by. Folding both
-into HTTP Basic as an id and password pair would also be standard, but it would
-repurpose a header that currently means something clearer.
-
-The `X-` prefix goes at the same time: RFC 6648 deprecated it for new headers
-long ago, and `Device-Id` is the current spelling of the same idea. It is a
-protocol break, which is exactly why it belongs here - the token already
-requires both sides to ship together, so the rename costs nothing on top,
-whereas doing it alone later would mean breaking a working deployment for
-tidiness. Five places name the header today: the middleware in
-`ingest/src/helpers/middleware.rs`, the two Android callers in
-`TelemetryUploader` and `ServerHealth`, the request builders in
-`ingest/tests/api.rs`, and the protocol description in `ingest/README.md`.
-
-Follow RFC 6750 rather than only borrowing its header. Keeping `Device-Id`
-alongside is not a departure from it - the specification governs how a bearer
-token travels and is silent on identity, which belongs to the pairing flow -
-but its error responses are a part currently missing, and the useful part. A
-rejection should carry `WWW-Authenticate: Bearer` with a reason: `invalid_token`
-for a credential that is wrong, revoked or malformed, against a bare 401 when
-none was presented at all. That is worth having because the phone cannot
-presently tell those apart. `UploadOutcome.forResponseCode` collapses 401 and
-403 alike into `REFUSED`, which is the reason the question of what to do about
-a banned device is still open below - a machine-readable reason answers it
-without inventing a private convention.
-
-One requirement will be broken deliberately. Section 5.1 says a bearer token
-MUST be sent over TLS, and the Android entry below plans to allow cleartext to
-a private address precisely because a LAN server has no certificate. That is a
-real exception rather than an oversight, and the trade is the one that entry
-already argues: a token that can be rotated the moment it is suspected is what
-makes the exposure affordable, which is also why the cleartext relaxation is
-sequenced after this work rather than before it.
-
-### Cover the four ways a phone and a car come together
-
-Pairing is not a one-off, and the flow has to answer all four of these rather
-than only the first.
-
-**A new phone for a new car.** `www` creates the vehicle, mints its identity and
-token, shows the QR once. The phone scans it and starts recording. Nothing
-special.
-
-**A new phone for a car that already exists.** Replacing, wiping or reinstalling
-a handset is ordinary, and the vehicle should survive it with its identity and
-its whole history. This collides with showing a token once and storing only its
-hash, which is otherwise the right way to keep one: nobody can read it again, so
-a wiped phone could never rejoin its car. Rotation resolves it. `www` gains a
-"pair a new phone" action on the vehicle that mints a fresh token against the
-same `device_id`, shows the new QR and invalidates the old hash. The car keeps
-everything; only the credential changes. Locking the previous handset out is the
-point, not a side effect.
-
-**An existing phone moving to a different car.** The phone is holding rows that
-belong to the car it is leaving, and they must not arrive under the name of the
-car it is joining. This is the case the entry below exists for, and it needs
-nothing from the server: `ingest` authenticates each request on its own, so
-draining the old car's backlog with the old car's token while recording for the
-new one is simply two uploads with two credentials.
-
-**Banning a compromised identity.** Worth splitting, because the two halves want
-different things. A phone that was lost while its car stays in service needs the
-*credential* revoked, which is the rotation above - and that is the answer to the
-long-standing complaint that revoking a device locks out the genuine phone too,
-because with a token there is now something to revoke that is not the identity.
-Only a vehicle genuinely being retired needs the `known_devices` row deactivated,
-and `ingest` already answers 403 for that today.
-
-What the phone does about that 403 is unfinished. It classifies the response as
-`REFUSED` and deliberately does not count it against the rows, which is right
-for a mistyped address and wrong for a device that has been banned for good: the
-backlog then grows until the storage ceiling with no prospect of ever being
-accepted. The state deserves saying plainly on screen, and the user deserves the
-choice between discarding the rows and keeping them for export.
 
 ### Keep every sample with the identity it was recorded under
 
-`TelemetrySampleEntity` has no device column. The identity is only ever an
-`X-Device-ID` header applied at the moment of upload, so the rows waiting in the
-database belong to nobody in particular - they belong to whoever the phone is
-paired with when they finally go up. Move the phone to a second car and the
-first car's unsent journey silently arrives as the second car's.
+`TelemetrySampleEntity` has no device column. The identity is only ever the
+`Device-Id` header and bearer token applied at the moment of upload, so the
+rows waiting in the database belong to nobody in particular - they belong to
+whoever the phone is paired with when they finally go up. Move the phone to a
+second car and the first car's unsent journey silently arrives as the second
+car's.
 
-Stamping the row when it is written is what makes the third case above
-answerable. A local `pairings` table - identity, token, when it was paired, a
+Stamping the row when it is written is what makes a phone moving between cars
+answerable. The token scheme has shipped, so a vehicle now keeps its identity
+while its credential is withdrawn, and pairing already asks what to do with
+rows recorded before an identity existed - but that question can only be
+answered one way at a time, because the phone holds a single pairing. Draining
+one car's backlog with its own credential while recording for another still
+needs the table below. A local `pairings` table - identity, token, when it was paired, a
 label - and a nullable `pairing_id` on `telemetry_samples` pointing at it. An
 integer rather than the UUID itself, because at two rows a second a
 thirty-six-character string would cost several megabytes a day to repeat the
@@ -356,10 +390,12 @@ What follows:
 - Upload sends only rows whose pairing the phone still holds, so misattribution
   stops being possible rather than being avoided by care.
 - Rotating a token leaves `device_id` alone, so existing rows still match their
-  pairing and a replaced handset needs no questions asked.
+  pairing and a replaced handset needs no questions asked. This already holds.
 - Rows recorded before any pairing carry none, and the moment worth asking about
   them is when an identity is finally assigned, since the user knows which car
-  the phone was sitting in and nothing else does.
+  the phone was sitting in and nothing else does. The prompt that asks this
+  exists; what it cannot yet offer is keeping the rows under the pairing they
+  were actually recorded under, because there is nowhere to record that.
 
 Recording while unpaired is a feature rather than a state to be tolerated. Hand
 somebody a spare phone with no server and no account, let them drive, and decide
@@ -644,28 +680,16 @@ the rule has to live in `ServerUrl` instead. That is a real loss of a guarantee
 and worth being deliberate about: what stops a credential going out in clear is
 then the app's own arithmetic and nothing beneath it.
 
-Worth doing after the per-device token rather than before. What travels over
-cleartext today is the device id, which is also the identity and cannot be
-changed without abandoning the vehicle's history; what would travel afterwards
-is a token that can be rotated the moment it is suspected. The same relaxation
-costs considerably less once there is something revocable to lose.
+The precondition for this has now been met. It was worth waiting for the
+per-device token, because what used to travel over cleartext was the device id,
+which was also the identity and could not be changed without abandoning the
+vehicle's history. What travels now is a bearer token that can be rotated the
+moment it is suspected, so the relaxation costs far less than it would have.
 
-### Clear the paired identity from the app
-
-A small button next to the identity, behind a confirmation dialog.
-`DeviceIdProvider.resetDeviceId()` already exists and has no caller.
-
-With the server issuing identities, this no longer regenerates anything - it
-returns the app to being unpaired, and it can only be undone by scanning or
-entering a new identity from `www`. The dialog should say that, because
-"reset" reads like something recoverable.
-
-It also has to say what happens to data. `TelemetrySampleEntity` carries no
-device id: the identity is only ever an `X-Device-ID` header applied at upload
-time. So every row still waiting to be uploaded would go up under whatever
-identity is paired next - arriving on the server attributed to the wrong
-vehicle, or refused outright. Either refuse while rows are pending, or say so
-plainly first.
+Worth noting while doing it that RFC 6750 section 5.1 requires a bearer token
+to be sent over TLS, and this deliberately breaks that for private addresses -
+the reasoning is with the token entry, and rotation is what makes it
+affordable.
 
 ### Keep unuploaded data until the storage runs out, and say so first
 
@@ -673,6 +697,12 @@ plainly first.
 bounds the rest, and the rest is the part that matters: the `/api` bug alone
 built up 22,866 rows, and a month of driving with no reachable server would be
 far larger. A phone that fills its storage stops being a logger.
+
+`deleteNotUploaded` exists but is not a bound. It runs only when somebody
+answers the pairing prompt by discarding what was recorded before an identity
+existed, which is a deliberate choice made once - nothing calls it on the
+phone's own initiative, and nothing should until there is a policy to call it
+under.
 
 The policy that follows from what the data is worth. Postgres is the record once
 a row has arrived there, so an uploaded row has no reason to stay on the phone
@@ -806,6 +836,13 @@ The secrets are the other half. `DATABASE_URL`, `ORIGIN` and
 ordinary environment variables - but `BETTER_AUTH_SECRET` must not acquire a
 default, and the Compose file should make its absence a failure rather than
 quietly starting with something predictable.
+
+Worth knowing where `www` now looks for those, because it changed. `kit.env.dir`
+points at the repository root rather than at `www/`, so a `.env` dropped beside
+the application is not read at all. It makes no difference to a running
+container, where these arrive as real environment variables, but the build
+stage resolves `$env/static/public` the same way - so whatever sets the tile
+URLs at build time has to be a real variable or a file at the context root.
 
 Worth doing before the Android release work rather than after: between them
 they are the point at which this project starts having versions, and a badge or

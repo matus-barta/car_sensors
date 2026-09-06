@@ -106,6 +106,15 @@ class UploadSilenceMessageTest {
     }
 
     @Test
+    fun `an unpaired phone is told that, rather than blamed on the server`() {
+        /*
+         * Recording before pairing is deliberate, but the rows go nowhere
+         * until an identity exists, and the remedy is not on the server.
+         */
+        assertTrue(message(ServerHealth.NotPaired).contains("not paired"))
+    }
+
+    @Test
     fun `a server fault carries its status code`() {
         assertTrue(message(ServerHealth.ServerFault(503)).contains("503"))
     }

@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
@@ -9,6 +10,10 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- Reads the pairing code shown by the web application. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
 
     <application
         android:allowBackup="true"
@@ -35,6 +40,27 @@
         <service
             android:name=".TelemetryForegroundService"
             android:exported="false" />
+
+        <!--
+            Held upright, because the code being scanned is on an upright screen
+            and this view exists for the seconds it takes to read one.
+
+            Lint objects on two counts and both are answered by that. Locking an
+            orientation is bad for an application somebody works in; this is a
+            momentary camera viewfinder, and letting it swing to landscape means
+            turning the phone sideways to read a code from a monitor. The
+            Android 16 note does not apply while `targetSdk` is 28, and if that
+            number is ever raised this activity is on the list of things to
+            revisit - see `todo.md`.
+        -->
+        <activity
+            android:name=".PortraitCaptureActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:stateNotNeeded="true"
+            android:theme="@style/Theme.CarSensors"
+            android:windowSoftInputMode="stateAlwaysHidden"
+            tools:ignore="LockedOrientationActivity,DiscouragedApi" />
 
 
         <receiver

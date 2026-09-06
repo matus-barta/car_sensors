@@ -11,21 +11,25 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.anonymus09.carsensors.data.AppDatabase
 import com.anonymus09.carsensors.data.PowerStateProvider
+import com.anonymus09.carsensors.data.PairingRejection
+import com.anonymus09.carsensors.data.PairingRepository
 import com.anonymus09.carsensors.data.ServerHealthChecker
 import com.anonymus09.carsensors.data.SettingsRepository
 import com.anonymus09.carsensors.data.TelemetryRepository
 import com.anonymus09.carsensors.ui.CarSensorsScreen
+import com.anonymus09.carsensors.ui.PairingFlow
 import com.anonymus09.carsensors.ui.theme.CarSensorsTheme
-import com.anonymus09.carsensors.util.DeviceIdProvider
 import com.anonymus09.carsensors.work.WifiUploadScheduler
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity() {
 
@@ -42,12 +46,9 @@ class MainActivity : ComponentActivity() {
             ),
             powerStateProvider = PowerStateProvider(context),
             healthChecker = ServerHealthChecker(
-                settings = SettingsRepository(context),
-                loadDeviceId = { DeviceIdProvider.getOrCreateDeviceId(context) }
+                loadPairing = { PairingRepository(context).current() }
             ),
-            loadDeviceId = {
-                withContext(Dispatchers.IO) { DeviceIdProvider.getOrCreateDeviceId(context) }
-            }
+            pairingRepository = PairingRepository(context)
         )
     }
 
@@ -80,35 +81,65 @@ class MainActivity : ComponentActivity() {
         setContent {
             CarSensorsTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    val state by viewModel.uiState.collectAsStateWithLifecycle()
-                    val locationStatus by viewModel.locationStatus.collectAsStateWithLifecycle()
-                    val serverHealth by viewModel.serverHealth.collectAsStateWithLifecycle()
-
-                    CarSensorsScreen(
-                        state = state,
-                        locationStatus = locationStatus,
-                        serverHealth = serverHealth,
-                        onAutoStartOnBootChange = viewModel::setAutoStartOnBoot,
-                        onRecordOnBatteryChange = viewModel::setRecordOnBattery,
-                        onUploadOnBatteryChange = viewModel::setUploadOnBattery,
-                        onWifiOnlyChange = viewModel::setWifiOnly,
-                        onLiveUploadChange = viewModel::setLiveUploadEnabled,
-                        onToggleLogging = { toggleLogging(state.loggerState) },
-                        onWakeOnMotionChange = viewModel::setWakeOnMotion,
-                        onForceUpload = { WifiUploadScheduler.enqueueNow(this) },
-                        onRestartService = { TelemetryForegroundService.restartService(this) },
-                        onServerBaseUrlSave = viewModel::setServerBaseUrl,
-                        onCheckServer = viewModel::checkServerHealth,
-                        /*
-                         * Cleartext is only permitted by the debug manifest, so
-                         * the field must refuse http:// anywhere it would not
-                         * actually work.
-                         */
-                        allowCleartext = BuildConfig.DEBUG
-                    )
+                    AppContent()
                 }
             }
         }
+    }
+
+    /**
+     * Everything on the screen, lifted out of `onCreate` so that the lifecycle
+     * method stays about the lifecycle.
+     */
+    @Composable
+    private fun AppContent() {
+        val state by viewModel.uiState.collectAsStateWithLifecycle()
+        val locationStatus by viewModel.locationStatus.collectAsStateWithLifecycle()
+        val serverHealth by viewModel.serverHealth.collectAsStateWithLifecycle()
+
+        val untaggedRows by viewModel.untaggedRowsPendingDecision
+            .collectAsStateWithLifecycle()
+
+        var showPairingOptions by remember { mutableStateOf(false) }
+
+        CarSensorsScreen(
+            state = state,
+            locationStatus = locationStatus,
+            serverHealth = serverHealth,
+            onAutoStartOnBootChange = viewModel::setAutoStartOnBoot,
+            onRecordOnBatteryChange = viewModel::setRecordOnBattery,
+            onUploadOnBatteryChange = viewModel::setUploadOnBattery,
+            onWifiOnlyChange = viewModel::setWifiOnly,
+            onLiveUploadChange = viewModel::setLiveUploadEnabled,
+            onToggleLogging = { toggleLogging(state.loggerState) },
+            onWakeOnMotionChange = viewModel::setWakeOnMotion,
+            onForceUpload = { WifiUploadScheduler.enqueueNow(this) },
+            onRestartService = { TelemetryForegroundService.restartService(this) },
+            onServerBaseUrlSave = viewModel::setServerBaseUrl,
+            onCheckServer = viewModel::checkServerHealth,
+            onManagePairing = { showPairingOptions = true },
+            /*
+             * Cleartext is only permitted by the debug manifest, so
+             * the field must refuse http:// anywhere it would not
+             * actually work.
+             */
+            allowCleartext = BuildConfig.DEBUG
+        )
+
+        PairingFlow(
+            open = showPairingOptions,
+            onOpenChange = { showPairingOptions = it },
+            isPaired = state.pairing != null,
+            pendingRows = state.storage.stats.pendingUpload,
+            isRetired = state.pairingRejection == PairingRejection.DEVICE_RETIRED,
+            untaggedRowsPendingDecision = untaggedRows,
+            onPair = viewModel::startPairing,
+            onKeepUntaggedRows = viewModel::keepUntaggedRows,
+            onDiscardUntaggedRows = viewModel::discardUntaggedRows,
+            onCancelPairing = viewModel::cancelPairing,
+            onUnpair = viewModel::unpair,
+            onDiscardPendingRows = viewModel::discardPendingRows
+        )
     }
 
     private fun toggleLogging(loggerState: LoggerState) {

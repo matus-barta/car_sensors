@@ -13,7 +13,9 @@
 //! ```
 
 use axum::body::Body;
-use axum::http::{Request, StatusCode, header::CONTENT_LENGTH, header::CONTENT_TYPE};
+use axum::http::{
+    Request, StatusCode, header::AUTHORIZATION, header::CONTENT_LENGTH, header::CONTENT_TYPE,
+};
 use ingest::{AppState, build_app};
 use shared::cache::init_redis;
 use shared::pg::init_pg;
@@ -59,13 +61,50 @@ macro_rules! state_or_skip {
     };
 }
 
+/// A token whose SHA-256 is known independently of this crate.
+///
+/// Thirty-two bytes as unpadded base64url, exactly the shape `www` mints. The
+/// digest below came from `shasum -a 256` rather than from the code under
+/// test, so these agree with the standard rather than merely with themselves -
+/// which is the part that decides whether `www` and `ingest` can interoperate
+/// at all.
+const DEVICE_TOKEN: &str = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8";
+
+const DEVICE_TOKEN_SHA256: &str =
+    "ea866a757e4c38babfa8127cbe9a409d3e1f93a00ff1488ff735fcf917afffd0";
+
 async fn register_device(db_pool: &Pool<Postgres>, device_id: &str) {
-    query("INSERT INTO known_devices (device_id, name, is_active) VALUES ($1, $2, TRUE)")
-        .bind(device_id)
-        .bind("api test")
-        .execute(db_pool)
-        .await
-        .expect("the device should be registrable");
+    register_device_with_hash(db_pool, device_id, Some(DEVICE_TOKEN_SHA256)).await;
+}
+
+async fn register_device_with_hash(
+    db_pool: &Pool<Postgres>,
+    device_id: &str,
+    token_hash: Option<&str>,
+) {
+    query(
+        "INSERT INTO known_devices (device_id, name, is_active, token_hash)
+         VALUES ($1, $2, TRUE, $3)",
+    )
+    .bind(device_id)
+    .bind("api test")
+    .bind(token_hash)
+    .execute(db_pool)
+    .await
+    .expect("the device should be registrable");
+}
+
+/// The `error` code out of an RFC 6750 challenge, if it carries one.
+fn challenge_error(response: &axum::http::Response<Body>) -> Option<String> {
+    let challenge = response
+        .headers()
+        .get(axum::http::header::WWW_AUTHENTICATE)?
+        .to_str()
+        .ok()?;
+
+    let after = challenge.split("error=\"").nth(1)?;
+
+    after.split('"').next().map(str::to_string)
 }
 
 async fn forget_device(state: &AppState, device_id: &str) {
@@ -81,10 +120,9 @@ async fn forget_device(state: &AppState, device_id: &str) {
     }
 
     let keys = [
-        format!("known_device:{device_id}"),
+        format!("device_credential:{device_id}"),
         format!("device:live:{device_id}"),
-        format!("device:last_seen:{device_id}"),
-        format!("device:last_seen_db_throttle:{device_id}"),
+        format!("device:last_seen_written:{device_id}"),
     ];
 
     for key in keys {
@@ -93,13 +131,25 @@ async fn forget_device(state: &AppState, device_id: &str) {
 }
 
 fn upload_request(device_id: Option<&str>, body: &str) -> Request<Body> {
+    authenticated_upload_request(device_id, Some(DEVICE_TOKEN), body)
+}
+
+fn authenticated_upload_request(
+    device_id: Option<&str>,
+    token: Option<&str>,
+    body: &str,
+) -> Request<Body> {
     let mut builder = Request::builder()
         .method("POST")
         .uri("/api/telemetry/upload")
         .header(CONTENT_TYPE, "application/json");
 
     if let Some(device_id) = device_id {
-        builder = builder.header("X-Device-ID", device_id);
+        builder = builder.header("Device-Id", device_id);
+    }
+
+    if let Some(token) = token {
+        builder = builder.header(AUTHORIZATION, format!("Bearer {token}"));
     }
 
     builder
@@ -131,7 +181,8 @@ fn gzipped_upload_request(device_id: &str, body: &str) -> Request<Body> {
         .uri("/api/telemetry/upload")
         .header(CONTENT_TYPE, "application/json")
         .header("Content-Encoding", "gzip")
-        .header("X-Device-ID", device_id)
+        .header("Device-Id", device_id)
+        .header(AUTHORIZATION, format!("Bearer {DEVICE_TOKEN}"))
         .header(CONTENT_LENGTH, compressed.len())
         .body(Body::from(compressed))
         .expect("the request should build")
@@ -198,7 +249,33 @@ async fn upload_without_a_device_header_should_be_unauthorized() {
 }
 
 #[tokio::test]
-async fn upload_from_an_unknown_device_should_be_forbidden() {
+async fn upload_without_a_token_should_be_unauthorized() {
+    let state = state_or_skip!();
+    let device_id = unique_device_id("tokenless");
+
+    register_device(&state.db_pool, &device_id).await;
+
+    let response = build_app(state.clone())
+        .oneshot(authenticated_upload_request(
+            Some(&device_id),
+            None,
+            &batch(1_000),
+        ))
+        .await
+        .expect("the service should answer");
+
+    forget_device(&state, &device_id).await;
+
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    assert_eq!(
+        challenge_error(&response),
+        None,
+        "RFC 6750 asks for a bare challenge when a request simply carries no credentials"
+    );
+}
+
+#[tokio::test]
+async fn upload_from_an_unknown_device_should_look_exactly_like_a_bad_token() {
     let state = state_or_skip!();
     let device_id = unique_device_id("stranger");
 
@@ -209,7 +286,57 @@ async fn upload_from_an_unknown_device_should_be_forbidden() {
 
     forget_device(&state, &device_id).await;
 
-    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    /*
+     * Not "forbidden", which is what this used to answer. Saying that an
+     * identity is unknown would make the endpoint a way of discovering which
+     * identities exist, so it is answered exactly as a rejected token is.
+     */
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    assert_eq!(challenge_error(&response).as_deref(), Some("invalid_token"));
+}
+
+#[tokio::test]
+async fn upload_with_the_wrong_token_should_be_unauthorized() {
+    let state = state_or_skip!();
+    let device_id = unique_device_id("wrong-token");
+
+    register_device(&state.db_pool, &device_id).await;
+
+    let response = build_app(state.clone())
+        .oneshot(authenticated_upload_request(
+            Some(&device_id),
+            Some("PGqBHmJmMDNmZTQ4LTk5ZDgtNGYyYy1hMWMzLTAwMDAwMDAwMA"),
+            &batch(1_000),
+        ))
+        .await
+        .expect("the service should answer");
+
+    forget_device(&state, &device_id).await;
+
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    assert_eq!(challenge_error(&response).as_deref(), Some("invalid_token"));
+}
+
+#[tokio::test]
+async fn a_device_registered_before_tokens_existed_should_not_be_able_to_upload() {
+    let state = state_or_skip!();
+    let device_id = unique_device_id("hashless");
+
+    // The shape every row had before this scheme: an identity and nothing else.
+    register_device_with_hash(&state.db_pool, &device_id, None).await;
+
+    let response = build_app(state.clone())
+        .oneshot(upload_request(Some(&device_id), &batch(1_000)))
+        .await
+        .expect("the service should answer");
+
+    forget_device(&state, &device_id).await;
+
+    assert_eq!(
+        response.status(),
+        StatusCode::UNAUTHORIZED,
+        "a row with no hash must not fall back to accepting the identity alone"
+    );
 }
 
 #[tokio::test]
@@ -405,14 +532,24 @@ async fn upload_from_a_deactivated_device_should_be_forbidden() {
     assert_eq!(
         response.status(),
         StatusCode::FORBIDDEN,
-        "deactivating a device is the only way to revoke it, so it has to stop uploads"
+        "a retired vehicle stops uploading even though its token is still good"
+    );
+
+    /*
+     * Forbidden rather than unauthorized, and only reachable by a request that
+     * presented the right token: the phone needs to tell "re-pair me" apart
+     * from "this vehicle is retired", and those want different answers.
+     */
+    assert_eq!(
+        challenge_error(&response).as_deref(),
+        Some("insufficient_scope")
     );
 }
 
 #[tokio::test]
 async fn a_second_upload_should_not_rewrite_last_seen_immediately() {
     let state = state_or_skip!();
-    let device_id = unique_device_id("throttled");
+    let device_id = unique_device_id("write-interval");
 
     register_device(&state.db_pool, &device_id).await;
 
@@ -439,7 +576,7 @@ async fn a_second_upload_should_not_rewrite_last_seen_immediately() {
 
     assert_eq!(
         after_second, after_first,
-        "the throttle should keep a second upload from writing the column again"
+        "the write interval should keep a second upload from writing the column again"
     );
 }
 

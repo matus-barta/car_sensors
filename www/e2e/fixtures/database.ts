@@ -305,9 +305,16 @@ export interface TestTelemetryInput {
 	deviceId: string;
 	id: number;
 	timestamp: number;
-	latitude: number;
-	longitude: number;
+
+	/**
+	 * Null for a row that carries no position - an event, or a sample whose fix
+	 * had gone stale. Plenty of real rows look like this, and they are the ones
+	 * that used to hide a vehicle's location.
+	 */
+	latitude: number | null;
+	longitude: number | null;
 	bearing?: number | null;
+	event?: string;
 }
 
 export async function createTestTelemetry(input: TestTelemetryInput): Promise<void> {
@@ -326,7 +333,7 @@ export async function createTestTelemetry(input: TestTelemetryInput): Promise<vo
 		VALUES (
 			${input.deviceId},
 			${input.id},
-			'location',
+			${input.event ?? 'location'},
 			${input.timestamp},
 			${input.latitude},
 			${input.longitude},
@@ -335,7 +342,14 @@ export async function createTestTelemetry(input: TestTelemetryInput): Promise<vo
 	`;
 }
 
-export async function getKnownDeviceById(deviceId: string) {
+/**
+ * Finds a vehicle by the only thing a test can predict about it.
+ *
+ * The identity is minted by the server now, so a test that creates a vehicle
+ * through the interface cannot know its `device_id` in advance the way it used
+ * to when the id was typed into the form.
+ */
+export async function getKnownDeviceByName(name: string) {
 	const sql = getTestSql();
 
 	const [record] = await sql`
@@ -344,9 +358,11 @@ export async function getKnownDeviceById(deviceId: string) {
 			name,
 			is_active,
 			last_seen_at,
-			notes
+			notes,
+			token_hash,
+			token_rotated_at
 		FROM known_devices
-		WHERE device_id = ${deviceId}
+		WHERE name = ${name}
 		LIMIT 1
 	`;
 
