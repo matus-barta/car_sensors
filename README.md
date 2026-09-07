@@ -55,19 +55,34 @@ Two things the proxy has to get right:
 
 ### Scope of the Compose deployment
 
-The Compose file currently starts PostgreSQL, Valkey, pgAdmin and the Rust
-ingestion service. The SvelteKit web application is **not** part of it yet and
-has no container image, so `www/` must be built and run separately:
+The Compose file starts PostgreSQL, Valkey, pgAdmin, the Rust ingestion service
+and the SvelteKit web application. Both services are published as images and
+neither has to be built to deploy.
+
+Two variables have no default and the stack refuses to start without them:
 
 ```bash
-cd www
-pnpm install
-pnpm build
-node build
+export ORIGIN="https://cars.example.org"     # where the web application is reached
+export BETTER_AUTH_SECRET="$(openssl rand -base64 32)"
+
+docker compose up -d
 ```
 
-The web application needs `DATABASE_URL`, `ORIGIN` and `BETTER_AUTH_SECRET` in
-its environment. See `www/README.md`.
+`ORIGIN` has to match the address in the browser, because Better Auth checks it
+and a mismatch rejects sign-in. `BETTER_AUTH_SECRET` deliberately has no
+fallback: a predictable signing key is worse than a service that will not start.
+
+Everything else is optional. `PUBLIC_OSM_VECTOR_TILE_URL` and
+`PUBLIC_OSM_STYLE_URL` point the map at your own tile server and fall back to
+the public OpenStreetMap one; they are read when the container starts rather
+than baked into the image, so one image serves every deployment.
+
+Migrations need no separate step. They are embedded into the `ingest` binary by
+`sqlx::migrate!` and applied when it connects, so bringing the stack up brings
+the schema up with it. That is also why `www` waits for `ingest` to be healthy
+rather than only for the database - it is not a runtime dependency between the
+two, only an ordering one, and without it the web application could query a
+table before the migration that changed it had run.
 
 ## Development
 

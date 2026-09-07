@@ -1,0 +1,14 @@
+# Paths are relative to the build context, which is this directory.
+
+node_modules/
+.svelte-kit/
+build/
+
+test-results/
+playwright-report/
+
+.env
+.env.*
+!.env.example
+
+*.md

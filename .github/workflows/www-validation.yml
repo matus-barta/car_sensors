@@ -24,6 +24,10 @@ on:
       - ".github/workflows/www-validation.yml"
       - "!www/**/*.md"
 
+  # Called by "WWW - build" so an image is only published once these checks
+  # have passed, the same shape "Ingest - build" uses.
+  workflow_call:
+
 permissions:
   contents: read
 
