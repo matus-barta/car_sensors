@@ -811,43 +811,42 @@ refuses to start.
 
 ## Distribution
 
-### Trim the web application image further
+### The web application image size is settled, not open
 
-Down from about 386 MB to 355 MB, and roughly 206 MB of what is left is
-`node_modules` for five runtime dependencies. The saving came from moving
-`maplibre-gl` to `devDependencies`: the server bundle contains no reference to
-it at all, because the map imports it dynamically in the browser and the client
-bundle already carries its own copy. The build still produces that bundle, the
-container still serves it, and the end-to-end test that waits for the map to
-report ready still passes - which is what the move was checked against rather
-than the size.
+Recorded so nobody reopens it. The image is about 355 MB, of which roughly
+206 MB is `node_modules` for five runtime dependencies, and that is being left
+alone deliberately.
 
-What is left is mostly not ours. `better-auth` is a runtime dependency that
-declares `@sveltejs/kit`, `vite` and `vitest` as peers, and pnpm installs peers
-automatically, so the production tree drags in `typescript`, a `@rolldown`
-native binding and `playwright-core` - roughly 55 MB of things a running server
-never opens. `pnpm why --prod` shows the whole chain.
+What it costs to leave: a little pull time on the machine that already runs
+Postgres, Valkey, pgAdmin and `ingest`, and some registry storage. That is the
+whole bill. There is no scale here at which those megabytes matter.
 
-Two obvious ways out are both closed at the moment, and it is worth writing down
-why so they are not tried again from scratch.
+What was tried, so it is not tried again. `pnpm install --prod` in place of
+pruning a build stage did help and is what the Dockerfile does. Disabling
+pnpm's automatic peer installation is refused outright, because pnpm records
+the setting in the lockfile and rejects a frozen install that disagrees -
+getting past it means regenerating the lockfile for development and CI too.
+`pnpm deploy --prod` needs a workspace with named projects, and
+`www/pnpm-workspace.yaml` exists only to carry `allowBuilds`.
 
-`pnpm install --prod --config.auto-install-peers=false` is refused outright:
-pnpm records the setting in the lockfile and rejects a frozen install whose
-configuration disagrees with it. Getting past that means regenerating the
-lockfile with peers off, which changes resolution for development and CI too -
-far more than an image is worth.
+Most of what is left is not ours to remove. `better-auth` is a runtime
+dependency declaring `@sveltejs/kit`, `vite` and `vitest` as peers, and pnpm
+installs peers, so `typescript`, a `@rolldown` binding and `playwright-core`
+arrive with it - around 55 MB the server never opens. `pnpm why --prod` shows
+the chain.
 
-`pnpm deploy --prod`, which would produce a flat production tree, needs a
-workspace with named projects to select from. `www/pnpm-workspace.yaml` exists
-only to carry `allowBuilds`, so there is nothing to deploy and pnpm says so.
-Making `www` a real workspace member might be worth it for other reasons, but
-not for this alone.
+The one thing that would genuinely work is bundling the server's dependencies
+rather than leaving them external, through `ssr.noExternal`, so that
+`node_modules` need not ship at all. It is not worth it. That moves failures to
+run time on paths no test covers - `better-auth` loads integrations lazily - and
+buys disk on a machine that has plenty. Should this ever be revisited, it wants
+a reason better than the size.
 
-What would actually work is bundling the server's dependencies instead of
-leaving them external - `ssr.noExternal` - so that `node_modules` need not ship
-at all. That is a real change in how the server is built rather than a
-packaging flag, and it wants testing against every path that loads a dependency
-lazily, `better-auth` in particular.
+Worth separating from all of the above: moving `maplibre-gl` to
+`devDependencies` was not an optimisation. The server bundle never referenced
+it, because the map imports it dynamically in the browser and the client bundle
+carries its own copy; it was simply in the wrong list. The thirty megabytes
+were a side effect.
 
 ### Publish signed builds to GitHub Releases for Obtainium
 
