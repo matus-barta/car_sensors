@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { PUBLIC_OSM_STYLE_URL, PUBLIC_OSM_VECTOR_TILE_URL } from '$env/static/public';
+	import { env } from '$env/dynamic/public';
 
 	import type { GeoJSONSource, Map as MapLibreMap, MapLayerMouseEvent } from 'maplibre-gl';
 	import type { FeatureCollection, Point } from 'geojson';
@@ -55,10 +55,11 @@
 	let followedVehicleId: string | null = null;
 
 	const styleUrl =
-		PUBLIC_OSM_STYLE_URL || 'https://vector.openstreetmap.org/styles/shortbread/colorful.json';
+		env.PUBLIC_OSM_STYLE_URL || 'https://vector.openstreetmap.org/styles/shortbread/colorful.json';
 
 	const vectorTileUrl =
-		PUBLIC_OSM_VECTOR_TILE_URL || 'https://vector.openstreetmap.org/shortbread_v1/{z}/{x}/{y}.mvt';
+		env.PUBLIC_OSM_VECTOR_TILE_URL ||
+		'https://vector.openstreetmap.org/shortbread_v1/{z}/{x}/{y}.mvt';
 
 	const sourceId = 'vehicles';
 	const markerLayerId = 'vehicle-markers';
