@@ -15,7 +15,7 @@ composeBom = "2026.08.00"
 room = "2.8.4"
 work = "2.11.2"
 ksp = "2.3.11"
-ktlint = "13.1.0"
+ktlint = "14.2.0"
 detekt = "1.23.8"
 zxing = "4.3.0"
 
