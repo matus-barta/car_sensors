@@ -18,6 +18,23 @@ if (!env.BETTER_AUTH_SECRET) {
 	throw new Error('BETTER_AUTH_SECRET is not set');
 }
 
+/*
+ * The proxies in front of the application, as IP addresses or CIDR ranges.
+ * Rate limiting keys on the client's address, which behind a proxy only
+ * arrives in `X-Forwarded-For`. Better Auth trusts that header on its own only
+ * while it holds a single address; with the proxies listed it strips them from
+ * the right and takes the first address that is not one of them.
+ *
+ * Every proxy in the chain must pass the header on for this to work - a proxy
+ * that overwrites it leaves nothing but proxy addresses, and the limit then
+ * falls back to one bucket shared by everyone. Invalid entries are logged and
+ * ignored by Better Auth.
+ */
+const trustedProxies = (env.TRUSTED_PROXIES ?? '')
+	.split(',')
+	.map((entry) => entry.trim())
+	.filter(Boolean);
+
 export const auth = betterAuth({
 	appName: 'Car Sensors',
 	baseURL: env.ORIGIN,
@@ -27,6 +44,10 @@ export const auth = betterAuth({
 		enabled: true,
 		minPasswordLength: MIN_PASSWORD_LENGTH,
 		maxPasswordLength: MAX_PASSWORD_LENGTH
+	},
+
+	advanced: {
+		ipAddress: { trustedProxies }
 	},
 
 	hooks: {

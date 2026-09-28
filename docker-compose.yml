@@ -127,6 +127,13 @@ services:
       # Generate one with: openssl rand -base64 32
       BETTER_AUTH_SECRET: "${BETTER_AUTH_SECRET:?generate one with openssl rand -base64 32}"
 
+      # The proxies in front of this, comma-separated IPs or CIDR ranges, so
+      # sign-in rate limiting counts each client by its own address rather
+      # than by the proxy's. Empty is right when a single proxy that sets
+      # X-Forwarded-For itself is all there is; behind a CDN, list the CDN's
+      # ranges and make the reverse proxy trust them as well.
+      TRUSTED_PROXIES: "${TRUSTED_PROXIES:-}"
+
       # Read at run time rather than baked in, which is what lets one image
       # serve every deployment. Both fall back to the public OpenStreetMap
       # vector server when unset.
