@@ -127,6 +127,12 @@ test.describe('authentication', () => {
 	test('limits repeated sign-in attempts from one address', async ({ page }) => {
 		await page.goto('/auth/login');
 
+		/*
+		 * Waits for each attempt's own response before returning. The form
+		 * submits in the background, and the error from the previous attempt is
+		 * still on screen, so checking for the message alone passes before the
+		 * new request has been answered - and the next submission then races it.
+		 */
 		const submitIncorrectPassword = async () => {
 			await page
 				.getByLabel('Email', {
@@ -140,12 +146,20 @@ test.describe('authentication', () => {
 				})
 				.fill('incorrect-password');
 
+			const response = page.waitForResponse(
+				(candidate) =>
+					candidate.request().method() === 'POST' &&
+					new URL(candidate.url()).pathname === '/auth/login'
+			);
+
 			await page
 				.getByRole('button', {
 					name: 'Sign in',
 					exact: true
 				})
 				.click();
+
+			await response;
 		};
 
 		for (let attempt = 1; attempt <= 3; attempt++) {
