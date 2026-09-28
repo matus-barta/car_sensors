@@ -79,6 +79,15 @@ OpenStreetMap serves its own style only to its own sites and localhost. They
 are read when the container starts rather than baked into the image, so one
 image serves every deployment.
 
+`TRUSTED_PROXIES` matters once the application sits behind more than one proxy.
+Sign-in is rate limited per client address, which Better Auth reads from
+`X-Forwarded-For`; it trusts that header on its own only when it holds a single
+address. A lone reverse proxy that sets the header itself needs nothing here.
+Behind a CDN such as Cloudflare, list the CDN's published ranges
+(comma-separated IPs or CIDR ranges) *and* have the reverse proxy trust the
+same ranges, so it passes the header on rather than replacing it with the CDN's
+address. Missing either half leaves every visitor sharing one limit.
+
 Migrations need no separate step. They are embedded into the `ingest` binary by
 `sqlx::migrate!` and applied when it connects, so bringing the stack up brings
 the schema up with it. That is also why `www` waits for `ingest` to be healthy

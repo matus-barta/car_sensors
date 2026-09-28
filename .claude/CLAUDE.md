@@ -84,7 +84,7 @@ The root `docker-compose.yml` is the *deployment* file (Postgres, Valkey, pgAdmi
 
 `ingest` reads `DATABASE_URL`, `REDIS_URL`, `SERVER_IP_PORT`.
 
-`www` reads `DATABASE_URL`, `ORIGIN`, `BETTER_AUTH_SECRET`, `PUBLIC_OSM_VECTOR_TILE_URL`, `PUBLIC_OSM_STYLE_URL`. Each is validated at startup and throws if missing.
+`www` reads `DATABASE_URL`, `ORIGIN`, `BETTER_AUTH_SECRET`, `PUBLIC_OSM_VECTOR_TILE_URL`, `PUBLIC_OSM_STYLE_URL`. Each is validated at startup and throws if missing. `TRUSTED_PROXIES` is optional: the proxies Better Auth strips from `X-Forwarded-For` to find the client address it rate-limits sign-in by.
 
 `www/.env.test` holds E2E-only values and is committed on purpose; the Playwright config loads it and passes it to the preview server, because `vite preview` runs in production mode and would not read it otherwise.
 
