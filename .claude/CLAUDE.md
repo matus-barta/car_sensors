@@ -122,7 +122,7 @@ Third-party widgets that build their DOM imperatively cannot be reached by an or
 
 `www` keeps its tokens in `src/routes/layout.css`; the Android app keeps its in `ui/theme/Color.kt`, wired up in `Theme.kt`. If a component seems to need a colour the theme does not offer, **say so and ask** - a new colour is added to the theme only after a human has agreed to it, so the palette stays something that was decided rather than something that accumulated one component at a time.
 
-Prettier runs only inside `www/` (tabs, single quotes, no trailing commas, 100 columns). Generated output — `src/lib/components/ui/` and `src/lib/server/db/generated/` — is excluded from it.
+Prettier runs only inside `www/` (tabs, single quotes, no trailing commas, 100 columns). Generated output — `src/lib/components/ui/`, `src/lib/server/db/generated/` and `src/lib/map/generated/` — is excluded from it. The last holds the time zone coordinates the empty vehicle map opens on, regenerated from IANA tzdata with `node tools/scripts/generate-timezone-centers.js`.
 
 Agent skills are vendored in `.agents/skills/` and symlinked into `.claude/skills/`, tracked by `skills-lock.json` at the repo root. `.agents/` is not in git. Their markdown contains annotated code samples that Prettier cannot parse, so keep them outside any formatter's scope. Manage them with the `skills` CLI (`pnpm dlx skills add|remove|list|update ...`) rather than hand-editing the vendored files or `skills-lock.json` — `remove <name> -y` deletes the vendored directory, the agent symlinks, and the lock entry together.
 
