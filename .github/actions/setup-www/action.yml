@@ -25,7 +25,7 @@ inputs:
   pnpm-version:
     description: pnpm version
     required: false
-    default: "11"
+    default: "12"
 
 runs:
   using: composite

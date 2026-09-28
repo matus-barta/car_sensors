@@ -17,10 +17,10 @@ WORKDIR /build
 FROM base AS dependencies
 
 # Copied on their own so a source change does not re-resolve the whole tree.
-# `.npmrc` and `pnpm-workspace.yaml` come too: the first pins the engines and
-# the second is where the build scripts pnpm is allowed to run are approved,
-# and without it a frozen install refuses to proceed.
-COPY package.json pnpm-lock.yaml .npmrc pnpm-workspace.yaml ./
+# `pnpm-workspace.yaml` comes too: it enforces the engines and approves the
+# build scripts pnpm is allowed to run, and without it a frozen install refuses
+# to proceed.
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 
 RUN pnpm install --frozen-lockfile
 
@@ -49,7 +49,7 @@ RUN pnpm exec svelte-kit sync && pnpm build
 # runs - where a production-only install simply never fetches them.
 FROM base AS production-dependencies
 
-COPY package.json pnpm-lock.yaml .npmrc pnpm-workspace.yaml ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 
 RUN pnpm install --frozen-lockfile --prod
 
