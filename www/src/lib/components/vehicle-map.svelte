@@ -20,30 +20,43 @@
 	import type { VehicleWithStatus } from '$lib/vehicles/vehicle';
 	import { Button } from '$lib/components/ui/button';
 	import { createOsmMapStyle } from '$lib/map/osm-map-style';
+	import { getDefaultView, WORLD_VIEW } from '$lib/map/default-view';
+	import { hasCoordinates, planCamera, VEHICLE_ZOOM } from '$lib/map/vehicle-camera';
 	import { isUserCameraGesture, type CameraEventOrigin } from '$lib/map/camera-gesture';
 
-	import { tick } from 'svelte';
+	import { tick, untrack } from 'svelte';
 	import type { Attachment } from 'svelte/attachments';
 
 	interface Props {
 		vehicles?: VehicleWithStatus[];
 		selectedVehicleId?: string | null;
+
+		// Goes up on every selection, even of what is already selected.
+		selectionRequest?: number;
+
 		onVehicleSelect?: (vehicleId: string) => void;
 	}
 
-	let { vehicles = [], selectedVehicleId = null, onVehicleSelect }: Props = $props();
+	let {
+		vehicles = [],
+		selectedVehicleId = null,
+		selectionRequest = 0,
+		onVehicleSelect
+	}: Props = $props();
 
 	let map: MapLibreMap | null = null;
 	let mapLoaded = $state(false);
 	let mapError = $state<string | null>(null);
 
 	/*
-	 * Whether the camera is locked to the selected vehicle. Selecting a vehicle
-	 * is a request to look at it, so this starts engaged and re-engages on every
-	 * new selection; moving the map by hand disengages it, which is what lets
-	 * someone look somewhere else without the next position update dragging the
-	 * view back. It is deliberately separate from selection: a disengaged follow
-	 * still leaves the vehicle selected, its marker highlighted and its card up.
+	 * Whether the camera is engaged: following the selected vehicle, or, with
+	 * nothing selected, keeping every located vehicle in view. Selecting a
+	 * vehicle - or going back to all of them - is a request to look at it, so
+	 * this starts engaged and re-engages on every change of selection; moving
+	 * the map by hand disengages it, which is what lets someone look somewhere
+	 * else without the next position update dragging the view back. It is
+	 * deliberately separate from selection: a disengaged follow still leaves
+	 * the vehicle selected, its marker highlighted and its card up.
 	 */
 	let following = $state(true);
 
@@ -53,6 +66,28 @@
 	 * that writes it.
 	 */
 	let followedVehicleId: string | null = null;
+	let followedSelectionRequest = 0;
+
+	/*
+	 * Which located vehicles the fleet view was last framed on. A different
+	 * set - a vehicle added, removed, or reporting its first position - frames
+	 * the fleet again; `null` makes the next pass frame it whatever the set.
+	 * A plain variable, like the one above, so recording it does not re-run
+	 * the effect that reads it.
+	 */
+	let framedFleetKey: string | null = null;
+
+	// Room left around the fleet when it is framed.
+	const FLEET_PADDING = 80;
+
+	/*
+	 * How close to the edge of the view a vehicle may drive before the fleet is
+	 * framed again. Smaller than the padding above, so a freshly framed fleet
+	 * never counts as being at the edge.
+	 */
+	const FLEET_EDGE_MARGIN = 40;
+
+	const NO_PADDING = { top: 0, right: 0, bottom: 0, left: 0 };
 
 	/*
 	 * The style comes from VersaTiles rather than from OpenStreetMap, whose
@@ -72,29 +107,19 @@
 	const markerLayerId = 'vehicle-markers';
 	const selectedMarkerLayerId = 'selected-vehicle-marker';
 
-	function hasCoordinates(vehicle: VehicleWithStatus): vehicle is VehicleWithStatus & {
-		latitude: number;
-		longitude: number;
-	} {
-		return (
-			typeof vehicle.latitude === 'number' &&
-			Number.isFinite(vehicle.latitude) &&
-			vehicle.latitude >= -90 &&
-			vehicle.latitude <= 90 &&
-			typeof vehicle.longitude === 'number' &&
-			Number.isFinite(vehicle.longitude) &&
-			vehicle.longitude >= -180 &&
-			vehicle.longitude <= 180
-		);
-	}
-
 	/*
 	 * There is no point offering to follow something the camera cannot reach, so
-	 * the toggle stays hidden until the selected vehicle actually has a position.
+	 * the toggle stays hidden until there is a position to point it at: the
+	 * selected vehicle's, or, with nothing selected, any vehicle's.
 	 */
-	const canFollowSelectedVehicle = $derived(
-		selectedVehicleId !== null &&
-			vehicles.some((vehicle) => vehicle.id === selectedVehicleId && hasCoordinates(vehicle))
+	const canFollow = $derived(
+		selectedVehicleId === null
+			? vehicles.some(hasCoordinates)
+			: vehicles.some((vehicle) => vehicle.id === selectedVehicleId && hasCoordinates(vehicle))
+	);
+
+	const followLabel = $derived(
+		selectedVehicleId === null ? 'Keep all vehicles in view' : 'Follow the selected vehicle'
 	);
 
 	function createVehicleFeatureCollection(): FeatureCollection<Point> {
@@ -188,73 +213,103 @@
 		(source as GeoJSONSource).setData(createVehicleFeatureCollection());
 	}
 
-	function focusSelectedVehicle(): void {
-		if (!mapLoaded || !map || !selectedVehicleId || !following) {
-			return;
+	function isNearViewEdge(vehicle: { latitude: number; longitude: number }): boolean {
+		if (!map) {
+			return false;
 		}
 
-		const selectedVehicle = vehicles.find(
-			(vehicle) => vehicle.id === selectedVehicleId && hasCoordinates(vehicle)
+		const { x, y } = map.project([vehicle.longitude, vehicle.latitude]);
+		const { clientWidth: width, clientHeight: height } = map.getContainer();
+
+		return (
+			x < FLEET_EDGE_MARGIN ||
+			y < FLEET_EDGE_MARGIN ||
+			x > width - FLEET_EDGE_MARGIN ||
+			y > height - FLEET_EDGE_MARGIN
 		);
-
-		if (!selectedVehicle || !hasCoordinates(selectedVehicle)) {
-			return;
-		}
-
-		map.easeTo({
-			center: [selectedVehicle.longitude, selectedVehicle.latitude],
-			zoom: Math.max(map.getZoom(), 14),
-			padding: {
-				top: 80,
-				right: 40,
-				bottom: 40,
-				left: 320
-			},
-			duration: 700,
-			essential: true
-		});
 	}
 
-	function fitVehicles(): void {
+	/*
+	 * Following a vehicle pads the camera on the left, so the vehicle sits in
+	 * the part of the map the info card does not cover. MapLibre keeps that
+	 * padding for every later move - `fitBounds()` even counts it into the fit
+	 * - so the fleet view, which has no card, would stay pushed to the side.
+	 * It is dropped first, keeping whatever is in the middle of the screen
+	 * where it is, so the move that follows starts without a jump.
+	 */
+	function clearCameraPadding(): void {
 		if (!map) {
 			return;
 		}
 
-		const locatedVehicles = vehicles.filter(hasCoordinates);
+		const { top, right, bottom, left } = map.getPadding();
 
-		if (locatedVehicles.length === 0) {
+		if (!top && !right && !bottom && !left) {
 			return;
 		}
 
-		if (locatedVehicles.length === 1) {
-			const [vehicle] = locatedVehicles;
+		const { clientWidth: width, clientHeight: height } = map.getContainer();
 
-			if (!vehicle) {
+		map.jumpTo({ center: map.unproject([width / 2, height / 2]), padding: NO_PADDING });
+	}
+
+	// Carries out what `planCamera()` decides; the decision itself is tested on its own.
+	function applyCamera(): void {
+		if (!mapLoaded || !map) {
+			return;
+		}
+
+		const plan = planCamera({
+			vehicles,
+			selectedVehicleId,
+			following,
+			framedFleetKey,
+			isNearViewEdge
+		});
+
+		switch (plan.kind) {
+			case 'stay':
 				return;
-			}
 
-			map.jumpTo({
-				center: [vehicle.longitude, vehicle.latitude],
-				zoom: 14
-			});
+			case 'follow':
+				map.easeTo({
+					center: plan.center,
+					zoom: Math.max(map.getZoom(), VEHICLE_ZOOM),
+					padding: {
+						top: 80,
+						right: 40,
+						bottom: 40,
+						left: 320
+					},
+					duration: 700,
+					essential: true
+				});
 
-			return;
+				return;
+
+			case 'frame':
+				framedFleetKey = plan.fleetKey;
+
+				clearCameraPadding();
+
+				if (plan.view.kind === 'center') {
+					map.easeTo({
+						center: plan.view.center,
+						zoom: plan.view.zoom,
+						duration: 700,
+						essential: true
+					});
+				} else {
+					map.fitBounds(plan.view.bounds, {
+						padding: FLEET_PADDING,
+						maxZoom: plan.view.maxZoom,
+						duration: 700,
+						essential: true
+					});
+				}
+
+				return;
 		}
-
-		const longitudes = locatedVehicles.map((vehicle) => vehicle.longitude);
-		const latitudes = locatedVehicles.map((vehicle) => vehicle.latitude);
-
-		map.fitBounds(
-			[
-				[Math.min(...longitudes), Math.min(...latitudes)],
-				[Math.max(...longitudes), Math.max(...latitudes)]
-			],
-			{
-				padding: 80,
-				maxZoom: 14,
-				duration: 0
-			}
-		);
 	}
 
 	function handleMarkerMouseEnter(): void {
@@ -277,15 +332,6 @@
 			return;
 		}
 
-		/*
-		 * Clicking the vehicle that is already selected changes no prop, so the
-		 * selection effect never sees it. Re-engage here, or a marker click would
-		 * be the one obvious way back to a vehicle that does nothing.
-		 */
-		if (vehicleId === selectedVehicleId) {
-			following = true;
-		}
-
 		onVehicleSelect?.(vehicleId);
 	}
 
@@ -299,6 +345,9 @@
 
 	function toggleFollow(): void {
 		following = !following;
+
+		// Re-engaging is a request to see the fleet now, not at its next change.
+		framedFleetKey = null;
 	}
 
 	$effect(() => {
@@ -306,20 +355,33 @@
 	});
 
 	/*
-	 * Re-engage follow whenever the selection changes, so that choosing a vehicle
-	 * always brings the camera to it however the last one was left.
+	 * Re-engage on every selection, so that choosing a vehicle - or all of
+	 * them - always brings the camera to it however the last one was left.
+	 * That includes choosing what is already selected, which changes no
+	 * selection and is exactly how someone asks to be taken back after
+	 * panning away; the request count is what tells it apart.
 	 */
 	$effect(() => {
-		if (selectedVehicleId === followedVehicleId) {
+		if (selectedVehicleId === followedVehicleId && selectionRequest === followedSelectionRequest) {
 			return;
 		}
 
 		followedVehicleId = selectedVehicleId;
+		followedSelectionRequest = selectionRequest;
 		following = true;
+		framedFleetKey = null;
+
+		/*
+		 * Directly as well: when the camera was already engaged nothing the
+		 * camera effect reads has changed, so it would not run on its own.
+		 * Untracked, so this effect does not start re-running on every vehicle
+		 * update through what the camera reads.
+		 */
+		untrack(applyCamera);
 	});
 
 	$effect(() => {
-		focusSelectedVehicle();
+		applyCamera();
 	});
 
 	/*
@@ -342,7 +404,16 @@
 
 				maplibre.setWorkerUrl(mapLibreWorkerUrl);
 
-				const style = await createOsmMapStyle(styleUrl, vectorTileUrl);
+				/*
+				 * Only a starting point: once the map has loaded, the camera moves
+				 * onto the vehicles - all of them, or the selected one - so the
+				 * browser-derived view is worked out only when there is nothing
+				 * located to move to.
+				 */
+				const [style, initialView] = await Promise.all([
+					createOsmMapStyle(styleUrl, vectorTileUrl),
+					vehicles.some(hasCoordinates) ? WORLD_VIEW : getDefaultView()
+				]);
 
 				if (destroyed) {
 					return;
@@ -351,8 +422,8 @@
 				map = new maplibre.Map({
 					container,
 					style,
-					center: [17.1077, 48.1486],
-					zoom: 12,
+					center: initialView.center,
+					zoom: initialView.zoom,
 					minZoom: 2,
 					maxZoom: 20,
 					attributionControl: {
@@ -415,7 +486,6 @@
 					}
 
 					addVehicleLayers();
-					fitVehicles();
 
 					mapLoaded = true;
 					mapError = null;
@@ -428,7 +498,13 @@
 
 					map.resize();
 					map.triggerRepaint();
-					focusSelectedVehicle();
+
+					/*
+					 * Again now the map has its real size: the effects above may
+					 * already have framed against the one it had before.
+					 */
+					framedFleetKey = null;
+					applyCamera();
 				}
 
 				map.once('style.load', () => {
@@ -446,6 +522,7 @@
 		return () => {
 			destroyed = true;
 			mapLoaded = false;
+			framedFleetKey = null;
 
 			resizeObserver?.disconnect();
 			resizeObserver = null;
@@ -504,7 +581,7 @@
 		</div>
 	{/if}
 
-	{#if mapLoaded && canFollowSelectedVehicle}
+	{#if mapLoaded && canFollow}
 		<!--
 			Bottom right, above the compact attribution: the navigation control
 			already owns the top right, and this is where a recenter control sits in
@@ -516,8 +593,8 @@
 				size="icon"
 				class="rounded-full bg-background/95 shadow-lg backdrop-blur-sm"
 				aria-pressed={following}
-				aria-label="Follow the selected vehicle"
-				title="Follow the selected vehicle"
+				aria-label={followLabel}
+				title={followLabel}
 				data-testid="vehicle-map-follow-toggle"
 				onclick={toggleFollow}
 			>

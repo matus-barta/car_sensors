@@ -15,6 +15,7 @@
 	<VehicleMap
 		vehicles={vehicleState.vehicles}
 		selectedVehicleId={vehicleState.selectedVehicleId}
+		selectionRequest={vehicleState.selectionRequest}
 		onVehicleSelect={(vehicleId) => vehicleState.selectVehicle(vehicleId)}
 	/>
 

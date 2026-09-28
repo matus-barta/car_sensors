@@ -18,6 +18,9 @@ import type { VehicleLivePosition, VehicleSummary, VehicleWithStatus } from './v
  * against the current list on read so a vehicle that disappears cannot leave a
  * dangling selection behind.
  *
+ * Nothing is selected until the user picks a vehicle. With no selection the
+ * map shows the whole fleet; selecting one makes it follow that vehicle.
+ *
  * Status is attached here rather than by each consumer: it is derived from
  * `lastSeenAt` against the shared clock, so a vehicle that stops reporting
  * fades from online to stale to offline on its own, with no request involved.
@@ -28,6 +31,13 @@ export class VehicleState {
 	#requestedVehicleId = $state<string | null>(null);
 
 	/*
+	 * Counts selections, including ones that pick what is already selected.
+	 * Choosing the same entry again changes nothing about the selection, but
+	 * it is still a request to look at it - the map re-centres on it.
+	 */
+	#selectionRequest = $state(0);
+
+	/*
 	 * Resolved against the raw query rather than `this.vehicles`: the latter
 	 * is itself derived from this selection (to know which vehicle the live
 	 * position belongs to), and reading it here would make the two circular.
@@ -36,11 +46,9 @@ export class VehicleState {
 		const vehicles = this.#query.current ?? [];
 		const requested = this.#requestedVehicleId;
 
-		if (requested !== null && vehicles.some((vehicle) => vehicle.id === requested)) {
-			return requested;
-		}
-
-		return vehicles[0]?.id ?? null;
+		return requested !== null && vehicles.some((vehicle) => vehicle.id === requested)
+			? requested
+			: null;
 	});
 
 	/*
@@ -122,8 +130,14 @@ export class VehicleState {
 		return this.vehicles.find((vehicle) => vehicle.id === selectedVehicleId) ?? null;
 	}
 
-	selectVehicle(vehicleId: string): void {
+	get selectionRequest(): number {
+		return this.#selectionRequest;
+	}
+
+	// `null` clears the selection and returns to the whole fleet.
+	selectVehicle(vehicleId: string | null): void {
 		this.#requestedVehicleId = vehicleId;
+		this.#selectionRequest += 1;
 	}
 
 	async refresh(): Promise<void> {
