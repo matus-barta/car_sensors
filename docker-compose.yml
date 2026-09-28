@@ -73,7 +73,8 @@ services:
       - db
       - cache
     healthcheck:
-      test: ["CMD", "/usr/bin/curl", "-f", "http://localhost:3000/api/health"]
+      # The image is distroless and has no curl; the binary checks itself.
+      test: ["CMD", "/app/ingest", "healthcheck"]
 
       # Timed rather than left on Docker's defaults, because `www` now waits
       # for this to pass before it starts. A 30 second interval with no start

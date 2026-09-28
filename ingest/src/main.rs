@@ -1,10 +1,19 @@
 use std::env;
 
+use clap::Parser;
+use cli::{Cli, Command};
 use ingest::{AppState, build_app};
 use shared::{cache::init_redis, pg::init_pg, tokio};
 
+mod cli;
+mod healthcheck;
+
 #[tokio::main]
 async fn main() {
+    if let Some(Command::Healthcheck) = Cli::parse().command {
+        std::process::exit(if healthcheck::check().await { 0 } else { 1 });
+    }
+
     rustls::crypto::aws_lc_rs::default_provider()
         .install_default()
         .expect("rustls error");
