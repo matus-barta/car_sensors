@@ -73,9 +73,11 @@ and a mismatch rejects sign-in. `BETTER_AUTH_SECRET` deliberately has no
 fallback: a predictable signing key is worse than a service that will not start.
 
 Everything else is optional. `PUBLIC_OSM_VECTOR_TILE_URL` and
-`PUBLIC_OSM_STYLE_URL` point the map at your own tile server and fall back to
-the public OpenStreetMap one; they are read when the container starts rather
-than baked into the image, so one image serves every deployment.
+`PUBLIC_OSM_STYLE_URL` point the map at your own tile server. They fall back to
+the public OpenStreetMap tiles and to the VersaTiles "colorful" style, because
+OpenStreetMap serves its own style only to its own sites and localhost. They
+are read when the container starts rather than baked into the image, so one
+image serves every deployment.
 
 Migrations need no separate step. They are embedded into the `ingest` binary by
 `sqlx::migrate!` and applied when it connects, so bringing the stack up brings
