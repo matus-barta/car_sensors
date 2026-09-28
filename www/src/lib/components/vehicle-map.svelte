@@ -24,16 +24,25 @@
 	import { hasCoordinates, planCamera, VEHICLE_ZOOM } from '$lib/map/vehicle-camera';
 	import { isUserCameraGesture, type CameraEventOrigin } from '$lib/map/camera-gesture';
 
-	import { tick } from 'svelte';
+	import { tick, untrack } from 'svelte';
 	import type { Attachment } from 'svelte/attachments';
 
 	interface Props {
 		vehicles?: VehicleWithStatus[];
 		selectedVehicleId?: string | null;
+
+		// Goes up on every selection, even of what is already selected.
+		selectionRequest?: number;
+
 		onVehicleSelect?: (vehicleId: string) => void;
 	}
 
-	let { vehicles = [], selectedVehicleId = null, onVehicleSelect }: Props = $props();
+	let {
+		vehicles = [],
+		selectedVehicleId = null,
+		selectionRequest = 0,
+		onVehicleSelect
+	}: Props = $props();
 
 	let map: MapLibreMap | null = null;
 	let mapLoaded = $state(false);
@@ -57,6 +66,7 @@
 	 * that writes it.
 	 */
 	let followedVehicleId: string | null = null;
+	let followedSelectionRequest = 0;
 
 	/*
 	 * Which located vehicles the fleet view was last framed on. A different
@@ -294,15 +304,6 @@
 			return;
 		}
 
-		/*
-		 * Clicking the vehicle that is already selected changes no prop, so the
-		 * selection effect never sees it. Re-engage here, or a marker click would
-		 * be the one obvious way back to a vehicle that does nothing.
-		 */
-		if (vehicleId === selectedVehicleId) {
-			following = true;
-		}
-
 		onVehicleSelect?.(vehicleId);
 	}
 
@@ -326,18 +327,29 @@
 	});
 
 	/*
-	 * Re-engage follow whenever the selection changes, so that choosing a vehicle
-	 * - or going back to all of them - always brings the camera to it however
-	 * the last one was left.
+	 * Re-engage on every selection, so that choosing a vehicle - or all of
+	 * them - always brings the camera to it however the last one was left.
+	 * That includes choosing what is already selected, which changes no
+	 * selection and is exactly how someone asks to be taken back after
+	 * panning away; the request count is what tells it apart.
 	 */
 	$effect(() => {
-		if (selectedVehicleId === followedVehicleId) {
+		if (selectedVehicleId === followedVehicleId && selectionRequest === followedSelectionRequest) {
 			return;
 		}
 
 		followedVehicleId = selectedVehicleId;
+		followedSelectionRequest = selectionRequest;
 		following = true;
 		framedFleetKey = null;
+
+		/*
+		 * Directly as well: when the camera was already engaged nothing the
+		 * camera effect reads has changed, so it would not run on its own.
+		 * Untracked, so this effect does not start re-running on every vehicle
+		 * update through what the camera reads.
+		 */
+		untrack(applyCamera);
 	});
 
 	$effect(() => {

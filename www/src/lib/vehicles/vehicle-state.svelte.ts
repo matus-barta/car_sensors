@@ -31,6 +31,13 @@ export class VehicleState {
 	#requestedVehicleId = $state<string | null>(null);
 
 	/*
+	 * Counts selections, including ones that pick what is already selected.
+	 * Choosing the same entry again changes nothing about the selection, but
+	 * it is still a request to look at it - the map re-centres on it.
+	 */
+	#selectionRequest = $state(0);
+
+	/*
 	 * Resolved against the raw query rather than `this.vehicles`: the latter
 	 * is itself derived from this selection (to know which vehicle the live
 	 * position belongs to), and reading it here would make the two circular.
@@ -123,9 +130,14 @@ export class VehicleState {
 		return this.vehicles.find((vehicle) => vehicle.id === selectedVehicleId) ?? null;
 	}
 
+	get selectionRequest(): number {
+		return this.#selectionRequest;
+	}
+
 	// `null` clears the selection and returns to the whole fleet.
 	selectVehicle(vehicleId: string | null): void {
 		this.#requestedVehicleId = vehicleId;
+		this.#selectionRequest += 1;
 	}
 
 	async refresh(): Promise<void> {
