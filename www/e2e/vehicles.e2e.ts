@@ -544,6 +544,26 @@ function getMapScale(page: Page) {
 	return page.getByTestId('vehicle-map').locator('.maplibregl-ctrl-scale');
 }
 
+/*
+ * Zooms out with the mouse wheel - a user gesture, which releases the camera -
+ * far enough that the scale reads in kilometres.
+ */
+async function zoomOutByHand(page: Page) {
+	const box = await page.getByTestId('vehicle-map').boundingBox();
+
+	if (!box) {
+		throw new Error('The vehicle map has no bounding box.');
+	}
+
+	await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+
+	for (let step = 0; step < 6; step++) {
+		await page.mouse.wheel(0, 400);
+	}
+
+	await expect(getMapScale(page)).toHaveText(/\d\s*km$/);
+}
+
 test.describe('vehicle map framing', () => {
 	/*
 	 * Added once the map is already up, and with nothing selected. Sorted by
@@ -603,6 +623,33 @@ test.describe('vehicle map framing', () => {
 
 		// The re-centre control takes it back to the fleet.
 		await page.getByTestId('vehicle-map-follow-toggle').click();
+
+		await expect(getMapScale(page)).toHaveText(/\d\s*m$/);
+	});
+
+	test('re-centres on every vehicle when All vehicles is chosen again', async ({ page }) => {
+		await refreshVehicleList(page);
+
+		await expect(getMapScale(page)).toHaveText(/\d\s*m$/);
+
+		await zoomOutByHand(page);
+
+		// Already selected, so this changes no selection - it only asks to look again.
+		await getVehicleSelector(page).click();
+		await page.getByTestId('all-vehicles').click();
+
+		await expect(getMapScale(page)).toHaveText(/\d\s*m$/);
+	});
+
+	test('re-centres on the selected vehicle when it is chosen again', async ({ page }) => {
+		await refreshVehicleList(page);
+		await selectVehicle(page, /Bravo/);
+
+		await expect(getMapScale(page)).toHaveText(/\d\s*m$/);
+
+		await zoomOutByHand(page);
+
+		await selectVehicle(page, /Bravo/);
 
 		await expect(getMapScale(page)).toHaveText(/\d\s*m$/);
 	});
