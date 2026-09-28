@@ -38,6 +38,8 @@ const trustedProxies = (env.TRUSTED_PROXIES ?? '')
 export const auth = betterAuth({
 	appName: 'Car Sensors',
 	baseURL: env.ORIGIN,
+	// Better Auth's default, spelled out so code that addresses the handler directly has one source.
+	basePath: '/api/auth',
 	secret: env.BETTER_AUTH_SECRET,
 	database: drizzleAdapter(db, { provider: 'pg', schema }),
 	emailAndPassword: {
