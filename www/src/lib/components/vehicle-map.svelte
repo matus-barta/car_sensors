@@ -54,8 +54,15 @@
 	 */
 	let followedVehicleId: string | null = null;
 
+	/*
+	 * The style comes from VersaTiles rather than from OpenStreetMap, whose
+	 * `/styles/` path - sprites and fonts included - only answers CORS requests
+	 * from its own sites and localhost. It works in development and fails on
+	 * every real deployment. OpenStreetMap's tiles are open to any origin, so
+	 * the tiles below still come from there.
+	 */
 	const styleUrl =
-		env.PUBLIC_OSM_STYLE_URL || 'https://vector.openstreetmap.org/styles/shortbread/colorful.json';
+		env.PUBLIC_OSM_STYLE_URL || 'https://tiles.versatiles.org/assets/styles/colorful/style.json';
 
 	const vectorTileUrl =
 		env.PUBLIC_OSM_VECTOR_TILE_URL ||
