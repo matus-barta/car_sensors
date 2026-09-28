@@ -39,12 +39,14 @@
 	let mapError = $state<string | null>(null);
 
 	/*
-	 * Whether the camera is locked to the selected vehicle. Selecting a vehicle
-	 * is a request to look at it, so this starts engaged and re-engages on every
-	 * new selection; moving the map by hand disengages it, which is what lets
-	 * someone look somewhere else without the next position update dragging the
-	 * view back. It is deliberately separate from selection: a disengaged follow
-	 * still leaves the vehicle selected, its marker highlighted and its card up.
+	 * Whether the camera is engaged: following the selected vehicle, or, with
+	 * nothing selected, keeping every located vehicle in view. Selecting a
+	 * vehicle - or going back to all of them - is a request to look at it, so
+	 * this starts engaged and re-engages on every change of selection; moving
+	 * the map by hand disengages it, which is what lets someone look somewhere
+	 * else without the next position update dragging the view back. It is
+	 * deliberately separate from selection: a disengaged follow still leaves
+	 * the vehicle selected, its marker highlighted and its card up.
 	 */
 	let following = $state(true);
 
@@ -54,6 +56,25 @@
 	 * that writes it.
 	 */
 	let followedVehicleId: string | null = null;
+
+	/*
+	 * Which located vehicles the fleet view was last framed on. A different
+	 * set - a vehicle added, removed, or reporting its first position - frames
+	 * the fleet again; `null` makes the next pass frame it whatever the set.
+	 * A plain variable, like the one above, so recording it does not re-run
+	 * the effect that reads it.
+	 */
+	let framedFleetKey: string | null = null;
+
+	// Room left around the fleet when it is framed.
+	const FLEET_PADDING = 80;
+
+	/*
+	 * How close to the edge of the view a vehicle may drive before the fleet is
+	 * framed again. Smaller than the padding above, so a freshly framed fleet
+	 * never counts as being at the edge.
+	 */
+	const FLEET_EDGE_MARGIN = 40;
 
 	/*
 	 * The style comes from VersaTiles rather than from OpenStreetMap, whose
@@ -91,11 +112,17 @@
 
 	/*
 	 * There is no point offering to follow something the camera cannot reach, so
-	 * the toggle stays hidden until the selected vehicle actually has a position.
+	 * the toggle stays hidden until there is a position to point it at: the
+	 * selected vehicle's, or, with nothing selected, any vehicle's.
 	 */
-	const canFollowSelectedVehicle = $derived(
-		selectedVehicleId !== null &&
-			vehicles.some((vehicle) => vehicle.id === selectedVehicleId && hasCoordinates(vehicle))
+	const canFollow = $derived(
+		selectedVehicleId === null
+			? vehicles.some(hasCoordinates)
+			: vehicles.some((vehicle) => vehicle.id === selectedVehicleId && hasCoordinates(vehicle))
+	);
+
+	const followLabel = $derived(
+		selectedVehicleId === null ? 'Keep all vehicles in view' : 'Follow the selected vehicle'
 	);
 
 	function createVehicleFeatureCollection(): FeatureCollection<Point> {
@@ -216,8 +243,31 @@
 		});
 	}
 
-	function fitVehicles(): void {
+	function isNearViewEdge(vehicle: { latitude: number; longitude: number }): boolean {
 		if (!map) {
+			return false;
+		}
+
+		const { x, y } = map.project([vehicle.longitude, vehicle.latitude]);
+		const { clientWidth: width, clientHeight: height } = map.getContainer();
+
+		return (
+			x < FLEET_EDGE_MARGIN ||
+			y < FLEET_EDGE_MARGIN ||
+			x > width - FLEET_EDGE_MARGIN ||
+			y > height - FLEET_EDGE_MARGIN
+		);
+	}
+
+	/*
+	 * With nothing selected, keeps every located vehicle in view. The camera
+	 * moves only when it has to - when the set of located vehicles changes, or
+	 * one of them drives up to the edge of the view - so vehicles moving about
+	 * inside it leave the view alone. Vehicles without a position are not on
+	 * the map and do not count.
+	 */
+	function frameFleet(): void {
+		if (!mapLoaded || !map || selectedVehicleId !== null || !following) {
 			return;
 		}
 
@@ -227,6 +277,17 @@
 			return;
 		}
 
+		const fleetKey = locatedVehicles
+			.map((vehicle) => vehicle.id)
+			.sort()
+			.join('\n');
+
+		if (fleetKey === framedFleetKey && !locatedVehicles.some(isNearViewEdge)) {
+			return;
+		}
+
+		framedFleetKey = fleetKey;
+
 		if (locatedVehicles.length === 1) {
 			const [vehicle] = locatedVehicles;
 
@@ -234,9 +295,11 @@
 				return;
 			}
 
-			map.jumpTo({
+			map.easeTo({
 				center: [vehicle.longitude, vehicle.latitude],
-				zoom: 14
+				zoom: 14,
+				duration: 700,
+				essential: true
 			});
 
 			return;
@@ -251,9 +314,10 @@
 				[Math.max(...longitudes), Math.max(...latitudes)]
 			],
 			{
-				padding: 80,
+				padding: FLEET_PADDING,
 				maxZoom: 14,
-				duration: 0
+				duration: 700,
+				essential: true
 			}
 		);
 	}
@@ -300,6 +364,9 @@
 
 	function toggleFollow(): void {
 		following = !following;
+
+		// Re-engaging is a request to see the fleet now, not at its next change.
+		framedFleetKey = null;
 	}
 
 	$effect(() => {
@@ -308,7 +375,8 @@
 
 	/*
 	 * Re-engage follow whenever the selection changes, so that choosing a vehicle
-	 * always brings the camera to it however the last one was left.
+	 * - or going back to all of them - always brings the camera to it however
+	 * the last one was left.
 	 */
 	$effect(() => {
 		if (selectedVehicleId === followedVehicleId) {
@@ -317,6 +385,12 @@
 
 		followedVehicleId = selectedVehicleId;
 		following = true;
+		framedFleetKey = null;
+	});
+
+	// Each returns straight away unless its mode applies: nothing selected, or a selection.
+	$effect(() => {
+		frameFleet();
 	});
 
 	$effect(() => {
@@ -344,9 +418,10 @@
 				maplibre.setWorkerUrl(mapLibreWorkerUrl);
 
 				/*
-				 * Only a starting point: `fitVehicles()` moves the camera onto the
-				 * vehicles once the map has loaded, so the browser-derived view is
-				 * worked out only when there is nothing located to fit.
+				 * Only a starting point: once the map has loaded, the camera moves
+				 * onto the vehicles - all of them, or the selected one - so the
+				 * browser-derived view is worked out only when there is nothing
+				 * located to move to.
 				 */
 				const [style, initialView] = await Promise.all([
 					createOsmMapStyle(styleUrl, vectorTileUrl),
@@ -424,7 +499,6 @@
 					}
 
 					addVehicleLayers();
-					fitVehicles();
 
 					mapLoaded = true;
 					mapError = null;
@@ -437,6 +511,13 @@
 
 					map.resize();
 					map.triggerRepaint();
+
+					/*
+					 * Again now the map has its real size: the effects above may
+					 * already have framed against the one it had before.
+					 */
+					framedFleetKey = null;
+					frameFleet();
 					focusSelectedVehicle();
 				}
 
@@ -455,6 +536,7 @@
 		return () => {
 			destroyed = true;
 			mapLoaded = false;
+			framedFleetKey = null;
 
 			resizeObserver?.disconnect();
 			resizeObserver = null;
@@ -513,7 +595,7 @@
 		</div>
 	{/if}
 
-	{#if mapLoaded && canFollowSelectedVehicle}
+	{#if mapLoaded && canFollow}
 		<!--
 			Bottom right, above the compact attribution: the navigation control
 			already owns the top right, and this is where a recenter control sits in
@@ -525,8 +607,8 @@
 				size="icon"
 				class="rounded-full bg-background/95 shadow-lg backdrop-blur-sm"
 				aria-pressed={following}
-				aria-label="Follow the selected vehicle"
-				title="Follow the selected vehicle"
+				aria-label={followLabel}
+				title={followLabel}
 				data-testid="vehicle-map-follow-toggle"
 				onclick={toggleFollow}
 			>
