@@ -20,6 +20,7 @@
 	import type { VehicleWithStatus } from '$lib/vehicles/vehicle';
 	import { Button } from '$lib/components/ui/button';
 	import { createOsmMapStyle } from '$lib/map/osm-map-style';
+	import { getDefaultView, WORLD_VIEW } from '$lib/map/default-view';
 	import { isUserCameraGesture, type CameraEventOrigin } from '$lib/map/camera-gesture';
 
 	import { tick } from 'svelte';
@@ -342,7 +343,15 @@
 
 				maplibre.setWorkerUrl(mapLibreWorkerUrl);
 
-				const style = await createOsmMapStyle(styleUrl, vectorTileUrl);
+				/*
+				 * Only a starting point: `fitVehicles()` moves the camera onto the
+				 * vehicles once the map has loaded, so the browser-derived view is
+				 * worked out only when there is nothing located to fit.
+				 */
+				const [style, initialView] = await Promise.all([
+					createOsmMapStyle(styleUrl, vectorTileUrl),
+					vehicles.some(hasCoordinates) ? WORLD_VIEW : getDefaultView()
+				]);
 
 				if (destroyed) {
 					return;
@@ -351,8 +360,8 @@
 				map = new maplibre.Map({
 					container,
 					style,
-					center: [17.1077, 48.1486],
-					zoom: 12,
+					center: initialView.center,
+					zoom: initialView.zoom,
 					minZoom: 2,
 					maxZoom: 20,
 					attributionControl: {
