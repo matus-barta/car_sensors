@@ -87,6 +87,8 @@
 	 */
 	const FLEET_EDGE_MARGIN = 40;
 
+	const NO_PADDING = { top: 0, right: 0, bottom: 0, left: 0 };
+
 	/*
 	 * The style comes from VersaTiles rather than from OpenStreetMap, whose
 	 * `/styles/` path - sprites and fonts included - only answers CORS requests
@@ -227,6 +229,30 @@
 		);
 	}
 
+	/*
+	 * Following a vehicle pads the camera on the left, so the vehicle sits in
+	 * the part of the map the info card does not cover. MapLibre keeps that
+	 * padding for every later move - `fitBounds()` even counts it into the fit
+	 * - so the fleet view, which has no card, would stay pushed to the side.
+	 * It is dropped first, keeping whatever is in the middle of the screen
+	 * where it is, so the move that follows starts without a jump.
+	 */
+	function clearCameraPadding(): void {
+		if (!map) {
+			return;
+		}
+
+		const { top, right, bottom, left } = map.getPadding();
+
+		if (!top && !right && !bottom && !left) {
+			return;
+		}
+
+		const { clientWidth: width, clientHeight: height } = map.getContainer();
+
+		map.jumpTo({ center: map.unproject([width / 2, height / 2]), padding: NO_PADDING });
+	}
+
 	// Carries out what `planCamera()` decides; the decision itself is tested on its own.
 	function applyCamera(): void {
 		if (!mapLoaded || !map) {
@@ -263,6 +289,8 @@
 
 			case 'frame':
 				framedFleetKey = plan.fleetKey;
+
+				clearCameraPadding();
 
 				if (plan.view.kind === 'center') {
 					map.easeTo({

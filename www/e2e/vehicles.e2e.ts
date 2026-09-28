@@ -564,6 +564,49 @@ async function zoomOutByHand(page: Page) {
 	await expect(getMapScale(page)).toHaveText(/\d\s*km$/);
 }
 
+/*
+ * Where an online vehicle's marker is drawn, as a fraction of the map's width
+ * from its left edge. Markers are painted onto the map's canvas rather than
+ * placed as elements, so this finds the marker's colour in a screenshot of
+ * the map - where a user would see it. Null while no marker is on screen.
+ */
+async function getOnlineMarkerPosition(page: Page): Promise<number | null> {
+	const screenshot = await page.getByTestId('vehicle-map').screenshot();
+
+	return page.evaluate(async (base64) => {
+		const bytes = Uint8Array.from(atob(base64), (character) => character.charCodeAt(0));
+		const image = await createImageBitmap(new Blob([bytes], { type: 'image/png' }));
+		const canvas = new OffscreenCanvas(image.width, image.height);
+		const context = canvas.getContext('2d');
+
+		if (!context) {
+			return null;
+		}
+
+		context.drawImage(image, 0, 0);
+
+		const { data } = context.getImageData(0, 0, image.width, image.height);
+
+		// The online marker colour, #10b981, with room for antialiasing.
+		const target = [0x10, 0xb9, 0x81];
+		let sumX = 0;
+		let count = 0;
+
+		for (let index = 0; index < data.length; index += 4) {
+			const matches = target.every(
+				(value, channel) => Math.abs(data[index + channel] - value) < 12
+			);
+
+			if (matches) {
+				sumX += (index / 4) % image.width;
+				count += 1;
+			}
+		}
+
+		return count === 0 ? null : sumX / count / image.width;
+	}, screenshot.toString('base64'));
+}
+
 test.describe('vehicle map framing', () => {
 	/*
 	 * Added once the map is already up, and with nothing selected. Sorted by
@@ -652,6 +695,23 @@ test.describe('vehicle map framing', () => {
 		await selectVehicle(page, /Bravo/);
 
 		await expect(getMapScale(page)).toHaveText(/\d\s*m$/);
+	});
+
+	test('centres the whole map again once the vehicle card is gone', async ({ page }) => {
+		await refreshVehicleList(page);
+
+		await expect.poll(() => getOnlineMarkerPosition(page)).toBeCloseTo(0.5, 1);
+
+		// Selected, the vehicle is kept clear of the card on the left.
+		await selectVehicle(page, /Bravo/);
+
+		await expect.poll(() => getOnlineMarkerPosition(page)).toBeGreaterThan(0.55);
+
+		await getVehicleSelector(page).click();
+		await page.getByTestId('all-vehicles').click();
+
+		await expect(getVehicleInfoCard(page)).toHaveCount(0);
+		await expect.poll(() => getOnlineMarkerPosition(page)).toBeCloseTo(0.5, 1);
 	});
 
 	test('moves only when a vehicle drives to the edge of the view', async ({ page }) => {
