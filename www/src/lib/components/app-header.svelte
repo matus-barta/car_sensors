@@ -4,6 +4,7 @@
 	import LogOut from '@lucide/svelte/icons/log-out';
 	import Plus from '@lucide/svelte/icons/plus';
 	import Check from '@lucide/svelte/icons/check';
+	import MapIcon from '@lucide/svelte/icons/map';
 	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 
 	import * as Alert from '$lib/components/ui/alert';
@@ -40,7 +41,8 @@
 		vehiclesLoading?: boolean;
 		vehiclesError?: string | null;
 		selectedVehicleId?: string | null;
-		onVehicleSelect?: (vehicleId: string) => void;
+		// `null` is the "All vehicles" entry, which clears the selection.
+		onVehicleSelect?: (vehicleId: string | null) => void;
 		onAddVehicle?: () => void;
 		onPairPhone?: (vehicleId: string, vehicleName: string) => void;
 		onSignOut?: () => void | Promise<void>;
@@ -66,7 +68,7 @@
 		vehicles.find((vehicle) => vehicle.id === selectedVehicleId) ?? null
 	);
 
-	function selectVehicle(vehicleId: string) {
+	function selectVehicle(vehicleId: string | null) {
 		onVehicleSelect?.(vehicleId);
 		vehicleMenuOpen = false;
 	}
@@ -138,7 +140,8 @@
 								<CarFront class="text-muted-foreground" aria-hidden="true" />
 
 								<span class="min-w-0 truncate">
-									{selectedVehicle?.name ?? 'Select vehicle'}
+									{selectedVehicle?.name ??
+										(vehicles.length > 0 ? 'All vehicles' : 'Select vehicle')}
 								</span>
 
 								{#if selectedVehicle}
@@ -160,7 +163,9 @@
 				<Popover.Content align="start" class="w-[min(22rem,calc(100vw-1.5rem))] p-1">
 					<div class="px-2 py-1.5">
 						<p class="text-sm font-medium">Vehicles</p>
-						<p class="text-xs text-muted-foreground">Select a vehicle to display on the map.</p>
+						<p class="text-xs text-muted-foreground">
+							Show every vehicle on the map, or select one to follow.
+						</p>
 					</div>
 
 					<Separator class="my-1" />
@@ -173,6 +178,33 @@
 								<Alert.Description>{vehiclesError}</Alert.Description>
 							</Alert.Root>
 						{:else if vehicles.length > 0}
+							<Button
+								variant="ghost"
+								class={[
+									'h-auto w-full justify-start gap-3 px-2 py-2 text-left',
+									selectedVehicleId === null && 'bg-accent'
+								]}
+								aria-current={selectedVehicleId === null ? 'true' : undefined}
+								data-testid="all-vehicles"
+								onclick={() => selectVehicle(null)}
+							>
+								<span class="flex size-9 shrink-0 items-center justify-center rounded-md border">
+									<MapIcon class="text-muted-foreground" aria-hidden="true" />
+								</span>
+
+								<span class="min-w-0 flex-1">
+									<span class="block truncate text-sm font-medium">All vehicles</span>
+
+									<span class="block truncate text-xs text-muted-foreground">
+										Frame every vehicle with a position
+									</span>
+								</span>
+
+								{#if selectedVehicleId === null}
+									<Check class="text-primary" aria-label="Selected" />
+								{/if}
+							</Button>
+
 							{#each vehicles as vehicle (vehicle.id)}
 								{@const lastSeen = formatRelativeTime(vehicle.lastSeenAt, clock.now)}
 								<Button
