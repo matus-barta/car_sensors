@@ -26,6 +26,22 @@ function getVehicleStatusBadge(page: Page) {
 	return getVehicleInfoCard(page).getByTestId('vehicle-status-badge');
 }
 
+/*
+ * Nothing is selected on arrival - the map shows every vehicle until one is
+ * picked - so a test about a single vehicle selects it first.
+ */
+async function selectVehicle(page: Page, name: string | RegExp) {
+	await getVehicleSelector(page).click();
+
+	await page
+		.getByRole('button', {
+			name
+		})
+		.click();
+
+	await expect(getVehicleInfoCard(page)).toBeVisible();
+}
+
 async function openAddVehicleDialog(page: Page) {
 	const vehicleSelector = getVehicleSelector(page);
 
@@ -99,8 +115,7 @@ test.describe('vehicle selection and creation', () => {
 		await createInitialAdministrator(page);
 
 		await expect(page).toHaveURL('/');
-		await expect(getVehicleSelector(page)).toContainText('Škoda Octavia');
-		await expect(getVehicleInfoCard(page)).toContainText('Škoda Octavia');
+		await expect(getVehicleSelector(page)).toContainText('All vehicles');
 	});
 
 	test('keeps showing the last known location when the newest rows carry none', async ({
@@ -122,6 +137,8 @@ test.describe('vehicle selection and creation', () => {
 		});
 
 		await page.reload();
+
+		await selectVehicle(page, /Škoda Octavia/);
 
 		const vehicleInfoCard = getVehicleInfoCard(page);
 
@@ -164,13 +181,7 @@ test.describe('vehicle selection and creation', () => {
 
 		await page.reload();
 
-		await getVehicleSelector(page).click();
-
-		await page
-			.getByRole('button', {
-				name: /Parked Car/
-			})
-			.click();
+		await selectVehicle(page, /Parked Car/);
 
 		const vehicleInfoCard = getVehicleInfoCard(page);
 
@@ -189,22 +200,36 @@ test.describe('vehicle selection and creation', () => {
 	}) => {
 		// Škoda Octavia's newest row is its located sample, so there is nothing
 		// to disambiguate and the extra line would only be noise.
+		await selectVehicle(page, /Škoda Octavia/);
+
 		await expect(getVehicleInfoCard(page)).toContainText('48.14860');
 
 		await expect(page.getByTestId('vehicle-position-age')).toHaveCount(0);
 	});
 
-	test('shows the initially selected vehicle', async ({ page }) => {
-		const vehicleSelector = getVehicleSelector(page);
+	test('shows every vehicle until one is selected', async ({ page }) => {
+		await expect(getVehicleSelector(page)).toContainText('All vehicles');
+		await expect(getVehicleInfoCard(page)).toHaveCount(0);
+
+		await selectVehicle(page, /Škoda Octavia/);
+
 		const vehicleInfoCard = getVehicleInfoCard(page);
 
-		await expect(vehicleSelector).toContainText('Škoda Octavia');
-
-		await expect(vehicleInfoCard).toBeVisible();
+		await expect(getVehicleSelector(page)).toContainText('Škoda Octavia');
 		await expect(vehicleInfoCard).toContainText('Škoda Octavia');
 		await expect(vehicleInfoCard).toContainText('car-1');
 
 		await expect(getVehicleStatusBadge(page)).toHaveText('Online');
+	});
+
+	test('goes back to every vehicle from a selection', async ({ page }) => {
+		await selectVehicle(page, /Škoda Octavia/);
+
+		await getVehicleSelector(page).click();
+		await page.getByTestId('all-vehicles').click();
+
+		await expect(getVehicleSelector(page)).toContainText('All vehicles');
+		await expect(getVehicleInfoCard(page)).toHaveCount(0);
 	});
 
 	test('selects another existing vehicle', async ({ page }) => {
@@ -304,11 +329,12 @@ test.describe('vehicle selection and creation', () => {
 
 		await expect(getVehicleStatusBadge(page)).toHaveText('Offline');
 
+		// The selection is not kept across a reload, but the vehicle is.
 		await page.reload();
 
 		await expect(page).toHaveURL('/');
 
-		await expect(getVehicleSelector(page)).toContainText('Development Vehicle');
+		await selectVehicle(page, /Development Vehicle/);
 
 		await expect(getVehicleInfoCard(page)).toContainText('Development Vehicle');
 
@@ -317,6 +343,8 @@ test.describe('vehicle selection and creation', () => {
 
 	test('issues a new token when a replacement phone is paired', async ({ page }) => {
 		const before = await getKnownDeviceByName('Škoda Octavia');
+
+		await selectVehicle(page, /Škoda Octavia/);
 
 		await getVehicleSelector(page).click();
 
@@ -359,7 +387,7 @@ test.describe('vehicle selection and creation', () => {
 			.click();
 
 		await expect(dialog).not.toBeVisible();
-		await expect(vehicleSelector).toContainText('Škoda Octavia');
+		await expect(vehicleSelector).toContainText('All vehicles');
 
 		expect(await getKnownDeviceByName('Cancelled Vehicle')).toBeNull();
 
@@ -414,6 +442,8 @@ test.describe('vehicle selection and creation', () => {
 		await expect(map).toHaveAttribute('data-map-state', 'ready', {
 			timeout: 20_000
 		});
+
+		await selectVehicle(page, /Škoda Octavia/);
 
 		const followToggle = page.getByTestId('vehicle-map-follow-toggle');
 
@@ -489,5 +519,147 @@ test.describe('vehicle selection and creation', () => {
 			.click();
 
 		await expect(reopenedDialog).not.toBeVisible();
+	});
+});
+
+/*
+ * The vehicle list refreshes as soon as the tab becomes visible again, which
+ * stands in for waiting out the poll interval.
+ */
+async function refreshVehicleList(page: Page) {
+	await page.evaluate(() => {
+		for (const hidden of [true, false]) {
+			Object.defineProperty(document, 'hidden', { configurable: true, get: () => hidden });
+			document.dispatchEvent(new Event('visibilitychange'));
+		}
+	});
+}
+
+/*
+ * The scale bar reads in kilometres on the default view and in metres once the
+ * camera is framed on a vehicle, which makes it a view of the camera that a
+ * user would see too.
+ */
+function getMapScale(page: Page) {
+	return page.getByTestId('vehicle-map').locator('.maplibregl-ctrl-scale');
+}
+
+test.describe('vehicle map framing', () => {
+	/*
+	 * Added once the map is already up, and with nothing selected. Sorted by
+	 * name, the vehicle without a position comes first; it is not on the map
+	 * and does not count towards what is framed.
+	 */
+	test.beforeEach(async ({ page }) => {
+		await resetDatabase();
+		await createInitialAdministrator(page);
+
+		await expect(page.getByTestId('vehicle-map')).toHaveAttribute('data-map-state', 'ready', {
+			timeout: 20_000
+		});
+
+		await expect(getMapScale(page)).toHaveText(/km$/);
+
+		const now = Date.now();
+
+		await createTestVehicle({ deviceId: 'car-a', name: 'Alpha', lastSeenAt: new Date(now) });
+		await createTestVehicle({ deviceId: 'car-b', name: 'Bravo', lastSeenAt: new Date(now) });
+
+		await createTestTelemetry({
+			deviceId: 'car-b',
+			id: 1,
+			timestamp: now,
+			latitude: 48.1486,
+			longitude: 17.1077
+		});
+	});
+
+	test('frames vehicles that arrive after the map has loaded', async ({ page }) => {
+		await refreshVehicleList(page);
+
+		await expect(getVehicleSelector(page)).toContainText('All vehicles');
+		await expect(getMapScale(page)).toHaveText(/\d\s*m$/);
+	});
+
+	test('leaves the camera where the user moved it', async ({ page }) => {
+		const box = await page.getByTestId('vehicle-map').boundingBox();
+
+		if (!box) {
+			throw new Error('The vehicle map has no bounding box.');
+		}
+
+		const startX = box.x + box.width * 0.5;
+		const startY = box.y + box.height * 0.5;
+
+		await page.mouse.move(startX, startY);
+		await page.mouse.down();
+		await page.mouse.move(startX - 160, startY - 120, { steps: 12 });
+		await page.mouse.up();
+
+		await refreshVehicleList(page);
+
+		await expect(getVehicleSelector(page)).toContainText('All vehicles');
+		await expect(getMapScale(page)).toHaveText(/km$/);
+
+		// The re-centre control takes it back to the fleet.
+		await page.getByTestId('vehicle-map-follow-toggle').click();
+
+		await expect(getMapScale(page)).toHaveText(/\d\s*m$/);
+	});
+
+	test('moves only when a vehicle drives to the edge of the view', async ({ page }) => {
+		const now = Date.now();
+
+		// A second located vehicle about ten kilometres away.
+		await createTestVehicle({ deviceId: 'car-c', name: 'Charlie', lastSeenAt: new Date(now) });
+
+		await createTestTelemetry({
+			deviceId: 'car-c',
+			id: 1,
+			timestamp: now,
+			latitude: 48.2,
+			longitude: 17.2
+		});
+
+		await refreshVehicleList(page);
+
+		const scale = getMapScale(page);
+
+		await expect(scale).toHaveText(/\d\s*km$/);
+
+		// Settled, not caught halfway through the move onto the fleet.
+		await page.waitForTimeout(1_000);
+
+		const framedScale = await scale.getAttribute('style');
+
+		/*
+		 * A drive that stays inside the view. Framing the fleet again would zoom
+		 * in on the smaller area it now covers, which would change the scale.
+		 */
+		await createTestTelemetry({
+			deviceId: 'car-c',
+			id: 2,
+			timestamp: now + 1_000,
+			latitude: 48.19,
+			longitude: 17.18
+		});
+
+		await refreshVehicleList(page);
+		await page.waitForTimeout(1_000);
+
+		expect(await scale.getAttribute('style')).toBe(framedScale);
+
+		// A drive far out of the view brings the camera after it.
+		await createTestTelemetry({
+			deviceId: 'car-c',
+			id: 3,
+			timestamp: now + 2_000,
+			latitude: 48.7,
+			longitude: 18.1
+		});
+
+		await refreshVehicleList(page);
+
+		await expect.poll(() => scale.getAttribute('style')).not.toBe(framedScale);
 	});
 });
