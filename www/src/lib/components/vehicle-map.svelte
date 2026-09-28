@@ -21,6 +21,7 @@
 	import { Button } from '$lib/components/ui/button';
 	import { createOsmMapStyle } from '$lib/map/osm-map-style';
 	import { getDefaultView, WORLD_VIEW } from '$lib/map/default-view';
+	import { hasCoordinates, planCamera, VEHICLE_ZOOM } from '$lib/map/vehicle-camera';
 	import { isUserCameraGesture, type CameraEventOrigin } from '$lib/map/camera-gesture';
 
 	import { tick } from 'svelte';
@@ -93,22 +94,6 @@
 	const sourceId = 'vehicles';
 	const markerLayerId = 'vehicle-markers';
 	const selectedMarkerLayerId = 'selected-vehicle-marker';
-
-	function hasCoordinates(vehicle: VehicleWithStatus): vehicle is VehicleWithStatus & {
-		latitude: number;
-		longitude: number;
-	} {
-		return (
-			typeof vehicle.latitude === 'number' &&
-			Number.isFinite(vehicle.latitude) &&
-			vehicle.latitude >= -90 &&
-			vehicle.latitude <= 90 &&
-			typeof vehicle.longitude === 'number' &&
-			Number.isFinite(vehicle.longitude) &&
-			vehicle.longitude >= -180 &&
-			vehicle.longitude <= 180
-		);
-	}
 
 	/*
 	 * There is no point offering to follow something the camera cannot reach, so
@@ -216,33 +201,6 @@
 		(source as GeoJSONSource).setData(createVehicleFeatureCollection());
 	}
 
-	function focusSelectedVehicle(): void {
-		if (!mapLoaded || !map || !selectedVehicleId || !following) {
-			return;
-		}
-
-		const selectedVehicle = vehicles.find(
-			(vehicle) => vehicle.id === selectedVehicleId && hasCoordinates(vehicle)
-		);
-
-		if (!selectedVehicle || !hasCoordinates(selectedVehicle)) {
-			return;
-		}
-
-		map.easeTo({
-			center: [selectedVehicle.longitude, selectedVehicle.latitude],
-			zoom: Math.max(map.getZoom(), 14),
-			padding: {
-				top: 80,
-				right: 40,
-				bottom: 40,
-				left: 320
-			},
-			duration: 700,
-			essential: true
-		});
-	}
-
 	function isNearViewEdge(vehicle: { latitude: number; longitude: number }): boolean {
 		if (!map) {
 			return false;
@@ -259,67 +217,61 @@
 		);
 	}
 
-	/*
-	 * With nothing selected, keeps every located vehicle in view. The camera
-	 * moves only when it has to - when the set of located vehicles changes, or
-	 * one of them drives up to the edge of the view - so vehicles moving about
-	 * inside it leave the view alone. Vehicles without a position are not on
-	 * the map and do not count.
-	 */
-	function frameFleet(): void {
-		if (!mapLoaded || !map || selectedVehicleId !== null || !following) {
+	// Carries out what `planCamera()` decides; the decision itself is tested on its own.
+	function applyCamera(): void {
+		if (!mapLoaded || !map) {
 			return;
 		}
 
-		const locatedVehicles = vehicles.filter(hasCoordinates);
+		const plan = planCamera({
+			vehicles,
+			selectedVehicleId,
+			following,
+			framedFleetKey,
+			isNearViewEdge
+		});
 
-		if (locatedVehicles.length === 0) {
-			return;
-		}
-
-		const fleetKey = locatedVehicles
-			.map((vehicle) => vehicle.id)
-			.sort()
-			.join('\n');
-
-		if (fleetKey === framedFleetKey && !locatedVehicles.some(isNearViewEdge)) {
-			return;
-		}
-
-		framedFleetKey = fleetKey;
-
-		if (locatedVehicles.length === 1) {
-			const [vehicle] = locatedVehicles;
-
-			if (!vehicle) {
+		switch (plan.kind) {
+			case 'stay':
 				return;
-			}
 
-			map.easeTo({
-				center: [vehicle.longitude, vehicle.latitude],
-				zoom: 14,
-				duration: 700,
-				essential: true
-			});
+			case 'follow':
+				map.easeTo({
+					center: plan.center,
+					zoom: Math.max(map.getZoom(), VEHICLE_ZOOM),
+					padding: {
+						top: 80,
+						right: 40,
+						bottom: 40,
+						left: 320
+					},
+					duration: 700,
+					essential: true
+				});
 
-			return;
+				return;
+
+			case 'frame':
+				framedFleetKey = plan.fleetKey;
+
+				if (plan.view.kind === 'center') {
+					map.easeTo({
+						center: plan.view.center,
+						zoom: plan.view.zoom,
+						duration: 700,
+						essential: true
+					});
+				} else {
+					map.fitBounds(plan.view.bounds, {
+						padding: FLEET_PADDING,
+						maxZoom: plan.view.maxZoom,
+						duration: 700,
+						essential: true
+					});
+				}
+
+				return;
 		}
-
-		const longitudes = locatedVehicles.map((vehicle) => vehicle.longitude);
-		const latitudes = locatedVehicles.map((vehicle) => vehicle.latitude);
-
-		map.fitBounds(
-			[
-				[Math.min(...longitudes), Math.min(...latitudes)],
-				[Math.max(...longitudes), Math.max(...latitudes)]
-			],
-			{
-				padding: FLEET_PADDING,
-				maxZoom: 14,
-				duration: 700,
-				essential: true
-			}
-		);
 	}
 
 	function handleMarkerMouseEnter(): void {
@@ -388,13 +340,8 @@
 		framedFleetKey = null;
 	});
 
-	// Each returns straight away unless its mode applies: nothing selected, or a selection.
 	$effect(() => {
-		frameFleet();
-	});
-
-	$effect(() => {
-		focusSelectedVehicle();
+		applyCamera();
 	});
 
 	/*
@@ -517,8 +464,7 @@
 					 * already have framed against the one it had before.
 					 */
 					framedFleetKey = null;
-					frameFleet();
-					focusSelectedVehicle();
+					applyCamera();
 				}
 
 				map.once('style.load', () => {
