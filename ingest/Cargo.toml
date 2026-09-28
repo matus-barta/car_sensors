@@ -23,6 +23,14 @@ thiserror = "2.0"
 dotenvy = "0.15"
 sha2 = "0.11"
 subtle = "2.6"
+clap = { version = "4.6", default-features = false, features = [
+    "std",
+    "derive",
+    "help",
+    "usage",
+    "error-context",
+] }
+reqwest = { version = "0.13", default-features = false }
 shared = { path = "../shared" }
 
 [dev-dependencies]
