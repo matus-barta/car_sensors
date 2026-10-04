@@ -1,7 +1,9 @@
 package com.anonymus09.carsensors
 
+import android.Manifest
 import android.app.NotificationManager
 import android.content.Context
+import android.os.Build
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.After
@@ -64,8 +66,23 @@ class UploadSilenceNotifierTest {
         return posted()
     }
 
+    /*
+     * Android 13 made posting a notification a permission, and an app
+     * targeting an earlier level starts without it. Granted here because what
+     * is tested is the warning once notifications are allowed; the screen is
+     * what says when they are not.
+     */
     @Before
-    fun setUp() = notifier.clear()
+    fun setUp() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            InstrumentationRegistry.getInstrumentation().uiAutomation.grantRuntimePermission(
+                context.packageName,
+                Manifest.permission.POST_NOTIFICATIONS
+            )
+        }
+
+        notifier.clear()
+    }
 
     @After
     fun tearDown() = notifier.clear()

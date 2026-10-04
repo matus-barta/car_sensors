@@ -30,6 +30,7 @@ import android.os.PowerManager
 import android.os.Looper
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import com.anonymus09.carsensors.data.AppDatabase
 import com.anonymus09.carsensors.data.PowerState
@@ -498,6 +499,13 @@ class TelemetryForegroundService : Service(), SensorEventListener {
 
             // Explains a session of rows without positions after a reboot.
             put("locationAccess", LocationAccess.of(this@TelemetryForegroundService).name)
+
+            // Explains an upload outage nobody was warned about.
+            put(
+                "notificationsEnabled",
+                NotificationManagerCompat.from(this@TelemetryForegroundService)
+                    .areNotificationsEnabled()
+            )
         })
 
         enterInitialState()
