@@ -1,13 +1,10 @@
 package com.anonymus09.carsensors
 
 import android.Manifest
-import android.annotation.SuppressLint
 import android.content.ActivityNotFoundException
 import android.content.Intent
-import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -21,7 +18,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.anonymus09.carsensors.data.AppDatabase
 import com.anonymus09.carsensors.data.PowerStateProvider
@@ -37,7 +33,7 @@ import com.anonymus09.carsensors.ui.theme.CarSensorsTheme
 import com.anonymus09.carsensors.util.AccessState
 import com.anonymus09.carsensors.util.LastExit
 import com.anonymus09.carsensors.util.LocationAccess
-import com.anonymus09.carsensors.util.ManufacturerGuide
+import com.anonymus09.carsensors.util.SystemSettings
 import com.anonymus09.carsensors.work.WifiUploadScheduler
 
 class MainActivity : ComponentActivity() {
@@ -267,85 +263,25 @@ class MainActivity : ComponentActivity() {
         backgroundLocationLauncher.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
     }
 
-    /*
-     * The app's own page in the system's settings, where its permissions are.
-     *
-     * Rather than asking again: once Android has decided not to show the
-     * dialog any more, asking returns a refusal without the user seeing
-     * anything, and this page is the only place left to change the answer.
-     *
-     * The app's page rather than its location permission page, because that
-     * one cannot be opened by an ordinary app; the warning names the two taps
-     * from here instead.
-     */
-    private fun openAppSettings() {
-        startActivity(
-            Intent(
-                Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-                Uri.fromParts("package", packageName, null)
-            )
-        )
-    }
-
-    /*
-     * Straight to the switch, unlike location: Android lets an app open its own
-     * notification settings, and on Android 13 that switch is the permission.
-     *
-     * Rather than asking with a dialog first, because the dialog may no longer
-     * be shown - asking would then come back refused without the user seeing
-     * anything, exactly the failure the location request had.
-     */
-    private fun openNotificationSettings() {
-        startActivity(
-            Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
-                .putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
-        )
-    }
-
     private fun fix(fix: SetupFix) = when (fix) {
         SetupFix.BACKGROUND_LOCATION -> requestBackgroundLocation()
         SetupFix.PRECISE_LOCATION ->
             preciseLocationLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
         SetupFix.APP_SETTINGS -> openAppSettings()
-        SetupFix.NOTIFICATIONS -> openNotificationSettings()
-        SetupFix.BATTERY_OPTIMIZATION -> requestBatteryExemption()
-        SetupFix.DATA_SAVER -> openDataSaverException()
-        SetupFix.MANUFACTURER_GUIDE -> openManufacturerGuide()
+        SetupFix.NOTIFICATIONS -> open(SystemSettings.notifications(this))
+        SetupFix.BATTERY_OPTIMIZATION -> open(SystemSettings.batteryExemption(this))
+        SetupFix.DATA_SAVER -> open(SystemSettings.dataSaverExemption(this))
+        SetupFix.MANUFACTURER_GUIDE -> open(SystemSettings.manufacturerGuide())
     }
 
-    /*
-     * Android's own one-tap dialog, the same choice as "Unrestricted" under the
-     * app's battery settings.
-     *
-     * Lint discourages it because Google Play only allows it for a few kinds of
-     * app. This app is not on Play, and a logger that runs unattended for weeks
-     * is the case the exemption exists for.
-     */
-    @SuppressLint("BatteryLife")
-    private fun requestBatteryExemption() = startOrOpenAppSettings(
-        Intent(
-            Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
-            Uri.fromParts("package", packageName, null)
-        )
-    )
-
-    /** Straight to this app's exemption from Data Saver. */
-    private fun openDataSaverException() = startOrOpenAppSettings(
-        Intent(
-            Settings.ACTION_IGNORE_BACKGROUND_DATA_RESTRICTIONS_SETTINGS,
-            Uri.fromParts("package", packageName, null)
-        )
-    )
-
-    private fun openManufacturerGuide() =
-        startOrOpenAppSettings(Intent(Intent.ACTION_VIEW, ManufacturerGuide.url.toUri()))
+    private fun openAppSettings() = startActivity(SystemSettings.appDetails(this))
 
     /*
      * Manufacturers remove system screens, and a phone kept for logging may have
      * no browser at all. The app's own settings page always exists, and most of
      * these choices can be reached from it.
      */
-    private fun startOrOpenAppSettings(intent: Intent) {
+    private fun open(intent: Intent) {
         try {
             startActivity(intent)
         } catch (_: ActivityNotFoundException) {
