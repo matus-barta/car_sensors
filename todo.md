@@ -792,6 +792,31 @@ doing only if this is ever seen in practice - it is written down so that a
 screen insisting on `RECORDING` while nothing is recorded is recognised rather
 than puzzled over.
 
+### Ask for "Allow all the time" location on Android 11 and later
+
+The logger gets no GPS after a reboot on Android 11 and later unless the app
+holds background location. `BootReceiver` starts the service with nothing on
+screen, and from Android 11 a foreground service started from the background is
+given location only if background location has been granted - whatever the app
+targets. The service still runs and still writes samples, so nothing looks
+wrong, but every row is without a position.
+
+Started from the button on the screen it works, because the app is in front at
+that moment and "while using the app" is enough. That is why it went unnoticed:
+the handset is Android 9, where none of this applies, and the restriction only
+bites on the path nobody watches.
+
+Found by `TelemetryRecordingTest`, which failed on API 33 until the test granted
+background location. It now grants it, so it covers that path working rather
+than the permission missing; this entry is the other half.
+
+What it needs: on Android 10 and later, ask for `ACCESS_BACKGROUND_LOCATION`
+once foreground location is granted - from Android 11 that is a trip to the
+settings page rather than a dialog, so the screen has to explain why first -
+and say on the screen when it is missing, the same way a missing foreground
+permission is said. It is the same split the entry below expects on the day the
+target is raised, arriving early because this part of it ignores the target.
+
 ### Declare a foreground service type before raising the target SDK
 
 `targetSdk` is 28, and that is what keeps several things simple: a foreground
