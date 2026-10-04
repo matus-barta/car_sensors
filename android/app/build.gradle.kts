@@ -82,12 +82,45 @@ android {
                     systemImageSource = "aosp"
                     testedAbi = "x86"
                 }
+
+                /*
+                 * Where notifications became a runtime permission - one of the
+                 * platform changes that reaches this app despite its target.
+                 * 32-bit images stop well before this level, hence x86_64.
+                 */
+                create("api33") {
+                    device = "Pixel 2"
+                    apiLevel = 33
+                    systemImageSource = "aosp"
+                    testedAbi = "x86_64"
+                }
+
+                /*
+                 * The newest Android, where restrictions that apply whatever
+                 * the target arrive first. No plain AOSP image is published at
+                 * this level, so this one carries the Google APIs.
+                 */
+                create("api37") {
+                    device = "Pixel 2"
+                    apiLevel = 37
+                    systemImageSource = "google"
+                    testedAbi = "x86_64"
+
+                    // AGP cannot tell this level's default page size and warns
+                    // on every build until it is told. 4 KB is what it would
+                    // pick anyway, and the app ships no native code that a
+                    // 16 KB page could break.
+                    pageAlignment =
+                        com.android.build.api.dsl.ManagedVirtualDevice.PageAlignment.FORCE_4KB_PAGES
+                }
             }
 
             groups {
                 create("allApis") {
                     targetDevices.add(localDevices["api30atd"])
                     targetDevices.add(localDevices["api28"])
+                    targetDevices.add(localDevices["api33"])
+                    targetDevices.add(localDevices["api37"])
                 }
             }
         }
