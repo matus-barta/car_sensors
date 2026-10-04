@@ -1,7 +1,6 @@
 package com.anonymus09.carsensors.ui
 
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -128,10 +127,3 @@ private fun Warning(
         }
     }
 }
-
-@Composable
-private fun WarningText(text: String) = Text(
-    text = text,
-    style = MaterialTheme.typography.bodyMedium,
-    color = MaterialTheme.colorScheme.error
-)
