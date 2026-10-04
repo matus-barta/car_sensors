@@ -782,35 +782,33 @@ within a day; one that is parked for a month hears nothing until it next
 records. That is the right trade for a warning about data still being
 collected, but a warning about storage pressure may not want to inherit it.
 
-### Work out why the API 28 managed device will not set itself up
+### Confirm the API 28 managed device sets itself up on a runner
 
-The `api28` device is declared and grouped with `api30atd`, but running it on a
-runner fails inside AGP's own `ManagedDeviceInstrumentationTestSetupTask` with
-"Cannot query the value of this property because it has no value available".
-Only the ATD device runs in CI as a result, so the level this app actually
-targets is covered locally - the handset is API 28 - and not automatically,
-which was the whole point of adding it.
+The `api28` device once failed on a runner inside AGP's own
+`ManagedDeviceInstrumentationTestSetupTask`, with "Cannot query the value of
+this property because it has no value available", after its system image had
+installed. That was AGP 9.4.0, running the `allApis` group (`api30atd` and
+`api28`), and it could not be tried anywhere else because the workstation was
+arm64.
 
-Two things about the failure are worth keeping, because they narrow it. The
-system image installs perfectly well first, so resolving `systemImageSource =
-"aosp"` to `system-images;android-28;default;x86` is not the problem; whatever
-is unset is needed after that, while the device itself is being created. And
-AGP reports that the device "does not specify a testedAbi" when
-`testedAbi = "x86"` is plainly set on it and the same setting on `api30atd`
-silenced the identical warning there. Something is not reading that device's
-configuration, and the missing property is likely the same fault seen from the
-other end.
+It no longer reproduces off a runner. On an x86_64 workstation with AGP 9.4.1,
+`api28` sets itself up and passes every instrumented test, both alone and
+grouped with `api33`. So it is back in CI, in the post-merge job, on a runner of
+its own - its first run there either clears this entry or produces the stack
+trace that names the property. The workflow can also be started by hand from
+the Actions tab, so that run need not wait for a merge.
 
-Nothing was found searching for the combination, so this is not a well-trodden
-path. Things to try, cheapest first: `systemImageSource = "google"` instead of
-`"aosp"`, in case the `default` image family is what is unhandled; a device
-profile other than `Pixel 2`; and API 29, which would still be below the ATD
-floor of 30 while being a more travelled configuration. The job now runs with
-`--stacktrace`, so the next failure should name the property outright.
+One thing that looked like a clue was not. AGP says the device "does not
+specify a testedAbi" although it does - but it says the same of every device,
+`api37` included, whatever `testedAbi` is set to, and falls back to `x86` or
+`x86_64` by itself. It ignores the setting rather than failing on it, which is
+an AGP quirk and not this fault.
 
-This cannot be reproduced on the workstation - an arm64 machine cannot run
-these x86 images - so each attempt costs a CI run, which is the main reason to
-have a theory before trying one.
+If it does fail again, what remains different from the workstation is the
+runner's environment and the ATD device sharing a run, since the post-merge
+job runs each device separately. The ideas from before still apply, cheapest
+first: `systemImageSource = "google"`, a device profile other than `Pixel 2`,
+and API 29.
 
 ### Test what newer Android does to a logger nobody watches
 
@@ -833,10 +831,6 @@ In rough order of how quietly they could end logging:
   `access_changed` not yet seen to work.
 - **A real handset from an aggressive manufacturer.** Samsung or Xiaomi stop
   apps in ways no emulator reproduces.
-
-Last, the `allApis` group (API 28, 30, 33, 37) could run after a merge the way
-the migration tests were meant to, so the newer levels are covered without
-anybody remembering to run them.
 
 ### Split the foreground service up
 
