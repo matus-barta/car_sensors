@@ -5,6 +5,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
 import android.location.Location
+import androidx.annotation.VisibleForTesting
 import androidx.core.app.NotificationCompat
 import com.anonymus09.carsensors.data.PowerTier
 import com.anonymus09.carsensors.util.AppConfig.MPS_TO_KMH
@@ -50,7 +51,9 @@ class LoggerNotification(context: Context) {
         manager.notify(ID, build(describe(content)))
     }
 
-    private fun describe(content: Content): List<String> {
+    /** The notification's lines, top to bottom. Kept apart from posting it, to be testable. */
+    @VisibleForTesting
+    internal fun describe(content: Content): List<String> {
         val base = when (content.loggerState) {
             LoggerState.RECORDING -> "Logging active"
             LoggerState.ARMED -> "Waiting for movement"
