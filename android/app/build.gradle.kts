@@ -221,6 +221,9 @@ dependencies {
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.work.testing)
     testImplementation(libs.mockwebserver)
+    // Composables tested on Robolectric, so they run with the other unit tests.
+    testImplementation(platform(libs.androidx.compose.bom))
+    testImplementation(libs.androidx.ui.test.junit4)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.room.testing)
     androidTestImplementation(libs.androidx.espresso.core)

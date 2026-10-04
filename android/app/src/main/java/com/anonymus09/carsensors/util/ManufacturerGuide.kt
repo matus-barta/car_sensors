@@ -14,14 +14,20 @@ import java.util.Locale
  */
 object ManufacturerGuide {
 
-    private val manufacturer: String? =
-        Build.MANUFACTURER.trim().takeUnless { it.isEmpty() || it.equals("unknown", true) }
-
     /** "Guide for Samsung phones", or a general one where Android does not say. */
-    val label: String = manufacturer
+    val label: String get() = labelFor(Build.MANUFACTURER)
+
+    val url: String get() = urlFor(Build.MANUFACTURER)
+
+    internal fun labelFor(manufacturer: String?): String = known(manufacturer)
         ?.let { "Guide for ${it.replaceFirstChar { c -> c.titlecase(Locale.ROOT) }} phones" }
         ?: "Guide to keeping apps running"
 
-    val url: String = "https://dontkillmyapp.com/" +
-        (manufacturer?.lowercase(Locale.ROOT)?.replace(" ", "-") ?: "")
+    /** The site's front page lists every manufacturer, for a phone that names none. */
+    internal fun urlFor(manufacturer: String?): String = "https://dontkillmyapp.com/" +
+        (known(manufacturer)?.lowercase(Locale.ROOT)?.replace(" ", "-") ?: "")
+
+    // Emulators and some unbranded phones report "unknown".
+    private fun known(manufacturer: String?): String? =
+        manufacturer?.trim()?.takeUnless { it.isEmpty() || it.equals("unknown", true) }
 }

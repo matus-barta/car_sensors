@@ -834,11 +834,6 @@ In rough order of how quietly they could end logging:
 - **A real handset from an aggressive manufacturer.** Samsung or Xiaomi stop
   apps in ways no emulator reproduces.
 
-And two that are cheap and long overdue: a JVM test of `PowerState.tier`, which
-decides what the logger gives up as the battery drains and has no test at all,
-and a Robolectric test of `BootReceiver` - it must start the logger only when
-both auto-start and the logger were left on.
-
 Last, the `allApis` group (API 28, 30, 33, 37) could run after a merge the way
 the migration tests were meant to, so the newer levels are covered without
 anybody remembering to run them.
