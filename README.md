@@ -191,6 +191,7 @@ needs typing. See [`docs/android-app.md`](docs/android-app.md).
 - [`docs/architecture.md`](docs/architecture.md) - how the four pieces fit together and why they share one database
 - [`docs/android-app.md`](docs/android-app.md) - what the Android logger does, and the platform limitations worth knowing
 - [`docs/database-migrations.md`](docs/database-migrations.md) - how the schema is owned and propagated
+- [`docs/web-image.md`](docs/web-image.md) - why the web application image is the size it is, and what was tried
 - [`docs/ai-policy.md`](docs/ai-policy.md) - how AI-assisted changes are made here
 
 ## AI-assisted development
