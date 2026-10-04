@@ -54,6 +54,7 @@ import com.anonymus09.carsensors.data.ServerHealth
 import com.anonymus09.carsensors.data.TelemetryStorage
 import com.anonymus09.carsensors.util.AppConfig.DB_STATS_REFRESH_RATE
 import com.anonymus09.carsensors.util.AppConfig.UPLOAD_MAX_ATTEMPTS
+import com.anonymus09.carsensors.util.LocationAccess
 import com.anonymus09.carsensors.util.ServerUrl
 
 /**
@@ -68,6 +69,8 @@ fun CarSensorsScreen(
     state: MainUiState,
     locationStatus: TelemetryLocationStatus,
     serverHealth: ServerHealth,
+    locationAccess: LocationAccess,
+    onAllowBackgroundLocation: () -> Unit,
     onToggleLogging: () -> Unit,
     onWakeOnMotionChange: (Boolean) -> Unit,
     onAutoStartOnBootChange: (Boolean) -> Unit,
@@ -94,6 +97,8 @@ fun CarSensorsScreen(
         StatusSection(
             state = state,
             locationStatus = locationStatus,
+            locationAccess = locationAccess,
+            onAllowBackgroundLocation = onAllowBackgroundLocation,
             onToggleLogging = onToggleLogging
         )
 
@@ -132,46 +137,16 @@ fun CarSensorsScreen(
 private fun StatusSection(
     state: MainUiState,
     locationStatus: TelemetryLocationStatus,
+    locationAccess: LocationAccess,
+    onAllowBackgroundLocation: () -> Unit,
     onToggleLogging: () -> Unit
 ) {
     val running = state.loggerState != LoggerState.OFF
 
     Text(text = "Car Sensors Logger", style = MaterialTheme.typography.headlineMedium)
 
-    Text(
-        text = when (state.loggerState) {
-            LoggerState.OFF -> "STOPPED"
-            LoggerState.ARMED -> "WAITING FOR MOVEMENT"
-            LoggerState.RECORDING -> "RECORDING"
-        },
-        style = MaterialTheme.typography.headlineSmall,
-        color = when (state.loggerState) {
-            LoggerState.RECORDING -> MaterialTheme.colorScheme.primary
-            LoggerState.ARMED -> MaterialTheme.colorScheme.tertiary
-            LoggerState.OFF -> MaterialTheme.colorScheme.onSurfaceVariant
-        }
-    )
-
-    if (state.loggerState == LoggerState.ARMED) {
-        Muted(
-            "Parked. Sensors and GPS are off; the motion sensor will start " +
-                "recording as soon as the vehicle moves."
-        )
-    }
-
-    if (state.power.tier != PowerTier.FULL) {
-        Text(
-            text = "Battery saving: " + when (state.power.tier) {
-                PowerTier.NO_UPLOAD -> "uploads held until the phone is charged"
-                PowerTier.REDUCED_RATE -> "recording less often"
-                PowerTier.LOCATION_ONLY -> "location only, other sensors off"
-                PowerTier.PAUSED -> "recording stopped until charged"
-                PowerTier.FULL -> ""
-            },
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.error
-        )
-    }
+    LoggerStateHeadline(state.loggerState)
+    PowerTierNote(state.power.tier)
 
     Button(
         onClick = onToggleLogging,
@@ -187,11 +162,79 @@ private fun StatusSection(
         Text(text = if (running) "Stop logging" else "Start logging")
     }
 
+    if (locationAccess == LocationAccess.WHILE_IN_USE) {
+        BackgroundLocationWarning(onAllow = onAllowBackgroundLocation)
+    }
+
     GpsStatus(locationStatus)
     PowerStatus(state.power)
 
     if (state.settings.liveUploadEnabled) {
         LiveUploadNote(charging = state.power.charging, wifiOnly = state.settings.wifiOnly)
+    }
+}
+
+@Composable
+private fun LoggerStateHeadline(loggerState: LoggerState) {
+    Text(
+        text = when (loggerState) {
+            LoggerState.OFF -> "STOPPED"
+            LoggerState.ARMED -> "WAITING FOR MOVEMENT"
+            LoggerState.RECORDING -> "RECORDING"
+        },
+        style = MaterialTheme.typography.headlineSmall,
+        color = when (loggerState) {
+            LoggerState.RECORDING -> MaterialTheme.colorScheme.primary
+            LoggerState.ARMED -> MaterialTheme.colorScheme.tertiary
+            LoggerState.OFF -> MaterialTheme.colorScheme.onSurfaceVariant
+        }
+    )
+
+    if (loggerState == LoggerState.ARMED) {
+        Muted(
+            "Parked. Sensors and GPS are off; the motion sensor will start " +
+                "recording as soon as the vehicle moves."
+        )
+    }
+}
+
+/** Being cut back looks identical to being broken unless it is said. */
+@Composable
+private fun PowerTierNote(tier: PowerTier) {
+    if (tier == PowerTier.FULL) return
+
+    Text(
+        text = "Battery saving: " + when (tier) {
+            PowerTier.NO_UPLOAD -> "uploads held until the phone is charged"
+            PowerTier.REDUCED_RATE -> "recording less often"
+            PowerTier.LOCATION_ONLY -> "location only, other sensors off"
+            PowerTier.PAUSED -> "recording stopped until charged"
+            PowerTier.FULL -> ""
+        },
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.error
+    )
+}
+
+/**
+ * Said here because nothing else would say it.
+ *
+ * With location allowed only while the app is open, the logger started from
+ * this screen gets GPS and the one restarted after a reboot does not - it runs
+ * and writes rows, just without a position. A phone left in a car is exactly
+ * the one that gets rebooted with nobody looking.
+ */
+@Composable
+private fun BackgroundLocationWarning(onAllow: () -> Unit) {
+    Text(
+        text = "Location is allowed only while this app is open. After a reboot the " +
+            "logger records without GPS.",
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.error
+    )
+
+    OutlinedButton(onClick = onAllow, modifier = Modifier.fillMaxWidth()) {
+        Text("Allow location all the time")
     }
 }
 

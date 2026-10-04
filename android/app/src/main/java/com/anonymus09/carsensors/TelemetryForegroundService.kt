@@ -76,6 +76,7 @@ import com.anonymus09.carsensors.util.AppConfig.UPLOAD_MAX_ATTEMPTS
 import com.anonymus09.carsensors.util.AppConfig.UPLOAD_SILENCE_RENOTIFY_MS
 import com.anonymus09.carsensors.util.AppConfig.UPLOAD_SILENCE_WARNING_MS
 import com.anonymus09.carsensors.util.GpsClock
+import com.anonymus09.carsensors.util.LocationAccess
 import com.anonymus09.carsensors.util.ageMs
 import com.anonymus09.carsensors.util.AppConfig.UPLOAD_TRIGGER_PENDING_ROWS
 
@@ -494,6 +495,9 @@ class TelemetryForegroundService : Service(), SensorEventListener {
             put("wakeOnMotionEnabled", settings.current().wakeOnMotion)
             put("recordOnBattery", settings.current().recordOnBattery)
             put("hasMotionSensor", significantMotion != null)
+
+            // Explains a session of rows without positions after a reboot.
+            put("locationAccess", LocationAccess.of(this@TelemetryForegroundService).name)
         })
 
         enterInitialState()

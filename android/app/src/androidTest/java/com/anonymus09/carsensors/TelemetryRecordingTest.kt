@@ -143,9 +143,9 @@ class TelemetryRecordingTest {
      * From Android 11, a foreground service started from the background gets
      * location only if the app holds background location - "Allow all the
      * time" - and whatever the app targets. Without it the service runs and
-     * writes samples, but no fix ever reaches it. That is granted here, so this
-     * covers the background path working rather than the permission missing;
-     * the app does not yet ask for it - see `todo.md`.
+     * writes samples, but no fix ever reaches it. That is granted here, as the
+     * screen asks the user to - see `LocationAccess` - so this covers the
+     * background path once the permission is in place.
      */
     @Test
     fun recordsGpsWhenStartedInTheBackground() {
