@@ -77,6 +77,7 @@ import com.anonymus09.carsensors.util.AppConfig.UPLOAD_MAX_ATTEMPTS
 import com.anonymus09.carsensors.util.AppConfig.UPLOAD_SILENCE_RENOTIFY_MS
 import com.anonymus09.carsensors.util.AppConfig.UPLOAD_SILENCE_WARNING_MS
 import com.anonymus09.carsensors.util.GpsClock
+import com.anonymus09.carsensors.util.LastExit
 import com.anonymus09.carsensors.util.AccessState
 import com.anonymus09.carsensors.util.ageMs
 import com.anonymus09.carsensors.util.AppConfig.UPLOAD_TRIGGER_PENDING_ROWS
@@ -530,6 +531,13 @@ class TelemetryForegroundService : Service(), SensorEventListener {
              */
             reportedAccess = AccessState.of(this@TelemetryForegroundService)
                 .also { it.putInto(this) }
+
+            /*
+             * Why the process before this one ended. A logger stopped from
+             * Active apps is not restarted, so this is the first the server
+             * can hear of it - and it tells a crash from a kill for memory.
+             */
+            LastExit.of(this@TelemetryForegroundService)?.putInto(this)
         })
 
         enterInitialState()
