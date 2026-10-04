@@ -27,6 +27,22 @@ android {
     }
 
     buildTypes {
+        /*
+         * Installed beside the release build rather than over it, so the phone
+         * in the car can carry both: the release build doing the real logging,
+         * the debug build there to try something without touching it. Android
+         * keys an installed app on this id, so the two never share a database,
+         * settings or a pairing, and uninstalling one - which is what a run of
+         * the instrumented tests ends with - cannot take the other's backlog
+         * with it.
+         *
+         * The version suffix travels in the User-Agent, so the server can tell
+         * which of the two sent a request.
+         */
+        debug {
+            applicationIdSuffix = ".debug"
+            versionNameSuffix = "-debug"
+        }
         release {
             isMinifyEnabled = false
             proguardFiles(
