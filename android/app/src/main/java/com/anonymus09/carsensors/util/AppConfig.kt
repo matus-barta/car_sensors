@@ -120,5 +120,11 @@ object AppConfig {
     // this is what keeps that check to four times a day rather than hourly.
     const val UPLOAD_SILENCE_RENOTIFY_MS = 6L * 60 * 60 * 1000
 
+    // How often the running logger checks whether its location access or its
+    // notifications have changed. Revoking a permission restarts the service,
+    // which reports it anyway; this is for what does not - a permission
+    // granted, or notifications switched off before Android 13.
+    const val ACCESS_CHECK_INTERVAL_MS = 60_000L
+
     const val DB_STATS_REFRESH_RATE = 5
 }

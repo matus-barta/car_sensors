@@ -30,7 +30,6 @@ import android.os.PowerManager
 import android.os.Looper
 import android.util.Log
 import androidx.core.app.NotificationCompat
-import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import com.anonymus09.carsensors.data.AppDatabase
 import com.anonymus09.carsensors.data.PowerState
@@ -59,6 +58,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.coroutines.EmptyCoroutineContext
 import kotlin.math.roundToInt
+import com.anonymus09.carsensors.util.AppConfig.ACCESS_CHECK_INTERVAL_MS
 import com.anonymus09.carsensors.util.AppConfig.BATTERY_REDUCED_RATE_FACTOR
 import com.anonymus09.carsensors.util.AppConfig.FLUSH_INTERVAL_MS
 import com.anonymus09.carsensors.util.AppConfig.GPS_UPDATE_INTERVAL_MS
@@ -77,7 +77,7 @@ import com.anonymus09.carsensors.util.AppConfig.UPLOAD_MAX_ATTEMPTS
 import com.anonymus09.carsensors.util.AppConfig.UPLOAD_SILENCE_RENOTIFY_MS
 import com.anonymus09.carsensors.util.AppConfig.UPLOAD_SILENCE_WARNING_MS
 import com.anonymus09.carsensors.util.GpsClock
-import com.anonymus09.carsensors.util.LocationAccess
+import com.anonymus09.carsensors.util.AccessState
 import com.anonymus09.carsensors.util.ageMs
 import com.anonymus09.carsensors.util.AppConfig.UPLOAD_TRIGGER_PENDING_ROWS
 
@@ -422,6 +422,33 @@ class TelemetryForegroundService : Service(), SensorEventListener {
         }
     }
 
+    /** What the server was last told about the logger's access. */
+    @Volatile
+    private var reportedAccess: AccessState? = null
+
+    /*
+     * Reports a change of access while the logger runs on, under the same
+     * keys as service_started.
+     *
+     * On uptime like the flush loop, so a parked phone asleep without a wake
+     * lock checks again when it next wakes - soon enough for something nobody
+     * can act on while it sleeps.
+     */
+    private val accessCheck = object : Runnable {
+        override fun run() {
+            if (!isRunning.get()) return
+
+            val current = AccessState.of(this@TelemetryForegroundService)
+
+            if (current != reportedAccess) {
+                writeSimpleEvent("access_changed", current.putInto(JSONObject()))
+                reportedAccess = current
+            }
+
+            workerHandler?.postDelayed(this, ACCESS_CHECK_INTERVAL_MS)
+        }
+    }
+
     private val flushRunnable = object : Runnable {
         override fun run() {
             if (!isRunning.get()) return
@@ -497,18 +524,17 @@ class TelemetryForegroundService : Service(), SensorEventListener {
             put("recordOnBattery", settings.current().recordOnBattery)
             put("hasMotionSensor", significantMotion != null)
 
-            // Explains a session of rows without positions after a reboot.
-            put("locationAccess", LocationAccess.of(this@TelemetryForegroundService).name)
-
-            // Explains an upload outage nobody was warned about.
-            put(
-                "notificationsEnabled",
-                NotificationManagerCompat.from(this@TelemetryForegroundService)
-                    .areNotificationsEnabled()
-            )
+            /*
+             * Explains, from the server, a session of rows without positions
+             * or an upload outage nobody was warned about.
+             */
+            reportedAccess = AccessState.of(this@TelemetryForegroundService)
+                .also { it.putInto(this) }
         })
 
         enterInitialState()
+
+        workerHandler?.postDelayed(accessCheck, ACCESS_CHECK_INTERVAL_MS)
     }
 
     // ----------------------------------------------------

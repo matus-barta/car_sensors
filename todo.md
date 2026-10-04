@@ -127,6 +127,44 @@ values a schema would - so it is worth doing for consistency, one validation
 approach for data that crosses a boundary rather than two, not because
 anything is broken today.
 
+### Show on the vehicle card what the phone is not allowed to do
+
+The phone reports two settings that decide whether it can work unattended, and
+nothing reads them yet. Without background location ("Allow all the time"), a
+logger restarted after a reboot records rows with no position in them; without
+notifications, the warning that uploads have stopped is never seen. The app's
+own screen says both, but a phone in a car is the one whose screen nobody
+opens, and the web application is where somebody actually looks.
+
+Both arrive as event rows in `telemetry_samples`, under the same keys in the
+JSON held in `payload` (a TEXT column):
+
+- `service_started`, written at every start of the logger;
+- `access_changed`, written when either moves while the logger runs.
+
+```json
+{ "locationAccess": "WHILE_IN_USE", "notificationsEnabled": false }
+```
+
+`locationAccess` is `NONE`, `WHILE_IN_USE` or `ALWAYS`. Android 9 has no
+separate background permission and reports `ALWAYS` whenever location is
+allowed at all, so only newer phones ever show the middle value.
+
+The newest of those two events for a device is its current state. That is one
+more lateral join beside the two `getVehicleSummaries()` already makes, ordered
+by `timestamp` and limited to one, with the payload cast to `jsonb` to pick the
+two fields out. Rows from phones older than this reporting carry neither key,
+which should read as unknown rather than as fine.
+
+On the card it wants to be a remedy rather than a status, as the app words it:
+`WHILE_IN_USE` as "Location is allowed only while the app is open - after a
+reboot it records without GPS", `NONE` as no location at all, notifications off
+as "the phone cannot warn about failed uploads". Silent when all is well.
+
+What it cannot show: a phone whose uploads have stopped never sends the row
+that would say why. That case is already visible as the last-seen time going
+stale.
+
 ## Continuous integration
 
 ### Make the schema check name the database it checked
