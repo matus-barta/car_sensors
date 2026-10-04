@@ -44,6 +44,14 @@ This is how Android treats a stopped package and there is nothing the app can do
 
 **Cleartext uploads are a debug-build affordance.** Release builds do not permit plain HTTP, so a server reached over `http://` works only from a debug build. See `todo.md` for the intended relaxation, which would allow cleartext to private addresses only.
 
+## Debug and release side by side
+
+The two builds install as separate apps: release as `com.anonymus09.carsensors`, debug as `com.anonymus09.carsensors.debug`, shown in the launcher as "carSensors debug". One phone can carry both - the release build doing the real logging, the debug build there to try something out - and neither can touch the other's database, settings or pairing. That includes uninstalling: a run of the instrumented tests installs the debug build and removes it afterwards, which leaves the release build and its backlog alone.
+
+Each is a logger of its own, though. Both left switched on means two sets of rows, uploaded under whatever each is paired as, so the debug build is best left stopped, or unpaired, on a phone that is logging for real. Its version name ends in `-debug`, which reaches the server in the User-Agent.
+
+Builds installed before this split carry the release id while being debug-signed. A debug build no longer updates them - it installs beside them - and the first signed release build cannot either; see "Publish signed builds to GitHub Releases for Obtainium" in `todo.md`.
+
 ## Working on it
 
 Three tools guard the Kotlin, mirroring what `www` already has: **ktlint** for formatting, which is Prettier's counterpart; **detekt** for code smells, which is ESLint's; and **Android Lint**, which catches platform mistakes neither of the others can see. All three run on every pull request that touches `android/`.

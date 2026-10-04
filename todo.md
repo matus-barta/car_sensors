@@ -873,6 +873,12 @@ deletes the database - so the backlog has to be uploaded before that switch, not
 after. The keystore then lives as a CI secret, and losing it means no existing
 install can ever be upgraded again.
 
+Debug builds have their own id now, `com.anonymus09.carsensors.debug`, so they
+install beside the app rather than over it. The phones that already have it
+therefore hold a debug-signed build under the release id, and that install is
+the one the switch replaces - nothing a debug build does will update or remove
+it in the meantime.
+
 Worth noting that staying off Play is what keeps `targetSdk = 28` tenable at
 all, since Play enforces a minimum target version and nothing else does. That is
 an argument for this route rather than a consequence of it.
