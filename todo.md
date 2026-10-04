@@ -78,12 +78,6 @@ step, and there are three states. The tokens are still worth adding so the badge
 has something to name; wiring the map to them is the part to leave until there
 is a fourth state or somebody actually changes a colour.
 
-The Android app has a plainer one: `SectionDivider` in `CarSensorsScreen.kt`
-draws `Color.Gray.copy(alpha = 0.3f)`, which is the "stock colour with an
-opacity to approximate a shade" case the rule in `.claude/CLAUDE.md` names.
-`MaterialTheme.colorScheme.outlineVariant` is what a divider is meant to use and
-needs no new token, so that one is a straight substitution.
-
 ### Expand the vehicle info card, grouped into tabs
 
 `vehicle-info-card.svelte` shows name, id, status, last seen, coordinates,
@@ -859,7 +853,11 @@ baselined rather than configured away because they are true.
 The service does several separable jobs. It owns the armed and recording state
 machine; it registers and reads sensors; it listens to power and decides which
 tier of work the battery still justifies; it assembles and writes samples; and
-it maintains a notification. The state machine in particular wants lifting out
+it decides when to upload and when to push a position live. The notification,
+the heading and the sensor labels have already gone to classes of their own -
+`LoggerNotification`, `HeadingTracker`, `sensorAccuracyLabel` - which took it
+from 1,437 lines to about 1,190 but left it over both thresholds, at 29
+functions against 20. The state machine in particular wants lifting out
 into something that takes charge, battery level, whether movement was confirmed
 and how long ago as arguments and returns the state that should follow - which
 would also make it decidable in a plain JVM test, where today it needs a device.
