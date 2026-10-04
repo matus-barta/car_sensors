@@ -123,18 +123,19 @@ anything is broken today.
 
 ### Show on the vehicle card what the phone is not allowed to do
 
-The phone reports two settings that decide whether it can work unattended, and
+The phone reports the settings that decide whether it can work unattended, and
 nothing reads them yet. Without background location ("Allow all the time"), a
 logger restarted after a reboot records rows with no position in them; without
-notifications, the warning that uploads have stopped is never seen. The app's
-own screen says both, but a phone in a car is the one whose screen nobody
-opens, and the web application is where somebody actually looks.
+notifications, the warning that uploads have stopped is never seen; with its
+battery use restricted, it may not run at all. The app's own screen says all of
+it, but a phone in a car is the one whose screen nobody opens, and the web
+application is where somebody actually looks.
 
-Both arrive as event rows in `telemetry_samples`, under the same keys in the
+They arrive as event rows in `telemetry_samples`, under the same keys in the
 JSON held in `payload` (a TEXT column):
 
 - `service_started`, written at every start of the logger;
-- `access_changed`, written when either moves while the logger runs.
+- `access_changed`, written when any of them changes while the logger runs.
 
 ```json
 {
@@ -162,7 +163,7 @@ allowed at all, so only newer phones ever show the middle value.
 The newest of those two events for a device is its current state. That is one
 more lateral join beside the two `getVehicleSummaries()` already makes, ordered
 by `timestamp` and limited to one, with the payload cast to `jsonb` to pick the
-two fields out. Rows from phones older than this reporting carry neither key,
+fields out. Rows from phones older than this reporting carry none of the keys,
 which should read as unknown rather than as fine.
 
 On the card it wants to be a remedy rather than a status, worded the way the
@@ -209,7 +210,6 @@ migrations on disk, so a database that is behind says so once at boot rather
 than once per failed query - that catches a correct environment pointing at an
 unmigrated database, which fails in exactly the same way and which the shared
 file does nothing about.
-
 
 ### Extract a setup-rust action once a second Rust job exists
 
@@ -403,7 +403,6 @@ listens, so something would have to be configured for it to send - probably an
 together with the name if it is done at all, since both change the same payload
 and the same screen.
 
-
 ### Keep every sample with the identity it was recorded under
 
 `TelemetrySampleEntity` has no device column. The identity is only ever the
@@ -419,11 +418,11 @@ while its credential is withdrawn, and pairing already asks what to do with
 rows recorded before an identity existed - but that question can only be
 answered one way at a time, because the phone holds a single pairing. Draining
 one car's backlog with its own credential while recording for another still
-needs the table below. A local `pairings` table - identity, token, when it was paired, a
-label - and a nullable `pairing_id` on `telemetry_samples` pointing at it. An
-integer rather than the UUID itself, because at two rows a second a
-thirty-six-character string would cost several megabytes a day to repeat the
-same fact.
+needs somewhere to keep both: a local `pairings` table - identity, token, when
+it was paired, a label - and a nullable `pairing_id` on `telemetry_samples`
+pointing at it. An integer rather than the UUID itself, because at two rows a
+second a thirty-six-character string would cost several megabytes a day to
+repeat the same fact.
 
 Keeping the old *token*, and not merely the old identity, is what stops "do not
 lose the data" and "do not misattribute the data" being a choice between two
@@ -656,13 +655,15 @@ careless instance would take the rest down and nobody could tell themselves
 apart. So the header should name the software and its version, and carry a
 contact belonging to whoever runs that copy:
 
-    car-sensors-geocoder/0.1.0 (+https://example.org/contact)
+```text
+car-sensors-geocoder/0.1.0 (+https://example.org/contact)
+```
 
 The mechanism matters more than the format: the contact should be required
 configuration that the service refuses to start without, rather than a default
 that quietly works, because a default that works is a default nobody replaces.
-The convention for redistributable software talking to Nominatim is exactly this
-- force the operator to set their own, and point them at the policy - and the
+The convention for redistributable software talking to Nominatim is exactly
+this - force the operator to set their own, and point them at the policy - and the
 reward is that a contactable operator receives an email where an anonymous one
 receives a block. It only helps if the address is theirs. The policy is explicit
 that a User-Agent is required and silent on whether it should distinguish
@@ -677,8 +678,8 @@ numbers, only a request to be fair. Keeping the provider configurable makes that
 a later decision rather than a rewrite.
 
 On the cache itself: there is no established project worth depending on. The one
-purpose-built thing that exists has no users to speak of, and the generic answer
-- nginx `proxy_cache` with `limit_req`, or Varnish - only caches identical URLs,
+purpose-built thing that exists has no users to speak of, and the generic
+answer - nginx `proxy_cache` with `limit_req`, or Varnish - only caches identical URLs,
 which reverse geocoding rarely produces. Since the results are being stored
 anyway, for the structured components trips keep, the cache is that table rather
 than a component in front of it. Matching on proximity rather than exact
@@ -692,8 +693,8 @@ requirement.
 
 Release builds refuse `http://` outright, which was the right instinct and the
 wrong rule. The ordinary way this is used is a phone on the same network as the
-server - parked on the drive within reach of the house Wi-Fi, or carried indoors
-- uploading to a machine that has no certificate and no name on the public
+server - parked on the drive within reach of the house Wi-Fi, or carried
+indoors - uploading to a machine that has no certificate and no name on the public
 internet. Demanding HTTPS there asks someone to run a certificate authority for
 a server only they can reach.
 
@@ -881,8 +882,8 @@ that whatever the target, so the app already asks for it separately.
 Staying off the Play Store is what makes it tenable, since Play enforces a
 minimum target version and nothing else does.
 
-Should the target ever be raised - a newer handset, or a Play listing after all
-- the service will need `android:foregroundServiceType="location"` in the
+Should the target ever be raised - a newer handset, or a Play listing after
+all - the service will need `android:foregroundServiceType="location"` in the
 manifest and the `FOREGROUND_SERVICE_LOCATION` permission, or on API 34 and
 above it will not be allowed to start at all.
 
@@ -901,43 +902,6 @@ start.
 
 ## Distribution
 
-### The web application image size is settled, not open
-
-Recorded so nobody reopens it. The image is about 355 MB, of which roughly
-206 MB is `node_modules` for five runtime dependencies, and that is being left
-alone deliberately.
-
-What it costs to leave: a little pull time on the machine that already runs
-Postgres, Valkey, pgAdmin and `ingest`, and some registry storage. That is the
-whole bill. There is no scale here at which those megabytes matter.
-
-What was tried, so it is not tried again. `pnpm install --prod` in place of
-pruning a build stage did help and is what the Dockerfile does. Disabling
-pnpm's automatic peer installation is refused outright, because pnpm records
-the setting in the lockfile and rejects a frozen install that disagrees -
-getting past it means regenerating the lockfile for development and CI too.
-`pnpm deploy --prod` needs a workspace with named projects, and
-`www/pnpm-workspace.yaml` exists only to carry `allowBuilds`.
-
-Most of what is left is not ours to remove. `better-auth` is a runtime
-dependency declaring `@sveltejs/kit`, `vite` and `vitest` as peers, and pnpm
-installs peers, so `typescript`, a `@rolldown` binding and `playwright-core`
-arrive with it - around 55 MB the server never opens. `pnpm why --prod` shows
-the chain.
-
-The one thing that would genuinely work is bundling the server's dependencies
-rather than leaving them external, through `ssr.noExternal`, so that
-`node_modules` need not ship at all. It is not worth it. That moves failures to
-run time on paths no test covers - `better-auth` loads integrations lazily - and
-buys disk on a machine that has plenty. Should this ever be revisited, it wants
-a reason better than the size.
-
-Worth separating from all of the above: moving `maplibre-gl` to
-`devDependencies` was not an optimisation. The server bundle never referenced
-it, because the map imports it dynamically in the browser and the client bundle
-carries its own copy; it was simply in the wrong list. The thirty megabytes
-were a side effect.
-
 ### Publish signed builds to GitHub Releases for Obtainium
 
 Every install so far has been `adb install` from a workstation, which does not
@@ -953,9 +917,9 @@ the way "Ingest - build" already calls "Ingest - validation" so that an image is
 only built once its checks have passed. Both already expose `workflow_call` for
 it. Calling "Android - migration tests" matters most: a release is the last
 point at which an unusual failure can be caught before it reaches a phone, and
-it is the only place where waiting for the slower API 28 device costs nobody
-anything, because nobody is waiting on a release the way they wait on a pull
-request.
+its post-merge job is where the slower devices - API 28, the level the app
+targets, and API 33 and 37 - run, which costs a release nothing because nobody
+is waiting on one the way they wait on a pull request.
 
 One prerequisite regardless: the release build type has no signing configuration
 and everything installed so far is debug-signed. Moving to a release key means
