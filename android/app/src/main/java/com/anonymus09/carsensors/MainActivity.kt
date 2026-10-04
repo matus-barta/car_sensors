@@ -1,7 +1,6 @@
 package com.anonymus09.carsensors
 
 import android.Manifest
-import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -17,7 +16,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.anonymus09.carsensors.data.AppDatabase
 import com.anonymus09.carsensors.data.PowerStateProvider
@@ -29,11 +27,18 @@ import com.anonymus09.carsensors.data.TelemetryRepository
 import com.anonymus09.carsensors.ui.CarSensorsScreen
 import com.anonymus09.carsensors.ui.PairingFlow
 import com.anonymus09.carsensors.ui.theme.CarSensorsTheme
+import com.anonymus09.carsensors.util.LocationAccess
 import com.anonymus09.carsensors.work.WifiUploadScheduler
 
 class MainActivity : ComponentActivity() {
 
     private var pendingStartAfterPermission: Boolean = false
+
+    /*
+     * Read again whenever the app comes back to the front, because the place
+     * background access is granted is the system's settings, not this screen.
+     */
+    private var locationAccess by mutableStateOf(LocationAccess.NONE)
 
     private val viewModel: MainViewModel by viewModels {
         val context = applicationContext
@@ -63,6 +68,12 @@ class MainActivity : ComponentActivity() {
             }
 
             pendingStartAfterPermission = false
+            locationAccess = LocationAccess.of(this)
+        }
+
+    private val backgroundLocationLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) {
+            locationAccess = LocationAccess.of(this)
         }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -87,6 +98,12 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+
+        locationAccess = LocationAccess.of(this)
+    }
+
     /**
      * Everything on the screen, lifted out of `onCreate` so that the lifecycle
      * method stays about the lifecycle.
@@ -106,6 +123,8 @@ class MainActivity : ComponentActivity() {
             state = state,
             locationStatus = locationStatus,
             serverHealth = serverHealth,
+            locationAccess = locationAccess,
+            onAllowBackgroundLocation = ::requestBackgroundLocation,
             onAutoStartOnBootChange = viewModel::setAutoStartOnBoot,
             onRecordOnBatteryChange = viewModel::setRecordOnBattery,
             onUploadOnBatteryChange = viewModel::setUploadOnBattery,
@@ -148,26 +167,12 @@ class MainActivity : ComponentActivity() {
             return
         }
 
-        if (hasLocationPermission()) {
+        if (LocationAccess.of(this) != LocationAccess.NONE) {
             TelemetryForegroundService.startService(this)
         } else {
             pendingStartAfterPermission = true
             requestRequiredPermissions()
         }
-    }
-
-    private fun hasLocationPermission(): Boolean {
-        val fine = ContextCompat.checkSelfPermission(
-            this,
-            Manifest.permission.ACCESS_FINE_LOCATION
-        ) == PackageManager.PERMISSION_GRANTED
-
-        val coarse = ContextCompat.checkSelfPermission(
-            this,
-            Manifest.permission.ACCESS_COARSE_LOCATION
-        ) == PackageManager.PERMISSION_GRANTED
-
-        return fine || coarse
     }
 
     private fun requestRequiredPermissions() {
@@ -181,5 +186,19 @@ class MainActivity : ComponentActivity() {
         }
 
         permissionLauncher.launch(permissions.toTypedArray())
+    }
+
+    /*
+     * A request of its own, made only once foreground location is granted.
+     *
+     * Android 10 answers it with a dialog offering "Allow all the time". From
+     * Android 11 the dialog can no longer grant it and offers a link to the
+     * app's location page instead, where the choice is made - which is why
+     * the result is read again in onResume rather than trusted from here.
+     */
+    private fun requestBackgroundLocation() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return
+
+        backgroundLocationLauncher.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
     }
 }

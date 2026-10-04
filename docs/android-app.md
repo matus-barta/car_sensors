@@ -40,6 +40,8 @@ The cost is Google Play, which does not accept apps or updates that target a lev
 
 This is how Android treats a stopped package and there is nothing the app can do about it. It is worth knowing because the symptom - a phone that sat in a car for a week and recorded nothing - looks exactly like a bug in the app's own restoration.
 
+**From Android 11, a reboot needs "Allow all the time" location.** After a reboot `BootReceiver` starts the logger with nothing on screen, and Android gives a service started that way location only if the app may use it in the background - whatever the app targets. With "while using the app" alone the logger still starts and still records, only without a position in any row. The screen says so and offers to fix it; on Android 11 and later the choice itself is made on the app's location page in system settings, which the offer links to. Android 9 has no such distinction.
+
 **Cleartext uploads are a debug-build affordance.** Release builds do not permit plain HTTP, so a server reached over `http://` works only from a debug build. See `todo.md` for the intended relaxation, which would allow cleartext to private addresses only.
 
 ## Working on it
@@ -63,7 +65,7 @@ To check the app across Android versions, `./gradlew allApisGroupDebugAndroidTes
 
 CI is meant to use two of those devices rather than one. A pull request waits for `api30atd` alone, because it is the stripped-down image and therefore the quick one. After a merge, the same tests were meant to also run on `api28` - the level this app targets and the handset actually runs, for which no stripped-down image exists. Running the slower device after the merge rather than on the pull request means it holds nobody up, while still being something that happens on its own: a check that runs only when somebody remembers is worth about as much as a backup taken the same way. A merge rather than a schedule, because what it guards against can only arrive with a code change - a calendar would fire when nothing had happened and stay quiet when something had. That device is currently disabled in CI: its setup fails inside AGP, so API 28 is covered by the handset and not yet automatically - see `todo.md`.
 
-Two details worth knowing. detekt's baseline, at `android/config/detekt/baseline.xml`, records four findings that are real rather than false: the foreground service is a large class with too many functions and one long method, and one composable is more branched than it should be. They are grandfathered so that anything *new* still fails, and `todo.md` describes the split that would clear them. And `NewerVersionAvailable` is disabled in the lint configuration, because it reports what has been published since rather than anything about this code, and would turn a passing build red without a commit being made.
+Two details worth knowing. detekt's baseline, at `android/config/detekt/baseline.xml`, records three findings that are real rather than false: the foreground service is a large class with too many functions and one long method. They are grandfathered so that anything *new* still fails, and `todo.md` describes the split that would clear them. And `NewerVersionAvailable` is disabled in the lint configuration, because it reports what has been published since rather than anything about this code, and would turn a passing build red without a commit being made.
 
 ## Why the version catalog confuses other tools
 
