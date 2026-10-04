@@ -143,8 +143,23 @@ JSON held in `payload` (a TEXT column):
 - `access_changed`, written when either moves while the logger runs.
 
 ```json
-{ "locationAccess": "WHILE_IN_USE", "notificationsEnabled": false }
+{
+  "locationAccess": "WHILE_IN_USE",
+  "preciseLocation": true,
+  "notificationsEnabled": false,
+  "batteryUnrestricted": false,
+  "backgroundRestricted": false,
+  "dataSaverRestricted": false
+}
 ```
+
+`service_started` also carries `previousExitReason`, `previousExitDescription`
+and `previousExitAt` from Android 11: how the process before it ended.
+`USER_REQUESTED` there means somebody stopped the app from Active apps or with
+Force stop, which nothing restarts - worth saying on the card in its own right,
+since it is the one reason a logger stops for good without anything being
+broken. Of the others, `backgroundRestricted` is the most serious: from Android
+13 a restricted app may not run the logger at all.
 
 `locationAccess` is `NONE`, `WHILE_IN_USE` or `ALWAYS`. Android 9 has no
 separate background permission and reports `ALWAYS` whenever location is
@@ -156,10 +171,11 @@ by `timestamp` and limited to one, with the payload cast to `jsonb` to pick the
 two fields out. Rows from phones older than this reporting carry neither key,
 which should read as unknown rather than as fine.
 
-On the card it wants to be a remedy rather than a status, as the app words it:
-`WHILE_IN_USE` as "Location is allowed only while the app is open - after a
-reboot it records without GPS", `NONE` as no location at all, notifications off
-as "the phone cannot warn about failed uploads". Silent when all is well.
+On the card it wants to be a remedy rather than a status, worded the way the
+app's own warnings are (`ui/SetupWarnings.kt` has them): `WHILE_IN_USE` as
+"Location is allowed only while the app is open - after a reboot it records
+without GPS", notifications off as "the phone cannot warn about failed
+uploads", and so on. Silent when all is well.
 
 What it cannot show: a phone whose uploads have stopped never sends the row
 that would say why. That case is already visible as the last-seen time going
@@ -718,6 +734,14 @@ the rule has to live in `ServerUrl` instead. That is a real loss of a guarantee
 and worth being deliberate about: what stops a credential going out in clear is
 then the app's own arithmetic and nothing beneath it.
 
+Whichever way it goes, the switch should not be `usesCleartextTraffic`. Android
+17 announced a plan to deprecate the manifest attribute and points apps at a
+network security configuration instead, where `<base-config
+cleartextTrafficPermitted="true">` is the same app-wide switch in its supported
+form. The debug manifest's `android:usesCleartextTraffic="true"` wants moving
+to a debug-only `network_security_config.xml` at the same time, before the
+attribute stops being honoured rather than after.
+
 The precondition for this has now been met. It was worth waiting for the
 per-device token, because what used to travel over cleartext was the device id,
 which was also the identity and could not be changed without abandoning the
@@ -794,6 +818,37 @@ This cannot be reproduced on the workstation - an arm64 machine cannot run
 these x86 images - so each attempt costs a CI run, which is the main reason to
 have a theory before trying one.
 
+### Test what newer Android does to a logger nobody watches
+
+The restricted battery state, approximate location, Data Saver and a stop from
+Active apps have each been tried by hand on an API 33 emulator, but nothing
+checks them automatically, and several other things have not been tried at all.
+In rough order of how quietly they could end logging:
+
+- **A real reboot.** `TelemetryRecordingTest` starts the logger from the
+  background the way `BootReceiver` does, but nothing reboots a device and
+  watches `BOOT_COMPLETED` arrive. An emulator can: `adb reboot`, with fixes fed
+  through `adb emu geo fix`, once with "Allow all the time" and once without.
+- **Doze.** `adb shell dumpsys deviceidle force-idle` while recording, then
+  whether samples keep arriving, optimized and exempt.
+- **Upload jobs under the Android 16 quota.** A backlog large enough to take a
+  while, uploading on the API 37 device while the logger runs, recording
+  `WorkInfo.getStopReason()` - the uploader does not record it today, which is
+  worth doing anyway.
+- **Notifications switched off before Android 13**, the one path to
+  `access_changed` not yet seen to work.
+- **A real handset from an aggressive manufacturer.** Samsung or Xiaomi stop
+  apps in ways no emulator reproduces.
+
+And two that are cheap and long overdue: a JVM test of `PowerState.tier`, which
+decides what the logger gives up as the battery drains and has no test at all,
+and a Robolectric test of `BootReceiver` - it must start the logger only when
+both auto-start and the logger were left on.
+
+Last, the `allApis` group (API 28, 30, 33, 37) could run after a merge the way
+the migration tests were meant to, so the newer levels are covered without
+anybody remembering to run them.
+
 ### Split the foreground service up
 
 detekt records three findings in its baseline rather than at the current
@@ -842,9 +897,20 @@ minimum target version and nothing else does.
 Should the target ever be raised - a newer handset, or a Play listing after all
 - the service will need `android:foregroundServiceType="location"` in the
 manifest and the `FOREGROUND_SERVICE_LOCATION` permission, or on API 34 and
-above it will not be allowed to start at all. None of this is work today; all
-of it is work on the day that number changes, and it is better known in advance
-than discovered by a service that refuses to start.
+above it will not be allowed to start at all.
+
+App hibernation arrives with it too. From a target of Android 11 (API 30) up,
+an app nobody opens for a few months has its permissions revoked - and from
+Android 12 its jobs and alarms stopped - and a running foreground service does
+not count as being used. A logger in a car is exactly an app nobody opens, so
+raising the target means asking the user to exempt it, through
+`IntentCompat.createManageUnusedAppRestrictionsIntent`, and saying on the screen
+when it is not. At 28 none of this applies, which is one more thing the old
+target is quietly doing.
+
+None of this is work today; all of it is work on the day that number changes,
+and it is better known in advance than discovered by a service that refuses to
+start.
 
 ## Distribution
 
