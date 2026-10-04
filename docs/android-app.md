@@ -20,6 +20,20 @@ Movement promotes it from waiting to recording, but GPS then has to agree: if no
 
 Nothing is given up while the phone is on power. Off power, the logger sheds work in the order of what each part costs against what it is worth - uploads first, because the radio is the most expensive thing it does and nothing is lost by waiting; then the sample rate; then the sensors that only decorate a position; and only last does recording stop. Whichever tier is in force is named on screen, so being cut back does not look like being broken.
 
+## Android versions
+
+| Setting      | API level | Android version |
+| ------------ | --------- | --------------- |
+| `minSdk`     | 28        | 9               |
+| `targetSdk`  | 28        | 9               |
+| `compileSdk` | 37        | -               |
+
+The app installs on Android 9 and later and declares itself an Android 9 app, so a newer phone runs it under Android 9's rules rather than its own. `compileSdk` only decides which APIs the code can see when it is built; it does not change either of those.
+
+Both are kept at 28 for compatibility with older phones, which is what the app is meant to run on - a retired handset left in the car. The lint warning about the old target is suppressed in `app/build.gradle.kts` for that reason.
+
+The cost is Google Play, which does not accept apps or updates that target a level this old. The app is distributed through GitHub instead: the plan is for CI to publish signed APKs to GitHub Releases, for Obtainium to pick up on the phone, and `todo.md` describes it under "Publish signed builds to GitHub Releases for Obtainium". Until that exists, builds are installed with `adb install`. `todo.md` also lists what has to change in the manifest if the target is ever raised, under "Declare a foreground service type before raising the target SDK".
+
 ## Platform limitations
 
 **A force-stopped app does not come back on its own.** If the app is stopped from Android's own application settings, the system puts the package into a stopped state in which it receives no broadcasts at all - not `BOOT_COMPLETED`, not `MY_PACKAGE_REPLACED`. "Auto-start on boot" therefore cannot recover it, and neither can rebooting the phone. Only opening the app by hand clears that state.
