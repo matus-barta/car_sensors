@@ -70,7 +70,9 @@ fun CarSensorsScreen(
     locationStatus: TelemetryLocationStatus,
     serverHealth: ServerHealth,
     locationAccess: LocationAccess,
+    locationRefused: Boolean,
     onAllowBackgroundLocation: () -> Unit,
+    onOpenAppSettings: () -> Unit,
     onToggleLogging: () -> Unit,
     onWakeOnMotionChange: (Boolean) -> Unit,
     onAutoStartOnBootChange: (Boolean) -> Unit,
@@ -98,7 +100,9 @@ fun CarSensorsScreen(
             state = state,
             locationStatus = locationStatus,
             locationAccess = locationAccess,
+            locationRefused = locationRefused,
             onAllowBackgroundLocation = onAllowBackgroundLocation,
+            onOpenAppSettings = onOpenAppSettings,
             onToggleLogging = onToggleLogging
         )
 
@@ -138,7 +142,9 @@ private fun StatusSection(
     state: MainUiState,
     locationStatus: TelemetryLocationStatus,
     locationAccess: LocationAccess,
+    locationRefused: Boolean,
     onAllowBackgroundLocation: () -> Unit,
+    onOpenAppSettings: () -> Unit,
     onToggleLogging: () -> Unit
 ) {
     val running = state.loggerState != LoggerState.OFF
@@ -162,9 +168,12 @@ private fun StatusSection(
         Text(text = if (running) "Stop logging" else "Start logging")
     }
 
-    if (locationAccess == LocationAccess.WHILE_IN_USE) {
-        BackgroundLocationWarning(onAllow = onAllowBackgroundLocation)
-    }
+    LocationAccessWarning(
+        access = locationAccess,
+        refused = locationRefused,
+        onAllowBackgroundLocation = onAllowBackgroundLocation,
+        onOpenAppSettings = onOpenAppSettings
+    )
 
     GpsStatus(locationStatus)
     PowerStatus(state.power)
@@ -214,6 +223,38 @@ private fun PowerTierNote(tier: PowerTier) {
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.error
     )
+}
+
+/** Whatever location access is missing, said where the logger is started. */
+@Composable
+private fun LocationAccessWarning(
+    access: LocationAccess,
+    refused: Boolean,
+    onAllowBackgroundLocation: () -> Unit,
+    onOpenAppSettings: () -> Unit
+) {
+    when {
+        access == LocationAccess.NONE && refused -> LocationRefusedWarning(onOpenAppSettings)
+        access == LocationAccess.WHILE_IN_USE -> BackgroundLocationWarning(onAllowBackgroundLocation)
+    }
+}
+
+/**
+ * Pressing the button again would not help: once Android stops showing its
+ * dialog, a request comes back refused without the user seeing a thing.
+ */
+@Composable
+private fun LocationRefusedWarning(onOpenSettings: () -> Unit) {
+    Text(
+        text = "Location is not allowed, so logging cannot start. In the app's " +
+            "settings, open Permissions, then Location.",
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.error
+    )
+
+    OutlinedButton(onClick = onOpenSettings, modifier = Modifier.fillMaxWidth()) {
+        Text("Open app settings")
+    }
 }
 
 /**
