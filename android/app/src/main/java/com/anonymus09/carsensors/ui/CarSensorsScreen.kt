@@ -54,7 +54,8 @@ import com.anonymus09.carsensors.data.ServerHealth
 import com.anonymus09.carsensors.data.TelemetryStorage
 import com.anonymus09.carsensors.util.AppConfig.DB_STATS_REFRESH_RATE
 import com.anonymus09.carsensors.util.AppConfig.UPLOAD_MAX_ATTEMPTS
-import com.anonymus09.carsensors.util.LocationAccess
+import com.anonymus09.carsensors.util.AccessState
+import com.anonymus09.carsensors.util.LastExit
 import com.anonymus09.carsensors.util.ServerUrl
 
 /**
@@ -69,12 +70,10 @@ fun CarSensorsScreen(
     state: MainUiState,
     locationStatus: TelemetryLocationStatus,
     serverHealth: ServerHealth,
-    locationAccess: LocationAccess,
+    access: AccessState,
     locationRefused: Boolean,
-    notificationsEnabled: Boolean,
-    onAllowBackgroundLocation: () -> Unit,
-    onOpenAppSettings: () -> Unit,
-    onOpenNotificationSettings: () -> Unit,
+    lastExit: LastExit?,
+    onFix: (SetupFix) -> Unit,
     onToggleLogging: () -> Unit,
     onWakeOnMotionChange: (Boolean) -> Unit,
     onAutoStartOnBootChange: (Boolean) -> Unit,
@@ -101,12 +100,10 @@ fun CarSensorsScreen(
         StatusSection(
             state = state,
             locationStatus = locationStatus,
-            locationAccess = locationAccess,
+            access = access,
             locationRefused = locationRefused,
-            notificationsEnabled = notificationsEnabled,
-            onAllowBackgroundLocation = onAllowBackgroundLocation,
-            onOpenAppSettings = onOpenAppSettings,
-            onOpenNotificationSettings = onOpenNotificationSettings,
+            lastExit = lastExit,
+            onFix = onFix,
             onToggleLogging = onToggleLogging
         )
 
@@ -132,7 +129,8 @@ fun CarSensorsScreen(
         DiagnosticsSection(
             state = state,
             onForceUpload = onForceUpload,
-            onRestartService = onRestartService
+            onRestartService = onRestartService,
+            onFix = onFix
         )
     }
 }
@@ -145,12 +143,10 @@ fun CarSensorsScreen(
 private fun StatusSection(
     state: MainUiState,
     locationStatus: TelemetryLocationStatus,
-    locationAccess: LocationAccess,
+    access: AccessState,
     locationRefused: Boolean,
-    notificationsEnabled: Boolean,
-    onAllowBackgroundLocation: () -> Unit,
-    onOpenAppSettings: () -> Unit,
-    onOpenNotificationSettings: () -> Unit,
+    lastExit: LastExit?,
+    onFix: (SetupFix) -> Unit,
     onToggleLogging: () -> Unit
 ) {
     val running = state.loggerState != LoggerState.OFF
@@ -174,16 +170,18 @@ private fun StatusSection(
         Text(text = if (running) "Stop logging" else "Start logging")
     }
 
-    LocationAccessWarning(
-        access = locationAccess,
-        refused = locationRefused,
-        onAllowBackgroundLocation = onAllowBackgroundLocation,
-        onOpenAppSettings = onOpenAppSettings
-    )
-
-    NotificationsOffWarning(
-        enabled = notificationsEnabled,
-        onOpenSettings = onOpenNotificationSettings
+    SetupWarnings(
+        access = access,
+        locationRefused = locationRefused,
+        /*
+         * Only while it matters: switched on, yet not running. Once it runs
+         * again the stop is history, and the server has been told.
+         */
+        stoppedByUser = lastExit?.takeIf {
+            it.stoppedByUser && state.settings.loggerEnabled && !running
+        },
+        uploadsMayUseMobileData = !state.settings.wifiOnly,
+        onFix = onFix
     )
 
     GpsStatus(locationStatus)
@@ -234,81 +232,6 @@ private fun PowerTierNote(tier: PowerTier) {
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.error
     )
-}
-
-/** Whatever location access is missing, said where the logger is started. */
-@Composable
-private fun LocationAccessWarning(
-    access: LocationAccess,
-    refused: Boolean,
-    onAllowBackgroundLocation: () -> Unit,
-    onOpenAppSettings: () -> Unit
-) {
-    when {
-        access == LocationAccess.NONE && refused -> LocationRefusedWarning(onOpenAppSettings)
-        access == LocationAccess.WHILE_IN_USE -> BackgroundLocationWarning(onAllowBackgroundLocation)
-    }
-}
-
-/**
- * The app's warnings live on the notification shade, and with notifications
- * off they are never seen - the upload warning least of all, since it exists
- * for the phone nobody is looking at.
- */
-@Composable
-private fun NotificationsOffWarning(enabled: Boolean, onOpenSettings: () -> Unit) {
-    if (enabled) return
-
-    Text(
-        text = "Notifications are off, so the app cannot warn you when uploads stop " +
-            "reaching the server.",
-        style = MaterialTheme.typography.bodyMedium,
-        color = MaterialTheme.colorScheme.error
-    )
-
-    OutlinedButton(onClick = onOpenSettings, modifier = Modifier.fillMaxWidth()) {
-        Text("Turn on notifications")
-    }
-}
-
-/**
- * Pressing the button again would not help: once Android stops showing its
- * dialog, a request comes back refused without the user seeing a thing.
- */
-@Composable
-private fun LocationRefusedWarning(onOpenSettings: () -> Unit) {
-    Text(
-        text = "Location is not allowed, so logging cannot start. In the app's " +
-            "settings, open Permissions, then Location.",
-        style = MaterialTheme.typography.bodyMedium,
-        color = MaterialTheme.colorScheme.error
-    )
-
-    OutlinedButton(onClick = onOpenSettings, modifier = Modifier.fillMaxWidth()) {
-        Text("Open app settings")
-    }
-}
-
-/**
- * Said here because nothing else would say it.
- *
- * With location allowed only while the app is open, the logger started from
- * this screen gets GPS and the one restarted after a reboot does not - it runs
- * and writes rows, just without a position. A phone left in a car is exactly
- * the one that gets rebooted with nobody looking.
- */
-@Composable
-private fun BackgroundLocationWarning(onAllow: () -> Unit) {
-    Text(
-        text = "Location is allowed only while this app is open. After a reboot the " +
-            "logger records without GPS.",
-        style = MaterialTheme.typography.bodyMedium,
-        color = MaterialTheme.colorScheme.error
-    )
-
-    OutlinedButton(onClick = onAllow, modifier = Modifier.fillMaxWidth()) {
-        Text("Allow location all the time")
-    }
 }
 
 @Composable
@@ -436,7 +359,8 @@ private fun SetupSection(
             withStyle(SpanStyle(fontStyle = FontStyle.Italic)) {
                 append(
                     "Force-stopping the app in Android settings disables this " +
-                        "until you open it again."
+                        "until you open it again. Stopping it from Active apps in the " +
+                        "notification panel ends logging until the next restart."
                 )
             }
         },
@@ -664,7 +588,8 @@ private fun ServerHealthLine(serverHealth: ServerHealth) {
 private fun DiagnosticsSection(
     state: MainUiState,
     onForceUpload: () -> Unit,
-    onRestartService: () -> Unit
+    onRestartService: () -> Unit,
+    onFix: (SetupFix) -> Unit
 ) {
     var expanded by rememberSaveable { mutableStateOf(false) }
 
@@ -725,6 +650,21 @@ private fun DiagnosticsSection(
 
     OutlinedButton(onClick = onRestartService, modifier = Modifier.fillMaxWidth()) {
         Text("Restart logging service")
+    }
+
+    /*
+     * Some manufacturers stop background apps beyond anything Android itself
+     * does, with settings of their own that an app cannot see or change.
+     */
+    Muted(
+        "If logging stops on its own although nothing above is wrong, the phone's " +
+            "manufacturer may be stopping it. The guide lists the settings to change."
+    )
+
+    val (guideLabel, guideFix) = manufacturerGuide()
+
+    OutlinedButton(onClick = { onFix(guideFix) }, modifier = Modifier.fillMaxWidth()) {
+        Text(guideLabel)
     }
 }
 

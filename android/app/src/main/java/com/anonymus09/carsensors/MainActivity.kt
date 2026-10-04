@@ -1,6 +1,8 @@
 package com.anonymus09.carsensors
 
 import android.Manifest
+import android.annotation.SuppressLint
+import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -19,7 +21,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.core.app.NotificationManagerCompat
+import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.anonymus09.carsensors.data.AppDatabase
 import com.anonymus09.carsensors.data.PowerStateProvider
@@ -30,8 +32,12 @@ import com.anonymus09.carsensors.data.SettingsRepository
 import com.anonymus09.carsensors.data.TelemetryRepository
 import com.anonymus09.carsensors.ui.CarSensorsScreen
 import com.anonymus09.carsensors.ui.PairingFlow
+import com.anonymus09.carsensors.ui.SetupFix
 import com.anonymus09.carsensors.ui.theme.CarSensorsTheme
+import com.anonymus09.carsensors.util.AccessState
+import com.anonymus09.carsensors.util.LastExit
 import com.anonymus09.carsensors.util.LocationAccess
+import com.anonymus09.carsensors.util.ManufacturerGuide
 import com.anonymus09.carsensors.work.WifiUploadScheduler
 
 class MainActivity : ComponentActivity() {
@@ -39,28 +45,25 @@ class MainActivity : ComponentActivity() {
     private var pendingStartAfterPermission: Boolean = false
 
     /*
-     * Read again whenever the app comes back to the front, because the place
-     * background access is granted is the system's settings, not this screen.
+     * Read again whenever the app comes back to the front, because nearly all
+     * of it is changed in the system's settings rather than on this screen.
+     * Set in onCreate before anything is drawn.
      */
-    private var locationAccess by mutableStateOf(LocationAccess.NONE)
+    private var access by mutableStateOf<AccessState?>(null)
+
+    /** How the previous process ended, read with [access]. */
+    private var lastExit by mutableStateOf<LastExit?>(null)
 
     /*
      * Whether asking for location to start the logger was last refused.
      *
      * Without this the button did nothing at all once Android stopped showing
      * the dialog: the request came straight back refused, nothing started and
-     * nothing said why. Kept apart from [locationAccess] because no location
+     * nothing said why. Kept apart from [access] because no location
      * is ordinary until the button has been pressed - it is the refusal that
      * needs saying, not the absence.
      */
     private var locationRefused by mutableStateOf(false)
-
-    /*
-     * Whether this app may post notifications at all - Android 13's
-     * permission, or notifications switched off by hand on any version. The
-     * upload warning and the logger's own notification both depend on it.
-     */
-    private var notificationsEnabled by mutableStateOf(true)
 
     private val viewModel: MainViewModel by viewModels {
         val context = applicationContext
@@ -94,12 +97,27 @@ class MainActivity : ComponentActivity() {
             }
 
             pendingStartAfterPermission = false
-            locationAccess = LocationAccess.of(this)
+            refreshSetup()
         }
 
     private val backgroundLocationLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) {
-            locationAccess = LocationAccess.of(this)
+            refreshSetup()
+        }
+
+    /*
+     * Falls back to the app's settings page when Android will not ask again,
+     * which it otherwise does silently - a refusal nobody saw is the failure
+     * the location request used to have.
+     */
+    private val preciseLocationLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            val silentlyRefused = !granted &&
+                !shouldShowRequestPermissionRationale(Manifest.permission.ACCESS_FINE_LOCATION)
+
+            if (silentlyRefused) openAppSettings()
+
+            refreshSetup()
         }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -114,6 +132,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
 
         WifiUploadScheduler.enqueue(this)
+        refreshSetup()
 
         setContent {
             CarSensorsTheme {
@@ -127,12 +146,17 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
 
-        locationAccess = LocationAccess.of(this)
+        refreshSetup()
+    }
+
+    private fun refreshSetup() {
+        val current = AccessState.of(this)
+
+        access = current
+        lastExit = LastExit.of(this)
 
         // Granted in the system's settings meanwhile.
-        if (locationAccess != LocationAccess.NONE) locationRefused = false
-
-        notificationsEnabled = NotificationManagerCompat.from(this).areNotificationsEnabled()
+        if (current.location != LocationAccess.NONE) locationRefused = false
     }
 
     /**
@@ -150,16 +174,16 @@ class MainActivity : ComponentActivity() {
 
         var showPairingOptions by remember { mutableStateOf(false) }
 
+        val access = access ?: return
+
         CarSensorsScreen(
             state = state,
             locationStatus = locationStatus,
             serverHealth = serverHealth,
-            locationAccess = locationAccess,
+            access = access,
             locationRefused = locationRefused,
-            notificationsEnabled = notificationsEnabled,
-            onAllowBackgroundLocation = ::requestBackgroundLocation,
-            onOpenAppSettings = ::openAppSettings,
-            onOpenNotificationSettings = ::openNotificationSettings,
+            lastExit = lastExit,
+            onFix = ::fix,
             onAutoStartOnBootChange = viewModel::setAutoStartOnBoot,
             onRecordOnBatteryChange = viewModel::setRecordOnBattery,
             onUploadOnBatteryChange = viewModel::setUploadOnBattery,
@@ -276,5 +300,56 @@ class MainActivity : ComponentActivity() {
             Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
                 .putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
         )
+    }
+
+    private fun fix(fix: SetupFix) = when (fix) {
+        SetupFix.BACKGROUND_LOCATION -> requestBackgroundLocation()
+        SetupFix.PRECISE_LOCATION ->
+            preciseLocationLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+        SetupFix.APP_SETTINGS -> openAppSettings()
+        SetupFix.NOTIFICATIONS -> openNotificationSettings()
+        SetupFix.BATTERY_OPTIMIZATION -> requestBatteryExemption()
+        SetupFix.DATA_SAVER -> openDataSaverException()
+        SetupFix.MANUFACTURER_GUIDE -> openManufacturerGuide()
+    }
+
+    /*
+     * Android's own one-tap dialog, the same choice as "Unrestricted" under the
+     * app's battery settings.
+     *
+     * Lint discourages it because Google Play only allows it for a few kinds of
+     * app. This app is not on Play, and a logger that runs unattended for weeks
+     * is the case the exemption exists for.
+     */
+    @SuppressLint("BatteryLife")
+    private fun requestBatteryExemption() = startOrOpenAppSettings(
+        Intent(
+            Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+            Uri.fromParts("package", packageName, null)
+        )
+    )
+
+    /** Straight to this app's exemption from Data Saver. */
+    private fun openDataSaverException() = startOrOpenAppSettings(
+        Intent(
+            Settings.ACTION_IGNORE_BACKGROUND_DATA_RESTRICTIONS_SETTINGS,
+            Uri.fromParts("package", packageName, null)
+        )
+    )
+
+    private fun openManufacturerGuide() =
+        startOrOpenAppSettings(Intent(Intent.ACTION_VIEW, ManufacturerGuide.url.toUri()))
+
+    /*
+     * Manufacturers remove system screens, and a phone kept for logging may have
+     * no browser at all. The app's own settings page always exists, and most of
+     * these choices can be reached from it.
+     */
+    private fun startOrOpenAppSettings(intent: Intent) {
+        try {
+            startActivity(intent)
+        } catch (_: ActivityNotFoundException) {
+            openAppSettings()
+        }
     }
 }
