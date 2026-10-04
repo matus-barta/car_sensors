@@ -19,6 +19,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.core.app.NotificationManagerCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.anonymus09.carsensors.data.AppDatabase
 import com.anonymus09.carsensors.data.PowerStateProvider
@@ -53,6 +54,13 @@ class MainActivity : ComponentActivity() {
      * needs saying, not the absence.
      */
     private var locationRefused by mutableStateOf(false)
+
+    /*
+     * Whether this app may post notifications at all - Android 13's
+     * permission, or notifications switched off by hand on any version. The
+     * upload warning and the logger's own notification both depend on it.
+     */
+    private var notificationsEnabled by mutableStateOf(true)
 
     private val viewModel: MainViewModel by viewModels {
         val context = applicationContext
@@ -123,6 +131,8 @@ class MainActivity : ComponentActivity() {
 
         // Granted in the system's settings meanwhile.
         if (locationAccess != LocationAccess.NONE) locationRefused = false
+
+        notificationsEnabled = NotificationManagerCompat.from(this).areNotificationsEnabled()
     }
 
     /**
@@ -146,8 +156,10 @@ class MainActivity : ComponentActivity() {
             serverHealth = serverHealth,
             locationAccess = locationAccess,
             locationRefused = locationRefused,
+            notificationsEnabled = notificationsEnabled,
             onAllowBackgroundLocation = ::requestBackgroundLocation,
             onOpenAppSettings = ::openAppSettings,
+            onOpenNotificationSettings = ::openNotificationSettings,
             onAutoStartOnBootChange = viewModel::setAutoStartOnBoot,
             onRecordOnBatteryChange = viewModel::setRecordOnBattery,
             onUploadOnBatteryChange = viewModel::setUploadOnBattery,
@@ -204,6 +216,12 @@ class MainActivity : ComponentActivity() {
             Manifest.permission.ACCESS_COARSE_LOCATION
         )
 
+        /*
+         * Ignored while targetSdk is below 33: Android shows no dialog for it
+         * and notifications stay off until switched on in settings, which is
+         * why the screen says when they are. Kept for the day the target is
+         * raised, when asking here starts to work.
+         */
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             permissions += Manifest.permission.POST_NOTIFICATIONS
         }
@@ -242,6 +260,21 @@ class MainActivity : ComponentActivity() {
                 Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
                 Uri.fromParts("package", packageName, null)
             )
+        )
+    }
+
+    /*
+     * Straight to the switch, unlike location: Android lets an app open its own
+     * notification settings, and on Android 13 that switch is the permission.
+     *
+     * Rather than asking with a dialog first, because the dialog may no longer
+     * be shown - asking would then come back refused without the user seeing
+     * anything, exactly the failure the location request had.
+     */
+    private fun openNotificationSettings() {
+        startActivity(
+            Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                .putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
         )
     }
 }

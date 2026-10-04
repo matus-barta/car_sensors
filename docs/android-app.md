@@ -42,6 +42,8 @@ This is how Android treats a stopped package and there is nothing the app can do
 
 **From Android 11, a reboot needs "Allow all the time" location.** After a reboot `BootReceiver` starts the logger with nothing on screen, and Android gives a service started that way location only if the app may use it in the background - whatever the app targets. With "while using the app" alone the logger still starts and still records, only without a position in any row. The screen says so and offers to fix it; on Android 11 and later the choice itself is made on the app's location page in system settings, which the offer links to. Android 9 has no such distinction.
 
+**From Android 13, notifications start switched off.** Posting one became a permission, and an app targeting an earlier level cannot ask for it - Android shows no dialog. Until it is switched on in the app's notification settings, neither the logger's own notification nor the warning that uploads have stopped is ever seen. The screen says so, and its button opens that settings page directly.
+
 **Cleartext uploads are a debug-build affordance.** Release builds do not permit plain HTTP, so a server reached over `http://` works only from a debug build. See `todo.md` for the intended relaxation, which would allow cleartext to private addresses only.
 
 ## Debug and release side by side

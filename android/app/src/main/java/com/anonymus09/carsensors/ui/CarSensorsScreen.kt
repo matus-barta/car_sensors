@@ -71,8 +71,10 @@ fun CarSensorsScreen(
     serverHealth: ServerHealth,
     locationAccess: LocationAccess,
     locationRefused: Boolean,
+    notificationsEnabled: Boolean,
     onAllowBackgroundLocation: () -> Unit,
     onOpenAppSettings: () -> Unit,
+    onOpenNotificationSettings: () -> Unit,
     onToggleLogging: () -> Unit,
     onWakeOnMotionChange: (Boolean) -> Unit,
     onAutoStartOnBootChange: (Boolean) -> Unit,
@@ -101,8 +103,10 @@ fun CarSensorsScreen(
             locationStatus = locationStatus,
             locationAccess = locationAccess,
             locationRefused = locationRefused,
+            notificationsEnabled = notificationsEnabled,
             onAllowBackgroundLocation = onAllowBackgroundLocation,
             onOpenAppSettings = onOpenAppSettings,
+            onOpenNotificationSettings = onOpenNotificationSettings,
             onToggleLogging = onToggleLogging
         )
 
@@ -143,8 +147,10 @@ private fun StatusSection(
     locationStatus: TelemetryLocationStatus,
     locationAccess: LocationAccess,
     locationRefused: Boolean,
+    notificationsEnabled: Boolean,
     onAllowBackgroundLocation: () -> Unit,
     onOpenAppSettings: () -> Unit,
+    onOpenNotificationSettings: () -> Unit,
     onToggleLogging: () -> Unit
 ) {
     val running = state.loggerState != LoggerState.OFF
@@ -173,6 +179,11 @@ private fun StatusSection(
         refused = locationRefused,
         onAllowBackgroundLocation = onAllowBackgroundLocation,
         onOpenAppSettings = onOpenAppSettings
+    )
+
+    NotificationsOffWarning(
+        enabled = notificationsEnabled,
+        onOpenSettings = onOpenNotificationSettings
     )
 
     GpsStatus(locationStatus)
@@ -236,6 +247,27 @@ private fun LocationAccessWarning(
     when {
         access == LocationAccess.NONE && refused -> LocationRefusedWarning(onOpenAppSettings)
         access == LocationAccess.WHILE_IN_USE -> BackgroundLocationWarning(onAllowBackgroundLocation)
+    }
+}
+
+/**
+ * The app's warnings live on the notification shade, and with notifications
+ * off they are never seen - the upload warning least of all, since it exists
+ * for the phone nobody is looking at.
+ */
+@Composable
+private fun NotificationsOffWarning(enabled: Boolean, onOpenSettings: () -> Unit) {
+    if (enabled) return
+
+    Text(
+        text = "Notifications are off, so the app cannot warn you when uploads stop " +
+            "reaching the server.",
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.error
+    )
+
+    OutlinedButton(onClick = onOpenSettings, modifier = Modifier.fillMaxWidth()) {
+        Text("Turn on notifications")
     }
 }
 
