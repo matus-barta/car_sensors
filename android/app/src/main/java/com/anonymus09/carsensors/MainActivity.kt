@@ -1,8 +1,11 @@
 package com.anonymus09.carsensors
 
 import android.Manifest
+import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -40,6 +43,17 @@ class MainActivity : ComponentActivity() {
      */
     private var locationAccess by mutableStateOf(LocationAccess.NONE)
 
+    /*
+     * Whether asking for location to start the logger was last refused.
+     *
+     * Without this the button did nothing at all once Android stopped showing
+     * the dialog: the request came straight back refused, nothing started and
+     * nothing said why. Kept apart from [locationAccess] because no location
+     * is ordinary until the button has been pressed - it is the refusal that
+     * needs saying, not the absence.
+     */
+    private var locationRefused by mutableStateOf(false)
+
     private val viewModel: MainViewModel by viewModels {
         val context = applicationContext
 
@@ -62,9 +76,13 @@ class MainActivity : ComponentActivity() {
             val fineGranted = result[Manifest.permission.ACCESS_FINE_LOCATION] == true
             val coarseGranted = result[Manifest.permission.ACCESS_COARSE_LOCATION] == true
 
-            if (pendingStartAfterPermission && (fineGranted || coarseGranted)) {
-                TelemetryForegroundService.startService(this)
-                WifiUploadScheduler.enqueue(this)
+            if (pendingStartAfterPermission) {
+                locationRefused = !fineGranted && !coarseGranted
+
+                if (!locationRefused) {
+                    TelemetryForegroundService.startService(this)
+                    WifiUploadScheduler.enqueue(this)
+                }
             }
 
             pendingStartAfterPermission = false
@@ -102,6 +120,9 @@ class MainActivity : ComponentActivity() {
         super.onResume()
 
         locationAccess = LocationAccess.of(this)
+
+        // Granted in the system's settings meanwhile.
+        if (locationAccess != LocationAccess.NONE) locationRefused = false
     }
 
     /**
@@ -124,7 +145,9 @@ class MainActivity : ComponentActivity() {
             locationStatus = locationStatus,
             serverHealth = serverHealth,
             locationAccess = locationAccess,
+            locationRefused = locationRefused,
             onAllowBackgroundLocation = ::requestBackgroundLocation,
+            onOpenAppSettings = ::openAppSettings,
             onAutoStartOnBootChange = viewModel::setAutoStartOnBoot,
             onRecordOnBatteryChange = viewModel::setRecordOnBattery,
             onUploadOnBatteryChange = viewModel::setUploadOnBattery,
@@ -200,5 +223,25 @@ class MainActivity : ComponentActivity() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return
 
         backgroundLocationLauncher.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+    }
+
+    /*
+     * The app's own page in the system's settings, where its permissions are.
+     *
+     * Rather than asking again: once Android has decided not to show the
+     * dialog any more, asking returns a refusal without the user seeing
+     * anything, and this page is the only place left to change the answer.
+     *
+     * The app's page rather than its location permission page, because that
+     * one cannot be opened by an ordinary app; the warning names the two taps
+     * from here instead.
+     */
+    private fun openAppSettings() {
+        startActivity(
+            Intent(
+                Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                Uri.fromParts("package", packageName, null)
+            )
+        )
     }
 }
