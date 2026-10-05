@@ -68,7 +68,11 @@ export default defineConfig({
 				{
 					label: 'Open work',
 					collapsed: true,
-					items: [{ label: 'Tasks', slug: 'tasks' }, { autogenerate: { directory: 'tasks' } }]
+					items: [
+						{ label: 'Board', link: '/tasks/board/' },
+						{ label: 'Task format', slug: 'tasks' },
+						{ autogenerate: { directory: 'tasks' } }
+					]
 				}
 			]
 		})
