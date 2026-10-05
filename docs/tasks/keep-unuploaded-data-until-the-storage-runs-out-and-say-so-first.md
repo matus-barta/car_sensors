@@ -11,8 +11,9 @@ built up 22,866 rows, and a month of driving with no reachable server would be
 far larger. A phone that fills its storage stops being a logger.
 
 `deleteNotUploaded` exists but is not a bound. It runs only when somebody
-answers the pairing prompt by discarding what was recorded before an identity
-existed, which is a deliberate choice made once - nothing calls it on the
+chooses to discard: answering the pairing prompt by throwing away what was
+recorded before an identity existed, or dropping the backlog of a vehicle the
+server has retired. Both are deliberate choices - nothing calls it on the
 phone's own initiative, and nothing should until there is a policy to call it
 under.
 

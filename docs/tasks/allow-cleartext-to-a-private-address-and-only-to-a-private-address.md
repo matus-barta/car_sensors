@@ -43,11 +43,13 @@ the rule has to live in `ServerUrl` instead. That is a real loss of a guarantee
 and worth being deliberate about: what stops a credential going out in clear is
 then the app's own arithmetic and nothing beneath it.
 
-Whichever way it goes, the switch should not be `usesCleartextTraffic`. Android
-17 announced a plan to deprecate the manifest attribute and points apps at a
-network security configuration instead, where `<base-config
-cleartextTrafficPermitted="true">` is the same app-wide switch in its supported
-form. The debug manifest's `android:usesCleartextTraffic="true"` wants moving
+Whichever way it goes, the switch should not be `usesCleartextTraffic`.
+Android's [reference for the attribute](https://developer.android.com/guide/topics/manifest/application-element#usesCleartextTraffic)
+says it "is getting deprecated and will be ignored for apps targeting API levels
+38 and above", and points apps at a
+[network security configuration](https://developer.android.com/privacy-and-security/security-config)
+instead, where `<base-config cleartextTrafficPermitted="true">` is the same
+app-wide switch in its supported form. The debug manifest's `android:usesCleartextTraffic="true"` wants moving
 to a debug-only `network_security_config.xml` at the same time, before the
 attribute stops being honoured rather than after.
 
@@ -57,7 +59,7 @@ which was also the identity and could not be changed without abandoning the
 vehicle's history. What travels now is a bearer token that can be rotated the
 moment it is suspected, so the relaxation costs far less than it would have.
 
-Worth noting while doing it that RFC 6750 section 5.1 requires a bearer token
-to be sent over TLS, and this deliberately breaks that for private addresses -
-the reasoning is with the token entry, and rotation is what makes it
-affordable.
+Worth noting while doing it that
+[RFC 6750 section 5.3](https://datatracker.ietf.org/doc/html/rfc6750#section-5.3)
+requires a bearer token to be sent over TLS, and this deliberately breaks that
+for private addresses - rotation is what makes it affordable.

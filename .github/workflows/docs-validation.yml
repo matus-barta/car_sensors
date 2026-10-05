@@ -1,8 +1,8 @@
 name: Docs - validation
 
 # Checks documentation that belongs to no single piece of the project: output
-# generated from the shared database, links across every Markdown file, and the
-# documentation site built from them.
+# generated from the shared database, links and style across every Markdown
+# file, and the documentation site built from them.
 # Generated output that does belong to one piece is checked there -
 # docs/api/openapi.json by ingest's tests.
 
@@ -11,6 +11,7 @@ on:
     paths:
       - "**/*.md"
       - "lychee.toml"
+      - ".rumdl.toml"
       - "docs/api/openapi.json"
       - "docs/starlight/**"
       - "db/migrations/**"
@@ -130,6 +131,30 @@ jobs:
           lycheeVersion: v0.24.2
           args: "'./**/*.md' .claude/CLAUDE.md"
           jobSummary: true
+
+  markdown:
+    name: Lint the Markdown
+    # Pinned rather than ubuntu-latest, which becomes 26.04 on 2026-10-19 - see
+    # docs/tasks/move-the-workflows-to-ubuntu-26-04.md.
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      # rumdl is a development dependency of the site, so this runs the version
+      # its lockfile pins - the one `pnpm lint:md` runs locally - rather than
+      # whatever rumdl's own action would install.
+      - name: Set up pnpm and install the site's dependencies
+        uses: ./.github/actions/setup-pnpm
+        with:
+          working-directory: docs/starlight
+
+      # Every Markdown file in the repository, with the rules and exclusions in
+      # .rumdl.toml; findings are annotated on the pull request.
+      - name: Lint the Markdown
+        working-directory: docs/starlight
+        run: pnpm lint:md --output-format github
 
   site:
     name: Build the documentation site

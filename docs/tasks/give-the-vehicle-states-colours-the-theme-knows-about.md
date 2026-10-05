@@ -36,7 +36,7 @@ colour string, so a token has to be resolved to a value first.
 The obvious way to resolve one does not produce something MapLibre accepts.
 `getComputedStyle(document.documentElement).getPropertyValue('--vehicle-online')`
 hands back the custom property as authored - `oklch(0.7 0.15 160)` - and every
-token in `layout.css` is `oklch`. MapLibre 6.3's colour parser knows `rgb` and
+token in `layout.css` is `oklch`. MapLibre's colour parser (6.7, in October 2026) knows `rgb` and
 `hsl` and has no idea what `oklch` is, so that string is rejected outright.
 Reading it back off an element's computed `color` returns `oklch` too, and
 `color-mix(in srgb, …)` only gets as far as `color(srgb …)`, which the parser

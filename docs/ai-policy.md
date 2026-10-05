@@ -111,6 +111,21 @@ Minor assistance such as spelling correction, formatting, or simple editor compl
 
 A commit an AI tool helped to create should say so in an `Assisted-by:` trailer naming the tool, for example `Assisted-by: Claude Code (Claude Opus 5.5)`. That records the assistance, for transparency, and nothing more: the tool is not an author and the work is not its own. Do not use `Co-authored-by` for a tool - GitHub treats that trailer as naming a co-author and credits the commit to them. The developer is the author, answers for every line, and must be able to explain it.
 
+## Sources
+
+This policy follows what projects that allow AI assistance, under human
+responsibility, have settled on: the
+[Linux kernel](https://github.com/torvalds/linux/blob/master/Documentation/process/coding-assistants.rst)
+(the `Assisted-by:` tag, and only humans certifying the contribution),
+[LLVM](https://llvm.org/docs/AIToolPolicy.html) (a human in the loop, and no
+agents acting without approval), [Fedora](https://communityblog.fedoraproject.org/council-policy-proposal-policy-on-ai-assisted-contributions/)
+(the contributor as author, and AI never making the final call on a review),
+[OpenInfra](https://openinfra.org/legal/ai-policy/) and the
+[Apache Software Foundation](https://www.apache.org/legal/generative-tooling.html).
+GitHub's documentation on
+[commits with multiple authors](https://docs.github.com/en/pull-requests/committing-changes-to-your-project/creating-and-editing-commits/creating-a-commit-with-multiple-authors)
+is why `Co-authored-by` is not used for a tool.
+
 ## Enforcement
 
 Maintainers may reject contributions that:

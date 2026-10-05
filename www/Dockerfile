@@ -48,8 +48,8 @@ RUN pnpm exec svelte-kit sync && pnpm build
 # rolldown binary among them, some forty megabytes of things a server never
 # runs - where a production-only install simply never fetches them.
 #
-# What is left at about 355 MB is left on purpose; docs/web-image.md says why,
-# and what was already tried, before anyone spends an afternoon on it again.
+# What is left at about 355 MB is left on purpose; docs/www-docker-image.md says
+# why, and what was already tried, before anyone spends an afternoon on it again.
 FROM base AS production-dependencies
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./

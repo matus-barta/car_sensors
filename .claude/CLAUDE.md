@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository. It holds the rules; the reasoning behind them is in `docs/`, linked from each.
 
 ## What this is
 
@@ -10,19 +10,17 @@ An open-source GPS tracking platform. Four independent pieces share one PostgreS
 | ---------------- | --------------------------------------------------------- |
 | `android/`       | Android app that collects location and sensor data        |
 | `ingest/`        | Rust/axum service that receives telemetry from devices    |
-| `shared/`        | Rust crate: Postgres and Valkey connection helpers        |
+| `shared/`        | Rust crate for `ingest`: Postgres, Valkey, migrations, time |
 | `www/`           | SvelteKit app for administration and map visualization    |
 | `db/migrations/` | SQLx migrations: the authoritative schema for everything  |
 | `tools/`         | Local infrastructure Compose file and sync scripts        |
 | `docs/`          | Documentation, built into a Starlight site, and `docs/tasks/` |
 
-The pieces share one PostgreSQL database on purpose, rather than one per service. They are small, and the coupling that buys is cheaper than the operational cost of five databases.
+The one database is deliberate - [`docs/architecture.md`](../docs/architecture.md) says why. Three rules follow from it:
 
-**Data moves between them through that database, not through calls.** A producer writes what it computes and a consumer reads it: `ingest` writes `telemetry_samples` and touches `known_devices.last_seen_at`; `www` reads both. `ingest` and `www` do not call each other.
-
-**A service call is for an answer that does not exist until something asks for it** - work that cannot be precomputed into a table, or logic that cannot be shared because the pieces are written in different languages. It is the exception, and it is only acceptable where the caller can carry on without it: enrichment may depend on a service, the ingest path may not.
-
-Each table has one writer and as many readers as need it. `known_devices` is the exception that shows the rule - `www` owns the row, `ingest` touches only `last_seen_at` - and it works because the two never write the same column.
+- **Data moves through the database, not through calls.** `ingest` writes `telemetry_samples` and touches `known_devices.last_seen_at`; `www` reads both. `ingest` and `www` do not call each other.
+- **A service call is only for an answer that does not exist until something asks for it**, and only where the caller can carry on without it: enrichment may depend on a service, the ingest path may not.
+- **Each table has one writer.** `known_devices` is the exception that shows the rule - `www` owns the row, `ingest` touches only `last_seen_at` - and it works because the two never write the same column.
 
 ## The migration rule
 
@@ -43,7 +41,7 @@ After changing a migration or the Better Auth config, regenerate the committed D
 ./tools/scripts/generate-schema-docs.sh # applies migrations, then runs tbls
 ```
 
-`www/src/lib/server/db/generated/` is generated output that must be committed and never hand-edited. CI fails if it drifts from the migrations (`pnpm db:check`).
+`www/src/lib/server/db/generated/` is generated output that must be committed and never hand-edited. CI fails if it drifts from the migrations: it runs the sync script and compares the result with what is committed. `pnpm db:check` makes the same comparison locally, against a database the migrations are already applied to.
 
 `docs/schema/` is the same kind of output: a page per table and Mermaid ER diagrams, written by [tbls](https://github.com/k1LoW/tbls) from the migrated database using `.tbls.yml`. Commit it, never hand-edit it, and treat it as the answer to "what columns does this table have" rather than reading the migrations in order. CI regenerates it with the pinned tbls version and fails on any difference. The script needs `tbls` on `PATH`.
 
@@ -84,37 +82,31 @@ Local infrastructure (Postgres, Valkey, pgAdmin):
 cd tools && docker compose up
 ```
 
-The root `docker-compose.yml` is the *deployment* file (Postgres, Valkey, pgAdmin, `ingest`). It has **no `www` service** and there is no image for it — the web app is built and run separately.
+The root `docker-compose.yml` is the *deployment* file: Postgres, Valkey, pgAdmin, `ingest` and `www`, the last two from the images `ingest-build.yml` and `www-build.yml` publish to GHCR. It is not for development - `tools/docker-compose.yml` is.
 
 **Workflows follow [`docs/ci.md`](../docs/ci.md)**: a validation workflow per piece that the build workflow calls, generated output checked where it belongs, runners and byte-compared generators pinned, and shared setup in single-purpose composite actions. Read it before adding a workflow or a `.github/actions/` action, and run `actionlint` after editing either.
 
-**Every tool a script or check needs on a developer machine is listed under "Dev Requirements" in the root `README.md`.** When a change makes a new tool necessary, add it there in the same change. Never install tools on the developer's machine yourself - name what is needed and ask.
+## Working on a developer's machine
+
+**Every tool a script or check needs on a developer's machine is listed under "Dev Requirements" in the root `README.md`.** When a change makes a new tool necessary, add it there in the same change. Never install anything on the machine yourself - name the tool, say what it is needed for, and let the developer decide. For a one-off or troubleshooting tool, ask before running it any other way too: suggest the options - installing it, running it from a container, or doing without it - and use the one the developer picks. Whatever runs is cleaned up afterwards, so nothing is left behind.
+
+**Dependencies, tools, GitHub Actions and images go in at their latest stable version, checked against the registry** - crates.io, npm, Maven, the Gradle plugin portal, GitHub releases - never recalled. Read a new major version's documentation before writing code against it. Where a compatibility limit holds a version back, say which tool sets the limit, pin it in `renovate.json`, and record the condition as a blocked task in `docs/tasks/`.
 
 ## Environment
 
-`ingest` reads `DATABASE_URL`, `REDIS_URL`, `SERVER_IP_PORT`.
-
-`www` reads `DATABASE_URL`, `ORIGIN`, `BETTER_AUTH_SECRET`, `PUBLIC_OSM_VECTOR_TILE_URL`, `PUBLIC_OSM_STYLE_URL`. Each is validated at startup and throws if missing. `TRUSTED_PROXIES` is optional: the proxies Better Auth strips from `X-Forwarded-For` to find the client address it rate-limits sign-in by.
-
-`www/.env.test` holds E2E-only values and is committed on purpose; the Playwright config loads it and passes it to the preview server, because `vite preview` runs in production mode and would not read it otherwise.
+`ingest` needs `DATABASE_URL` and `REDIS_URL`; `www` needs `DATABASE_URL`, `ORIGIN` and `BETTER_AUTH_SECRET`. Everything else is optional. There is one `.env`, at the repository root; each service's README lists what its variables do ([`ingest`](../ingest/README.md#environment), [`www`](../www/README.md#environment)).
 
 ## www architecture
 
-**Server-only code lives in `$lib/server/`.** That is the only directory SvelteKit prevents the browser from importing, so all database and auth access belongs there — not in a `server/` folder nested inside a feature directory, which gets no protection.
+The reasons are in [`docs/www-architecture.md`](../docs/www-architecture.md). The rules:
 
-**Vehicle data reaches the browser through remote functions** (`$lib/vehicles/vehicle.remote.ts`, enabled by `experimental.remoteFunctions`). The returned query is the single source of truth: `VehicleState` wraps it, exposing `.current`/`.loading`/`.error`, and owns the selection plus the derived status. Nothing is selected until the user picks a vehicle: with no selection the map keeps every located vehicle in view, and with one it follows that vehicle. Do not mirror query results into separate `$state` — that was a bug once already. Note that the query reports `loading` during refreshes too, so `VehicleState.loading` gates it on `ready` to keep the background poll from flashing skeletons.
-
-**Anything derived from a timestamp is derived in the browser, against `clock`** (`$lib/utils/clock.svelte.ts`). A status computed on the server freezes at the value it had when the response was sent, so `VehicleSummary` carries `lastSeenAt` and no status; `VehicleWithStatus` is what the components receive. The clock's interval only runs while an effect is reading it. Freshness of the data itself comes from `pollWhileVisible()` (`$lib/utils/poll.svelte.ts`) in the app shell, which pauses on a hidden tab; polling faster than 30s is pointless because `ingest` writes each device's `last_seen_at` at most that often. That limits the column write only - it is not a request limit, and `ingest` has none.
-
-**Errors from remote functions must be raised with `error()`.** SvelteKit replaces any other thrown value with a generic `"Internal Error"`, so a plain `throw new Error('...')` silently loses its message. On the client, use `getErrorMessage()` from `$lib/utils/error` — SvelteKit's `HttpError` does not extend `Error` and carries its text on `body.message`.
-
-**The app shell mounts only when authenticated** (`$lib/components/app-shell.svelte`, keyed on user id), so signing out tears the vehicle query down rather than leaving a stale list behind.
-
-**Auth is Better Auth**, served from `hooks.server.ts` rather than through filesystem routing — there is no `src/routes/api/auth/` directory, and there should not be. Use the exported `isAuthPath()` if you need to test whether a request belongs to it.
-
-**Setup state** (`$lib/server/application-setup.ts`) gates the whole app in the root layout. `finalizeApplicationSetup()` claims a singleton row with a conditional `UPDATE ... WHERE completed = false`, so concurrent callers cannot both win. Better Auth writes accounts on its own connection and therefore cannot join that transaction — account creation is rolled back explicitly if the claim fails.
-
-**shadcn-svelte components in `$lib/components/ui/` are generated.** Add them with the CLI (`pnpm dlx shadcn-svelte@latest add <name>`), which is also the only way to get one back after deletion — the CLI has no remove command. `components.json` is a manifest for `add`, not a description of what is installed.
+- **Server-only code lives in `$lib/server/`**, the only directory SvelteKit keeps out of the browser - not in a `server/` folder inside a feature directory.
+- **Vehicle data reaches the browser through the remote functions in `$lib/vehicles/vehicle.remote.ts`.** `VehicleState` wraps the query and owns the selection plus the derived status. Do not mirror query results into separate `$state`.
+- **Anything derived from a timestamp is derived in the browser, against `clock`** (`$lib/utils/clock.svelte.ts`). The server sends `lastSeenAt`, never a status.
+- **Errors from remote functions are raised with `error()`**, and read on the client with `getErrorMessage()` from `$lib/utils/error`.
+- **Auth is Better Auth, served from `hooks.server.ts`.** There is no `src/routes/api/auth/`, and there should not be; test a request with `isAuthPath()`.
+- **Setup is claimed by `finalizeApplicationSetup()`'s conditional update** (`$lib/server/application-setup.ts`), so two callers cannot both win; keep it conditional.
+- **shadcn-svelte components in `$lib/components/ui/` are generated.** Add them with `pnpm dlx shadcn-svelte@latest add <name>`, which is also the only way to get one back.
 
 ## Testing
 
@@ -122,17 +114,15 @@ The root `docker-compose.yml` is the *deployment* file (Postgres, Valkey, pgAdmi
 
 E2E tests run serially against a real Postgres database whose name must end in `_test`; the fixture refuses anything else and refuses to share a database with `POSTGRES_ADMIN_URL`. Each test truncates and reseeds. They need a running Postgres and the SQLx CLI on `PATH`.
 
+`www/.env.test` is committed on purpose and loaded by the Playwright config itself - see [`docs/development.md`](../docs/development.md#environment).
+
 ## Conventions
 
-**CSS that belongs to one component lives in that component.** `www` styles with Tailwind, so most of the time there is no CSS to place at all - this is not an invitation to move utility classes into `<style>` blocks. It is about the custom CSS that is left over. MapLibre's stylesheet and the hundred-odd lines restyling its controls used to sit in `src/routes/layout.css`, loaded by every route, to serve one component; they now sit in `vehicle-map.svelte`.
+**CSS that belongs to one component lives in that component** - this is about custom CSS, not a reason to move Tailwind classes into `<style>`. Style third-party DOM under a `:global` block anchored on the component's root class (`.vehicle-map :global { … }`). `src/routes/layout.css` holds only the theme tokens, the font and element defaults.
 
-Third-party widgets that build their DOM imperatively cannot be reached by an ordinary scoped selector, since that DOM never gets Svelte's scoping attribute. Anchor a `:global` block under a class on the component's own root instead - `.vehicle-map :global { … }` - which keeps the rules from escaping while still matching. `layout.css` is for what is genuinely global: the theme tokens, the font, and element defaults.
+**Colours come from the theme, never from a literal** - no hex, `rgb()`, `Color(0x…)` or Tailwind palette class in a component of `www` or the Android app. The tokens are in `src/routes/layout.css` and `ui/theme/Color.kt`. If a component seems to need a colour the theme does not offer, **say so and ask**: a colour is added to the theme only after a human has agreed to it. Why: [`docs/www-architecture.md`](../docs/www-architecture.md#styling).
 
-**Colours come from the theme, never from a literal.** No component in `www` or the Android app may write a colour value - a hex string, `rgb()`, `Color(0x…)`, a Tailwind palette class such as `bg-emerald-500`, or a stock colour with an opacity applied to approximate a shade. Both applications support a light and a dark theme and the Android one opts into dynamic colour, and a literal follows none of that: it looks deliberate against the theme it was picked on and wrong on the other.
-
-`www` keeps its tokens in `src/routes/layout.css`; the Android app keeps its in `ui/theme/Color.kt`, wired up in `Theme.kt`. If a component seems to need a colour the theme does not offer, **say so and ask** - a new colour is added to the theme only after a human has agreed to it, so the palette stays something that was decided rather than something that accumulated one component at a time.
-
-Prettier runs only inside `www/` (tabs, single quotes, no trailing commas, 100 columns). Generated output — `src/lib/components/ui/`, `src/lib/server/db/generated/` and `src/lib/map/generated/` — is excluded from it. The last holds the time zone coordinates the empty vehicle map opens on, regenerated from IANA tzdata with `node tools/scripts/generate-timezone-centers.js`.
+Prettier runs only inside `www/` (tabs, single quotes, no trailing commas, 100 columns), and not on its Markdown. Markdown everywhere is linted by rumdl, with the rules and exclusions in `.rumdl.toml` - run `pnpm lint:md` (or `pnpm format:md` to fix) in `docs/starlight/`, which CI runs too; this file is excluded. Generated output in `src/lib/components/ui/` and `src/lib/map/generated/` is excluded from it. The generated Drizzle schema in `src/lib/server/db/generated/` is not - `pnpm db:format` formats it with Prettier, so it already matches - and only that directory's `meta/` and `.sql` leftovers are ignored. `src/lib/map/generated/` holds the time zone coordinates the empty vehicle map opens on, regenerated from IANA tzdata with `node tools/scripts/generate-timezone-centers.js`.
 
 Agent skills are vendored in `.agents/skills/` and symlinked into `.claude/skills/`, tracked by `skills-lock.json` at the repo root. Both are committed. Their markdown contains annotated code samples that Prettier cannot parse, so keep them outside any formatter's scope. Manage them with the `skills` CLI (`pnpm dlx skills add|remove|list|update ...`) rather than hand-editing the vendored files or `skills-lock.json` — `remove <name> -y` deletes the vendored directory, the agent symlinks, and the lock entry together.
 
@@ -140,7 +130,7 @@ One skill is this project's own rather than vendored: `.claude/skills/verify-doc
 
 **Documentation is the Markdown in `docs/`, written to be read on GitHub as it is.** The Starlight project in `docs/starlight/` builds the same files into a site without moving them (see `docs/starlight/src/content.config.ts`). So every page starts with `title:` frontmatter and no `# Heading` - Starlight renders the title itself and a heading would show it twice - and pages link to each other as files (`ci.md#runners-are-pinned`), which the site rewrites into page URLs. Check it with `pnpm check` and build it with `pnpm build` in `docs/starlight/`; the check type-checks the site's TypeScript, and the build fails on a link between pages that does not resolve. A new page also goes into the sidebar in `astro.config.ts` and the list in `docs/README.md`.
 
-**Link to files in the repository with relative Markdown links**, not bare paths in backticks, wherever the text is Markdown: lychee checks every such link, and the heading it points at, in CI (`docs-validation.yml`, settings in `lychee.toml`). A bare path is only checked by whoever reads it.
+**Link to files in the repository with relative Markdown links**, not bare paths in backticks, wherever the text is Markdown: lychee checks every such link, and the heading it points at, in CI (`docs-validation.yml`, settings in `lychee.toml`). A bare path is only checked by whoever reads it. A claim about anything outside the repository - another project's behaviour, a date, a policy, a version upstream - links its primary source, so it can be checked again later rather than searched for; lychee runs offline and does not check those links, so they are only as good as the last time someone followed them.
 
 `docs/tasks/` tracks work that is understood but not scheduled yet, one Markdown file per task with YAML frontmatter; `docs/tasks/README.md` defines the fields. Once a task has been implemented, delete its file instead of leaving it as a record of completed work — the directory should only ever reflect what is still open. Refer to a task by its path, never by "the entry below": tasks have no order. Set `depends_on` only to what a task's own text says it needs. The site's build rejects a task with a missing, extra or unknown field, or a dependency on a task that does not exist, and draws the board at `/tasks/board/` from the same files.
 

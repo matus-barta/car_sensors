@@ -10,7 +10,7 @@ Concentrating this in the geocoding service is most of the reason to have one -
 every obligation lands once instead of in every consumer.
 
 The public Nominatim instance is very likely the right provider rather than the
-one to avoid. Its policy allows one request a second in general, and four a
+one to avoid. Its [usage policy](https://operations.osmfoundation.org/policies/nominatim/) allows one request a second in general, and four a
 minute for a script that runs repeatedly or longer than a day, which is the
 bucket this falls into. Two lookups per trip and perhaps ten trips a day is
 twenty requests against a budget of 5,760 - room for a few hundred vehicles

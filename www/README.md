@@ -13,54 +13,39 @@ The application provides:
 
 ## Requirements
 
-- Node.js 24
-- pnpm 11
-- PostgreSQL
-- SQLx CLI when synchronizing database schemas
+The tools under [Dev Requirements](../README.md#dev-requirements) in the root
+README. Node.js has to be 24 or newer - `engines` in `package.json` says so, and
+pnpm [refuses to install](https://pnpm.io/settings/cli#enginestrict) a project
+whose own `engines` the running Node.js does not meet - and pnpm the version
+`packageManager` pins.
 
 ## Setup
-
-Install dependencies:
 
 ```bash
 pnpm install
 ```
 
-Create the environment file, **at the repository root rather than here**:
+The environment file is the one at the repository root - see
+[`docs/development.md`](../docs/development.md#setting-up) - and this directory
+deliberately has none: `kit.env.dir` in `vite.config.ts`, the Drizzle config and
+the Better Auth script are all pointed at the root, so a `www/.env` would simply
+not be read. Two files drifted apart once and left this application talking to a
+different database from the service writing to it, with every check passing
+against the other one.
 
-```bash
-cp .env.example .env    # from the repository root
-```
+## Environment
 
-There is one environment file for the whole project, shared with `ingest`. This
-directory deliberately has none: `kit.env.dir` in `vite.config.ts`, the Drizzle
-config and the Better Auth script are all pointed at the root, so a `www/.env`
-would simply not be read. Two files drifted apart once and left this
-application talking to a different database from the service writing to it,
-with every check passing against the other one.
+| Variable                                             | Required |                                                                                                                                                                                                                   |
+| ---------------------------------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`                                       | yes      | PostgreSQL connection string                                                                                                                                                                                      |
+| `ORIGIN`                                             | yes      | The URL the application is reached at; Better Auth [rejects requests from any other](https://www.better-auth.com/docs/reference/security#trusted-origins)                                                         |
+| `BETTER_AUTH_SECRET`                                 | yes      | The signing key - `openssl rand -base64 32` generates one                                                                                                                                                         |
+| `REDIS_URL`                                          | no       | The Valkey `ingest` uses. Enables live tracking of the selected vehicle, and lets a token rotation clear `ingest`'s credential cache at once; without it the vehicle list still updates through its periodic poll |
+| `PUBLIC_OSM_VECTOR_TILE_URL`, `PUBLIC_OSM_STYLE_URL` | no       | A tile server of your own, in place of the public OpenStreetMap tiles and the VersaTiles "colorful" style                                                                                                         |
+| `TRUSTED_PROXIES`                                    | no       | The proxies Better Auth skips over in `X-Forwarded-For` to find the client address it rate-limits sign-in by - see [`docs/deployment.md`](../docs/deployment.md#what-the-compose-file-runs)                       |
 
-Configure at least:
-
-```dotenv
-DATABASE_URL="postgres://postgres:postgres@localhost:5432/postgres"
-ORIGIN="http://localhost:5173"
-BETTER_AUTH_SECRET="<generated-secret>"
-```
-
-Generate a development secret:
-
-```bash
-openssl rand -base64 32
-```
-
-The `.env` file contains secrets and must not be committed.
-
-Setting `REDIS_URL` to the same Valkey instance `ingest` uses enables live
-tracking of the selected vehicle. Without it, the vehicle list still updates
-through its periodic poll.
-
-The end-to-end suite is the one exception: it has its own committed
-`.env.test`, which Playwright loads itself.
+The three required ones are checked at startup, which throws without them. The
+end-to-end suite has its own committed `.env.test` instead.
 
 ## Development
 
@@ -78,91 +63,19 @@ http://localhost:5173
 
 On a new installation with no users, the application redirects to `/auth/setup` and asks for the initial administrator account.
 
-Public registration is disabled after setup. Additional accounts must be created through an administrator workflow.
+Public registration is disabled: the setup screen creates the first account. There is no way to add further accounts from the application yet - Better Auth's admin plugin is enabled, but nothing uses it; see [`docs/tasks/manage-accounts-from-the-web-application.md`](../docs/tasks/manage-accounts-from-the-web-application.md).
 
-## Validation
-
-Run SvelteKit and TypeScript checks:
-
-```bash
-pnpm check
-```
-
-Run formatting and lint checks:
-
-```bash
-pnpm lint
-```
-
-Run tests:
-
-```bash
-pnpm test
-```
-
-Create a production build:
-
-```bash
-pnpm build
-```
-
-Preview the production build:
-
-```bash
-pnpm preview
-```
+How to check it the way CI does is in [`docs/development.md`](../docs/development.md#checking-each-piece).
 
 ## Database schema
 
-The authoritative PostgreSQL schema is managed by SQLx migrations in the monorepo root:
-
-```text
-../db/migrations/
-```
-
-Drizzle is used as a type-safe database access layer. It does not own or apply database migrations.
-
-The generated runtime schemas are:
-
-```text
-src/lib/server/db/generated/schema.ts
-src/lib/server/db/generated/auth.schema.ts
-```
-
-- `schema.ts` is generated by introspecting application tables.
-- `auth.schema.ts` is generated from the Better Auth configuration.
-- Both files are build inputs and must be committed.
-- Generated files must not be edited manually.
-
-After changing an SQLx migration or Better Auth configuration, run from the repository root:
-
-```bash
-./tools/scripts/sync-www-db-schema.sh
-```
-
-Alternatively, from this directory:
-
-```bash
-pnpm db:sync
-```
-
-The full synchronization script is preferred because it applies SQLx migrations before regenerating the web schemas.
-
-Do not use these Drizzle commands against the project database:
-
-```bash
-drizzle-kit generate
-drizzle-kit migrate
-drizzle-kit push
-```
-
-SQLx is the sole migration owner.
-
-For complete migration documentation, see:
-
-```text
-../docs/database-migrations.md
-```
+The schema belongs to the SQLx migrations in [`db/migrations/`](../db/migrations/);
+Drizzle only reads it, and never creates or applies a migration. The generated
+schemas in `src/lib/server/db/generated/` are committed and never edited by
+hand. After changing a migration or the Better Auth configuration, run
+`./tools/scripts/sync-www-db-schema.sh` from the repository root.
+[`docs/database-migrations.md`](../docs/database-migrations.md) has the rules and
+the whole workflow.
 
 ## Authentication
 
@@ -199,20 +112,9 @@ static/                      Static assets
 e2e/                         Playwright end-to-end tests
 ```
 
-Only `src/lib/server/` is protected from browser imports by SvelteKit, so
-database and authentication access lives there rather than in a nested
-`server/` folder inside a feature directory.
-
-`src/lib/components/ui/` holds only the components the application actually
-renders. Add more with the shadcn-svelte CLI as they are needed:
-
-```bash
-pnpm dlx shadcn-svelte@latest add <component>
-```
-
-Vehicle data reaches the browser through the remote functions in
-`src/lib/vehicles/vehicle.remote.ts`. The returned query is the single source
-of truth for the list; `VehicleState` wraps it and owns only the selection.
+Why the code is laid out this way - server-only code, the remote functions,
+the generated components - is in
+[`docs/www-architecture.md`](../docs/www-architecture.md).
 
 ## Useful commands
 

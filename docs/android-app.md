@@ -46,7 +46,7 @@ This is how Android treats a stopped package and there is nothing the app can do
 
 **Battery settings decide whether the logger is allowed to run at all.** Android 12 introduced a "Restricted" level for an app's battery use, which the user can choose and Android can also apply by itself to an app it judges to use too much. A restricted app may not run a foreground service: choosing it stops the logger at once, and it cannot start again after a reboot. Short of that, the default "Optimized" lets Doze hold the logger's work back while the phone is idle. The screen says when either applies; "Optimized" is fixed with Android's own one-tap dialog for "Unrestricted", "Restricted" by changing it in the app's battery settings, which the warning opens.
 
-**Some manufacturers stop background apps regardless.** Samsung, Xiaomi, Huawei and OnePlus among others add battery management of their own, beyond anything Android does, with settings an app can neither see nor change. The screen links to dontkillmyapp.com's page for the phone's manufacturer, which lists them; it opens in the browser and the app sends nothing.
+**Some manufacturers stop background apps regardless.** Samsung, Xiaomi, Huawei and OnePlus among others add battery management of their own, beyond anything Android does, with settings an app can neither see nor change. The screen links to [dontkillmyapp.com](https://dontkillmyapp.com)'s page for the phone's manufacturer, which lists them; it opens in the browser and the app sends nothing.
 
 **From Android 12, location can be approximate.** The user may switch off "Use precise location", leaving positions that can be a kilometre or more out. The screen says so and asks for precise location again.
 
@@ -70,7 +70,7 @@ Each is a logger of its own, though. Both left switched on means two sets of row
 
 Builds installed before this split carry the release id while being debug-signed. A debug build no longer updates them - it installs beside them - and the first signed release build cannot either; see [`docs/tasks/publish-signed-builds-to-github-releases-for-obtainium.md`](tasks/publish-signed-builds-to-github-releases-for-obtainium.md).
 
-## Working on it
+## Development
 
 Three tools guard the Kotlin, mirroring what `www` already has: **ktlint** for formatting, which is Prettier's counterpart; **detekt** for code smells, which is ESLint's; and **Android Lint**, which catches platform mistakes neither of the others can see. All three run on every pull request that touches `android/`.
 
@@ -95,7 +95,7 @@ CI uses those devices in two stages. A pull request waits for `api30atd` alone, 
 
 Nothing about the devices is cached. The emulator and each system image are downloaded on every run, which takes under a minute even for API 37's 2 GB image; caching them would cost more of the repository's 10 GB cache than it saves in time. A device's setup is a step of its own that is retried up to three times, since a download once arrived corrupt; the tests themselves are never retried, so a flaky test still fails. The Gradle cache is written by one job only: "Android - validation" saves it, and the emulator jobs and the dependency graph restore it read-only, the emulator jobs falling back to the newest entry because they have none of their own. The dependency graph could look like the natural writer, but it resolves metadata without compiling anything, so its cache holds a sixth of the jars the others need. That is why validation also builds the instrumented test APK - its cache then holds what the emulator jobs need, and a change that stops the instrumented tests compiling fails there, on every pull request, rather than only when the migration workflow happens to run.
 
-The steps the Android jobs share live in two composite actions, as `www`'s do in `setup-www`. `.github/actions/setup-android` installs the JDK, sets up Gradle and accepts the SDK licences, for every Android job; `.github/actions/setup-android-device` installs the emulator, enables KVM and sets up a managed device, for the emulator jobs. A workflow that uses one lists it in its `paths:` filter, so changing the action runs the workflows it affects.
+The steps the Android jobs share live in two composite actions, `setup-android` for every Android job and `setup-android-device` for the emulator jobs, described with the others in [`docs/ci.md`](ci.md#shared-setup-is-a-composite-action-one-purpose-each).
 
 Two details worth knowing. detekt's baseline, at `android/config/detekt/baseline.xml`, records three findings that are real rather than false: the foreground service is a large class with too many functions and one long method. They are grandfathered so that anything *new* still fails, and [`docs/tasks/split-the-foreground-service-up.md`](tasks/split-the-foreground-service-up.md) describes the split that would clear them. And `NewerVersionAvailable` and `GradleDependency` are disabled in the lint configuration, because they report what has been published since rather than anything about this code, and would turn a passing build red without a commit being made. `GradleDependency` hid that for a while: lint's result is cached, so it failed only once something invalidated the cache, and any change to the version catalog does. Renovate proposes those updates anyway.
 

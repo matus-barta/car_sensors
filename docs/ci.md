@@ -20,7 +20,7 @@ Each piece of the project has a `<Piece> - validation` workflow that runs on pul
 | [`docs-validation.yml`](../.github/workflows/docs-validation.yml) | pull requests | |
 | [`docs-build.yml`](../.github/workflows/docs-build.yml) | every push to `main` | `docs-validation.yml` |
 
-`docs-validation.yml` is the one that belongs to no piece: it checks what is shared - documentation generated from the database, the links between Markdown files, and the [documentation site](README.md) built from them. `docs-build.yml` publishes that site to GitHub Pages, and runs on every push to `main` rather than on a path filter, because the link check is also what notices a link broken by renaming the file it points at.
+`docs-validation.yml` is the one that belongs to no piece: it checks what is shared - documentation generated from the database, the links between Markdown files and their style, and the [documentation site](README.md) built from them. `docs-build.yml` publishes that site to GitHub Pages, and runs on every push to `main` rather than on a path filter, because the link check is also what notices a link broken by renaming the file it points at.
 
 ## Generated output is checked where it belongs
 
@@ -53,8 +53,9 @@ Steps that several jobs repeat live in `.github/actions/`:
 | [`setup-android`](../.github/actions/setup-android/action.yml) | the JDK, Gradle and the Android SDK licences |
 | [`setup-android-device`](../.github/actions/setup-android-device/action.yml) | the emulator, KVM and a Gradle managed device |
 
-Three rules follow from how they have been used:
+Four rules follow from how they have been used:
 
 - **Extract at the second user, not before.** A composite action used by one job is indirection for its own sake. The moment a second job needs the same steps, they move into an action.
 - **One purpose per action.** Two setups that look alike but want different things stay apart. `setup-sqlx` installs a toolchain only to build the CLI - no components, no workspace cache. A job that builds the Rust workspace wants `clippy`, `rustfmt` and `Swatinem/rust-cache`, so when a second such job appears it gets a `setup-rust` of its own (see [the task](tasks/extract-a-setup-rust-action-once-a-second-rust-job-exists.md)) rather than flags added to `setup-sqlx` that select between unrelated behaviours.
 - **Services cannot be shared this way.** `services` is a job-level key, so a Postgres or Valkey container cannot live in a composite action. Each job declares its own; sharing that setup is what a reusable workflow is for.
+- **A workflow lists every action it uses in its `paths:` filter**, including one it reaches through another action - `www-validation.yml` lists `setup-pnpm` and `setup-sqlx` beside `setup-www` - so changing an action runs every workflow it affects. `docs-build.yml` has no filter, so it has nothing to list.

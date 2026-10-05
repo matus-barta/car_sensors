@@ -11,7 +11,7 @@ parses perfectly well and is only found when Renovate runs - on Monday morning,
 going by the schedule - and a rule that silently matches nothing is never found
 at all.
 
-Renovate ships a validator for exactly this, `renovate-config-validator`, in the
+Renovate ships a [validator](https://docs.renovatebot.com/config-validation/) for exactly this, `renovate-config-validator`, in the
 same npm package as Renovate itself. What needs deciding is where it runs,
 because none of the options is free:
 

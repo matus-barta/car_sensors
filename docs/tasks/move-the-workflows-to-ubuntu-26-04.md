@@ -6,7 +6,7 @@ depends_on: []
 ---
 
 Every job is pinned to `ubuntu-24.04`. GitHub moves `ubuntu-latest` to 26.04
-from 2026-10-19 (actions/runner-images#14748), and a new image arriving
+from 2026-10-19 ([actions/runner-images#14748](https://github.com/actions/runner-images/issues/14748)), and a new image arriving
 unannounced is a failure that looks like a code change. Pinned, it arrives when
 somebody decides it should.
 

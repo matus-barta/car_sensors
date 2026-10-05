@@ -1,5 +1,5 @@
 ---
-title: "Why the web application image is the size it is"
+title: "Why the web application's Docker image is the size it is"
 ---
 
 A decision rather than an open question, written down so it is not reopened by

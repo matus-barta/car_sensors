@@ -5,7 +5,7 @@ area: database
 depends_on: []
 ---
 
-Everything except the geocoder's cache lives in `public`. Nothing is wrong with
+Every table lives in `public`; the geocoder's cache, when [it is built](put-reverse-geocoding-behind-a-service-of-its-own.md), would be the first not to. Nothing is wrong with
 that today, and this is worth recording as an option rather than a fault to fix:
 the value is in what it prevents later, not in anything it repairs now.
 

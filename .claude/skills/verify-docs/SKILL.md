@@ -35,7 +35,10 @@ Not claims, so leave them out: reasoning, intent, opinion, history ("this used
 to..."), and advice. Statements about the outside world - another project's
 behaviour, a version that exists upstream - are claims, but check them only if a
 registry or the project's own source answers cheaply; otherwise mark them
-unverifiable and say so.
+unverifiable and say so. Such a claim should link its primary source - the
+issue, the policy, the reference documentation - so it can be checked again
+later. Check it there, and where the document has no link, propose adding one
+along with the fix.
 
 ## 3. Check each claim against the code
 
