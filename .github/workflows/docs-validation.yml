@@ -1,30 +1,28 @@
 name: Docs - validation
 
-# Checks documentation that belongs to no single piece of the project, starting
-# with output generated from the shared database. Generated output that does
-# belong to one piece is checked there - docs/api/openapi.json by ingest's tests.
+# Checks documentation that belongs to no single piece of the project: output
+# generated from the shared database, and links across every Markdown file.
+# Generated output that does belong to one piece is checked there -
+# docs/api/openapi.json by ingest's tests.
 
 on:
   pull_request:
     paths:
+      - "**/*.md"
+      - "lychee.toml"
       - "db/migrations/**"
       - ".tbls.yml"
-      - "docs/schema/**"
       - "tools/scripts/generate-schema-docs.sh"
       - ".github/actions/setup-sqlx/**"
       - ".github/workflows/docs-validation.yml"
 
+  # Every push to main, not only those touching the paths above: a link can be
+  # broken by renaming or deleting the file it points at, which is a change to
+  # that file rather than to the Markdown linking to it.
   push:
     branches:
       - main
       - master
-    paths:
-      - "db/migrations/**"
-      - ".tbls.yml"
-      - "docs/schema/**"
-      - "tools/scripts/generate-schema-docs.sh"
-      - ".github/actions/setup-sqlx/**"
-      - ".github/workflows/docs-validation.yml"
 
 permissions:
   contents: read
@@ -110,3 +108,21 @@ jobs:
             exit 1
           fi
 
+  links:
+    name: Check links between files
+    # Pinned rather than ubuntu-latest, which becomes 26.04 on 2026-10-19 - see
+    # tasks/move-the-workflows-to-ubuntu-26-04.md.
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      # Settings live in lychee.toml, so a local run checks the same thing.
+      # .claude/ is hidden and would be skipped by the glob.
+      - name: Check links
+        uses: lycheeverse/lychee-action@v2
+        with:
+          lycheeVersion: v0.24.2
+          args: "'./**/*.md' .claude/CLAUDE.md"
+          jobSummary: true

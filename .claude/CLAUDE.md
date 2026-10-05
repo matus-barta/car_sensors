@@ -133,6 +133,8 @@ Prettier runs only inside `www/` (tabs, single quotes, no trailing commas, 100 c
 
 Agent skills are vendored in `.agents/skills/` and symlinked into `.claude/skills/`, tracked by `skills-lock.json` at the repo root. `.agents/` is not in git. Their markdown contains annotated code samples that Prettier cannot parse, so keep them outside any formatter's scope. Manage them with the `skills` CLI (`pnpm dlx skills add|remove|list|update ...`) rather than hand-editing the vendored files or `skills-lock.json` — `remove <name> -y` deletes the vendored directory, the agent symlinks, and the lock entry together.
 
+**Link to files in the repository with relative Markdown links**, not bare paths in backticks, wherever the text is Markdown: lychee checks every such link, and the heading it points at, in CI (`docs-validation.yml`, settings in `lychee.toml`). A bare path is only checked by whoever reads it.
+
 `tasks/` tracks work that is understood but not scheduled yet, one Markdown file per task with YAML frontmatter; `tasks/README.md` defines the fields. Once a task has been implemented, delete its file instead of leaving it as a record of completed work — the directory should only ever reflect what is still open. Refer to a task by its path, never by "the entry below": tasks have no order. Set `depends_on` only to what a task's own text says it needs.
 
 **Commit subjects open with a topic tag**, followed by a space, a colon and a space: `www : Derive vehicle status in the browser`, `ingest : Throttle the last_seen_at write`. It is a convenience for scanning a log that covers four largely independent pieces, not a rule to enforce. The topic is usually the folder the change lives in, which is usually the sub-project.

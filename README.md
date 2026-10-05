@@ -120,6 +120,7 @@ www/        SvelteKit web application
 - pnpm
 - [tbls](https://github.com/k1LoW/tbls), to regenerate the schema documentation in `docs/schema/` after a migration (`brew install tbls`, or see its README for other platforms)
 - [actionlint](https://github.com/rhysd/actionlint), to check the workflows in `.github/` after editing them (`brew install actionlint`, or see its README for other platforms)
+- [lychee](https://lychee.cli.rs), to check the links between Markdown files (`brew install lychee`, or see its README for other platforms)
 - Android Studio and JDK 21, when developing the Android application
 
 The schema documentation is compared against CI's output byte for byte, and a
@@ -192,6 +193,13 @@ on the JVM and need no device. The instrumented tests do need one:
 
 Android Studio has the first of these as a shared run configuration, so neither
 needs typing. See [`docs/android-app.md`](docs/android-app.md).
+
+Documentation, from the repository root:
+
+```bash
+lychee './**/*.md' .claude/CLAUDE.md   # links between files, settings in lychee.toml
+actionlint                             # the workflows in .github/
+```
 
 ## Documentation
 

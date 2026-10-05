@@ -1,0 +1,21 @@
+# Link checking with lychee (https://lychee.cli.rs), shared by CI and local runs:
+#
+#   lychee './**/*.md' .claude/CLAUDE.md
+#
+# Only links inside the repository are checked - to files, and to headings
+# within them. External sites come and go for reasons that have nothing to do
+# with a change, and a check that fails on someone else's outage gets ignored.
+
+offline = true
+include_fragments = "full"
+no_progress = true
+
+# An input glob bypasses .gitignore, so dependencies, build output and the
+# vendored agent skills have to be named here.
+exclude_path = [
+    "(^|/)node_modules/",
+    "(^|/)target/",
+    "(^|/)build/",
+    "(^|/)\\.agents/",
+    "(^|/)\\.claude/skills/",
+]
