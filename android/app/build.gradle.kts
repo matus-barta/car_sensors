@@ -27,6 +27,22 @@ android {
     }
 
     buildTypes {
+        /*
+         * Installed beside the release build rather than over it, so the phone
+         * in the car can carry both: the release build doing the real logging,
+         * the debug build there to try something without touching it. Android
+         * keys an installed app on this id, so the two never share a database,
+         * settings or a pairing, and uninstalling one - which is what a run of
+         * the instrumented tests ends with - cannot take the other's backlog
+         * with it.
+         *
+         * The version suffix travels in the User-Agent, so the server can tell
+         * which of the two sent a request.
+         */
+        debug {
+            applicationIdSuffix = ".debug"
+            versionNameSuffix = "-debug"
+        }
         release {
             isMinifyEnabled = false
             proguardFiles(
@@ -82,12 +98,45 @@ android {
                     systemImageSource = "aosp"
                     testedAbi = "x86"
                 }
+
+                /*
+                 * Where notifications became a runtime permission - one of the
+                 * platform changes that reaches this app despite its target.
+                 * 32-bit images stop well before this level, hence x86_64.
+                 */
+                create("api33") {
+                    device = "Pixel 2"
+                    apiLevel = 33
+                    systemImageSource = "aosp"
+                    testedAbi = "x86_64"
+                }
+
+                /*
+                 * The newest Android, where restrictions that apply whatever
+                 * the target arrive first. No plain AOSP image is published at
+                 * this level, so this one carries the Google APIs.
+                 */
+                create("api37") {
+                    device = "Pixel 2"
+                    apiLevel = 37
+                    systemImageSource = "google"
+                    testedAbi = "x86_64"
+
+                    // AGP cannot tell this level's default page size and warns
+                    // on every build until it is told. 4 KB is what it would
+                    // pick anyway, and the app ships no native code that a
+                    // 16 KB page could break.
+                    pageAlignment =
+                        com.android.build.api.dsl.ManagedVirtualDevice.PageAlignment.FORCE_4KB_PAGES
+                }
             }
 
             groups {
                 create("allApis") {
                     targetDevices.add(localDevices["api30atd"])
                     targetDevices.add(localDevices["api28"])
+                    targetDevices.add(localDevices["api33"])
+                    targetDevices.add(localDevices["api37"])
                 }
             }
         }
@@ -172,6 +221,9 @@ dependencies {
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.work.testing)
     testImplementation(libs.mockwebserver)
+    // Composables tested on Robolectric, so they run with the other unit tests.
+    testImplementation(platform(libs.androidx.compose.bom))
+    testImplementation(libs.androidx.ui.test.junit4)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.room.testing)
     androidTestImplementation(libs.androidx.espresso.core)

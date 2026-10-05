@@ -2,13 +2,9 @@ package com.anonymus09.carsensors.data
 
 import android.util.Log
 import com.anonymus09.carsensors.util.AppConfig.TELEMETRY_UPLOAD_PATH
-import com.anonymus09.carsensors.util.AppConfig.USER_AGENT
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import java.io.ByteArrayOutputStream
 import java.net.HttpURLConnection
-import java.net.URL
-import java.util.zip.GZIPOutputStream
 
 /**
  * What a check of the configured address found.
@@ -80,13 +76,8 @@ class ServerHealthChecker(
 
         val accepted = try {
             statusOf("$baseUrl$TELEMETRY_UPLOAD_PATH") { connection ->
-                connection.requestMethod = "POST"
-                connection.doOutput = true
-                connection.setRequestProperty("Content-Type", "application/json; charset=UTF-8")
-                connection.setRequestProperty("Content-Encoding", "gzip")
-                connection.setRequestProperty("Device-Id", pairing.deviceId)
-                connection.setRequestProperty("Authorization", "Bearer ${pairing.token}")
-                connection.outputStream.use { it.write(gzip(EMPTY_BATCH)) }
+                TelemetryHttp.prepareUpload(connection, pairing)
+                connection.outputStream.use { it.write(TelemetryHttp.gzip(EMPTY_BATCH)) }
             }
         } catch (e: Exception) {
             Log.w(TAG, "Upload endpoint not reachable at $baseUrl", e)
@@ -103,11 +94,7 @@ class ServerHealthChecker(
     }
 
     private fun statusOf(url: String, prepare: (HttpURLConnection) -> Unit): Int {
-        val connection = (URL(url).openConnection() as HttpURLConnection).apply {
-            connectTimeout = TIMEOUT_MS
-            readTimeout = TIMEOUT_MS
-            setRequestProperty("User-Agent", USER_AGENT)
-        }
+        val connection = TelemetryHttp.open(url, TIMEOUT_MS, TIMEOUT_MS)
 
         return try {
             prepare(connection)
@@ -115,12 +102,6 @@ class ServerHealthChecker(
         } finally {
             connection.disconnect()
         }
-    }
-
-    private fun gzip(input: String): ByteArray {
-        val bos = ByteArrayOutputStream()
-        GZIPOutputStream(bos).use { it.write(input.toByteArray(Charsets.UTF_8)) }
-        return bos.toByteArray()
     }
 
     private companion object {

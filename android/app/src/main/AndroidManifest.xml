@@ -5,8 +5,23 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+
+    <!--
+        Without it, a logger restarted with nothing on screen - after a reboot,
+        or by the system - gets no GPS from Android 11 on. Asked for separately,
+        once foreground location is granted; see LocationAccess.
+    -->
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <!--
+        Lets the app show Android's one-tap dialog for "Unrestricted" battery
+        use. Optimized, Doze can pause the logger while the phone is idle, and
+        Android may restrict it outright for using too much. Google Play limits
+        this to a few kinds of app; this one is not distributed through Play.
+    -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />

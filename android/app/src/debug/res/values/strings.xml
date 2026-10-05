@@ -1,0 +1,7 @@
+<!--
+    Debug builds only. Installed beside the release build, so the launcher has
+    to tell the two apart.
+-->
+<resources>
+    <string name="app_name">carSensors debug</string>
+</resources>
