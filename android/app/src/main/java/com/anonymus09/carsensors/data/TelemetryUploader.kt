@@ -1,15 +1,10 @@
 package com.anonymus09.carsensors.data
 
 import android.util.Log
-import com.anonymus09.carsensors.util.AppConfig.USER_AGENT
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.json.JSONArray
 import org.json.JSONObject
-import java.io.ByteArrayOutputStream
-import java.net.HttpURLConnection
-import java.net.URL
-import java.util.zip.GZIPOutputStream
 
 /**
  * Sends rows to the server and records what became of them.
@@ -107,27 +102,12 @@ class TelemetryUploader(
     private fun post(pairing: DevicePairing, payload: String): UploadOutcome {
         val uploadUrl = settings.current().uploadUrl
 
-        val connection = (URL(uploadUrl).openConnection() as HttpURLConnection).apply {
-            requestMethod = "POST"
-            connectTimeout = CONNECT_TIMEOUT_MS
-            readTimeout = READ_TIMEOUT_MS
-            doOutput = true
-            setRequestProperty("Content-Type", "application/json; charset=UTF-8")
-            setRequestProperty("Content-Encoding", "gzip")
-            setRequestProperty("User-Agent", USER_AGENT)
-
-            /*
-             * The identity names the row; the bearer token proves the request
-             * came from this phone. Spelled the way RFC 6750 and RFC 6648 ask
-             * for, which is also what `ingest` reads.
-             */
-            setRequestProperty("Device-Id", pairing.deviceId)
-            setRequestProperty("Authorization", "Bearer ${pairing.token}")
-        }
+        val connection = TelemetryHttp.open(uploadUrl, CONNECT_TIMEOUT_MS, READ_TIMEOUT_MS)
+        TelemetryHttp.prepareUpload(connection, pairing)
 
         return try {
             connection.outputStream.use { output ->
-                output.write(gzipCompress(payload))
+                output.write(TelemetryHttp.gzip(payload))
                 output.flush()
             }
 
@@ -212,12 +192,6 @@ class TelemetryUploader(
 
     private fun JSONObject.putFinite(name: String, value: Double?) {
         put(name, value?.takeIf { it.isFinite() })
-    }
-
-    private fun gzipCompress(input: String): ByteArray {
-        val bos = ByteArrayOutputStream()
-        GZIPOutputStream(bos).use { gzip -> gzip.write(input.toByteArray(Charsets.UTF_8)) }
-        return bos.toByteArray()
     }
 
     companion object {

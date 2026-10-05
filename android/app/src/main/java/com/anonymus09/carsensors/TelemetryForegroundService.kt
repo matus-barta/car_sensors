@@ -2,9 +2,6 @@ package com.anonymus09.carsensors
 
 import android.annotation.SuppressLint
 import android.Manifest
-import android.app.Notification
-import android.app.NotificationChannel
-import android.app.NotificationManager
 import android.app.Service
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -29,7 +26,6 @@ import android.os.IBinder
 import android.os.PowerManager
 import android.os.Looper
 import android.util.Log
-import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.anonymus09.carsensors.data.AppDatabase
 import com.anonymus09.carsensors.data.PowerState
@@ -53,11 +49,10 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import org.json.JSONObject
-import java.util.Locale
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.coroutines.EmptyCoroutineContext
-import kotlin.math.roundToInt
+import com.anonymus09.carsensors.util.AppConfig.ACCESS_CHECK_INTERVAL_MS
 import com.anonymus09.carsensors.util.AppConfig.BATTERY_REDUCED_RATE_FACTOR
 import com.anonymus09.carsensors.util.AppConfig.FLUSH_INTERVAL_MS
 import com.anonymus09.carsensors.util.AppConfig.GPS_UPDATE_INTERVAL_MS
@@ -76,34 +71,16 @@ import com.anonymus09.carsensors.util.AppConfig.UPLOAD_MAX_ATTEMPTS
 import com.anonymus09.carsensors.util.AppConfig.UPLOAD_SILENCE_RENOTIFY_MS
 import com.anonymus09.carsensors.util.AppConfig.UPLOAD_SILENCE_WARNING_MS
 import com.anonymus09.carsensors.util.GpsClock
+import com.anonymus09.carsensors.util.HeadingTracker
+import com.anonymus09.carsensors.util.sensorAccuracyLabel
+import com.anonymus09.carsensors.util.LastExit
+import com.anonymus09.carsensors.util.AccessState
 import com.anonymus09.carsensors.util.ageMs
 import com.anonymus09.carsensors.util.AppConfig.UPLOAD_TRIGGER_PENDING_ROWS
-
-/**
- * What the logger is doing.
- *
- * [ARMED] is the parked state: the service stays alive so that nothing has to
- * wake it, but the sensors and GPS are unregistered and only the hardware
- * significant-motion trigger is listening. It costs almost nothing and is what
- * lets a phone live in a car unattended without either recording a stationary
- * vehicle around the clock or needing to be restarted by hand.
- */
-enum class LoggerState { OFF, ARMED, RECORDING }
-
-data class TelemetryLocationStatus(
-    val hasFix: Boolean = false,
-    val latitude: Double? = null,
-    val longitude: Double? = null,
-    val speedKmh: Int? = null,
-    val provider: String? = null,
-    val accuracy: Float? = null
-)
 
 class TelemetryForegroundService : Service(), SensorEventListener {
 
     companion object {
-        private const val CHANNEL_ID = "telemetry_logger_channel"
-        private const val NOTIFICATION_ID = 1001
         private const val SENSOR_THREAD_NAME = "TelemetryLoggerThread"
 
         /*
@@ -130,9 +107,6 @@ class TelemetryForegroundService : Service(), SensorEventListener {
         const val ACTION_RESTART = "com.anonymus09.carsensors.action.RESTART"
 
         private const val WAKE_LOCK_TAG = "CarSensors::Telemetry"
-
-        /** Normalises an azimuth that came back negative into 0..360. */
-        private const val FULL_TURN_DEGREES = 360f
 
         fun restartService(context: Context) {
             val intent = Intent(context, TelemetryForegroundService::class.java).apply {
@@ -175,6 +149,7 @@ class TelemetryForegroundService : Service(), SensorEventListener {
     private val pairings by lazy { PairingRepository(this) }
     private val uploader by lazy { TelemetryUploader.create(this) }
     private val uploadSilenceNotifier by lazy { UploadSilenceNotifier(this) }
+    private val loggerNotification by lazy { LoggerNotification(this) }
 
     /**
      * When the upload-silence warning was last posted, so that an outage
@@ -218,18 +193,7 @@ class TelemetryForegroundService : Service(), SensorEventListener {
     @Volatile
     private var magnetValues: FloatArray? = null
 
-    /*
-     * Scratch space for recomputeHeading, which runs on every accelerometer and
-     * magnetometer event - twenty times a second between them, allocating three
-     * arrays on each. Only the sensor thread touches them, and that is the same
-     * thread workerHandler runs, so they need no synchronisation.
-     */
-    private val rotationMatrix = FloatArray(9)
-    private val inclinationMatrix = FloatArray(9)
-    private val orientationAngles = FloatArray(3)
-
-    @Volatile
-    private var headingDegrees: Float? = null
+    private val heading = HeadingTracker()
 
     // Latest sensor accuracy
     @Volatile
@@ -420,6 +384,33 @@ class TelemetryForegroundService : Service(), SensorEventListener {
         }
     }
 
+    /** What the server was last told about the logger's access. */
+    @Volatile
+    private var reportedAccess: AccessState? = null
+
+    /*
+     * Reports a change of access while the logger runs on, under the same
+     * keys as service_started.
+     *
+     * On uptime like the flush loop, so a parked phone asleep without a wake
+     * lock checks again when it next wakes - soon enough for something nobody
+     * can act on while it sleeps.
+     */
+    private val accessCheck = object : Runnable {
+        override fun run() {
+            if (!isRunning.get()) return
+
+            val current = AccessState.of(this@TelemetryForegroundService)
+
+            if (current != reportedAccess) {
+                writeSimpleEvent("access_changed", current.putInto(JSONObject()))
+                reportedAccess = current
+            }
+
+            workerHandler?.postDelayed(this, ACCESS_CHECK_INTERVAL_MS)
+        }
+    }
+
     private val flushRunnable = object : Runnable {
         override fun run() {
             if (!isRunning.get()) return
@@ -477,10 +468,7 @@ class TelemetryForegroundService : Service(), SensorEventListener {
         isCurrentlyCharging = power.charging
         currentPowerSource = power.source
 
-        createNotificationChannel()
-        startForeground(
-            NOTIFICATION_ID, buildNotification("Starting telemetry logger...", null, null, null)
-        )
+        startForeground(LoggerNotification.ID, loggerNotification.starting())
 
         isRunning.set(true)
 
@@ -494,9 +482,25 @@ class TelemetryForegroundService : Service(), SensorEventListener {
             put("wakeOnMotionEnabled", settings.current().wakeOnMotion)
             put("recordOnBattery", settings.current().recordOnBattery)
             put("hasMotionSensor", significantMotion != null)
+
+            /*
+             * Explains, from the server, a session of rows without positions
+             * or an upload outage nobody was warned about.
+             */
+            reportedAccess = AccessState.of(this@TelemetryForegroundService)
+                .also { it.putInto(this) }
+
+            /*
+             * Why the process before this one ended. A logger stopped from
+             * Active apps is not restarted, so this is the first the server
+             * can hear of it - and it tells a crash from a kill for memory.
+             */
+            LastExit.of(this@TelemetryForegroundService)?.putInto(this)
         })
 
         enterInitialState()
+
+        workerHandler?.postDelayed(accessCheck, ACCESS_CHECK_INTERVAL_MS)
     }
 
     // ----------------------------------------------------
@@ -767,7 +771,13 @@ class TelemetryForegroundService : Service(), SensorEventListener {
      * go.
      */
     private fun registerSensors() {
-        accelerometer?.let {
+        val decorative = if (runsDecorativeSensors()) {
+            listOf(gyroscope, magnetometer, pressureSensor)
+        } else {
+            emptyList()
+        }
+
+        (listOf(accelerometer) + decorative).filterNotNull().forEach {
             sensorManager.registerListener(
                 this,
                 it,
@@ -776,37 +786,6 @@ class TelemetryForegroundService : Service(), SensorEventListener {
                 workerHandler
             )
         }
-
-        gyroscope?.takeIf { runsDecorativeSensors() }?.let {
-            sensorManager.registerListener(
-                this,
-                it,
-                SENSOR_SAMPLING_US,
-                SENSOR_SAMPLING_US * SENSOR_BATCH_LATENCY_FACTOR,
-                workerHandler
-            )
-        }
-
-        magnetometer?.takeIf { runsDecorativeSensors() }?.let {
-            sensorManager.registerListener(
-                this,
-                it,
-                SENSOR_SAMPLING_US,
-                SENSOR_SAMPLING_US * SENSOR_BATCH_LATENCY_FACTOR,
-                workerHandler
-            )
-        }
-
-        pressureSensor?.takeIf { runsDecorativeSensors() }?.let {
-            sensorManager.registerListener(
-                this,
-                it,
-                SENSOR_SAMPLING_US,
-                SENSOR_SAMPLING_US * SENSOR_BATCH_LATENCY_FACTOR,
-                workerHandler
-            )
-        }
-
     }
 
     /** Whether this tier still runs the sensors that merely decorate a fix. */
@@ -864,7 +843,7 @@ class TelemetryForegroundService : Service(), SensorEventListener {
         when (event.sensor.type) {
             Sensor.TYPE_ACCELEROMETER -> {
                 accelValues = event.values.clone()
-                recomputeHeading()
+                heading.update(accelValues, magnetValues)
             }
 
             Sensor.TYPE_GYROSCOPE -> {
@@ -873,7 +852,7 @@ class TelemetryForegroundService : Service(), SensorEventListener {
 
             Sensor.TYPE_MAGNETIC_FIELD -> {
                 magnetValues = event.values.clone()
-                recomputeHeading()
+                heading.update(accelValues, magnetValues)
             }
 
             Sensor.TYPE_PRESSURE -> {
@@ -894,21 +873,6 @@ class TelemetryForegroundService : Service(), SensorEventListener {
         }
 
         writeAccuracyChangeEvent(sensor, accuracy)
-    }
-
-    private fun recomputeHeading() {
-        val accel = accelValues ?: return
-        val magnet = magnetValues ?: return
-
-        val success = SensorManager.getRotationMatrix(
-            rotationMatrix, inclinationMatrix, accel, magnet
-        )
-
-        if (success) {
-            SensorManager.getOrientation(rotationMatrix, orientationAngles)
-            val azimuthDeg = Math.toDegrees(orientationAngles[0].toDouble()).toFloat()
-            headingDegrees = (azimuthDeg + FULL_TURN_DEGREES) % FULL_TURN_DEGREES
-        }
     }
 
     // ----------------------------------------------------
@@ -933,7 +897,7 @@ class TelemetryForegroundService : Service(), SensorEventListener {
             updateNotification()
         }
 
-        val heading = headingDegrees
+        val headingDegrees = heading.degrees
         val accel = accelValues
         val gyro = gyroValues
         val magnet = magnetValues
@@ -961,25 +925,25 @@ class TelemetryForegroundService : Service(), SensorEventListener {
             accelY = accel?.getOrNull(1),
             accelZ = accel?.getOrNull(2),
             accelAccuracy = accel?.let { accelAccuracy },
-            accelAccuracyLabel = accel?.let { accuracyToLabel(accelAccuracy) },
+            accelAccuracyLabel = accel?.let { sensorAccuracyLabel(accelAccuracy) },
 
             gyroX = gyro?.getOrNull(0),
             gyroY = gyro?.getOrNull(1),
             gyroZ = gyro?.getOrNull(2),
             gyroAccuracy = gyro?.let { gyroAccuracy },
-            gyroAccuracyLabel = gyro?.let { accuracyToLabel(gyroAccuracy) },
+            gyroAccuracyLabel = gyro?.let { sensorAccuracyLabel(gyroAccuracy) },
 
             magX = magnet?.getOrNull(0),
             magY = magnet?.getOrNull(1),
             magZ = magnet?.getOrNull(2),
             magnetAccuracy = magnet?.let { magnetAccuracy },
-            magnetAccuracyLabel = magnet?.let { accuracyToLabel(magnetAccuracy) },
+            magnetAccuracyLabel = magnet?.let { sensorAccuracyLabel(magnetAccuracy) },
 
             pressureHpa = pressure,
             pressureAccuracy = pressure?.let { pressureAccuracy },
-            pressureAccuracyLabel = pressure?.let { accuracyToLabel(pressureAccuracy) },
+            pressureAccuracyLabel = pressure?.let { sensorAccuracyLabel(pressureAccuracy) },
 
-            headingDeg = heading
+            headingDeg = headingDegrees
         )
 
         serviceScope.launch {
@@ -1161,7 +1125,7 @@ class TelemetryForegroundService : Service(), SensorEventListener {
             put("sensorType", sensor.type)
             put("sensorName", sensor.name)
             put("accuracy", accuracy)
-            put("accuracyLabel", accuracyToLabel(accuracy))
+            put("accuracyLabel", sensorAccuracyLabel(accuracy))
             if (sensor.type == Sensor.TYPE_PRESSURE) {
                 pressureHpa?.let {
                     put("currentPressureHpa", it)
@@ -1174,42 +1138,8 @@ class TelemetryForegroundService : Service(), SensorEventListener {
             event = "sensor_accuracy_changed",
             timestamp = gpsClock.nowMs(),
             payload = payload.toString(),
-
             charging = isCurrentlyCharging,
-            powerSource = currentPowerSource,
-
-            latitude = null,
-            longitude = null,
-            altitude = null,
-            speedMps = null,
-            speedKmh = null,
-            bearing = null,
-            accuracyM = null,
-            provider = null,
-
-            accelX = null,
-            accelY = null,
-            accelZ = null,
-            accelAccuracy = null,
-            accelAccuracyLabel = null,
-
-            gyroX = null,
-            gyroY = null,
-            gyroZ = null,
-            gyroAccuracy = null,
-            gyroAccuracyLabel = null,
-
-            magX = null,
-            magY = null,
-            magZ = null,
-            magnetAccuracy = null,
-            magnetAccuracyLabel = null,
-
-            pressureHpa = null,
-            pressureAccuracy = null,
-            pressureAccuracyLabel = null,
-
-            headingDeg = null
+            powerSource = currentPowerSource
         )
 
         serviceScope.launch {
@@ -1236,44 +1166,8 @@ class TelemetryForegroundService : Service(), SensorEventListener {
             event = eventName,
             timestamp = gpsClock.nowMs(),
             payload = payload.toString(),
-
             charging = isCurrentlyCharging,
-            powerSource = currentPowerSource,
-
-            // no GPS for event
-            latitude = null,
-            longitude = null,
-            altitude = null,
-            speedMps = null,
-            speedKmh = null,
-            bearing = null,
-            accuracyM = null,
-            provider = null,
-
-            // no sensors
-            accelX = null,
-            accelY = null,
-            accelZ = null,
-            accelAccuracy = null,
-            accelAccuracyLabel = null,
-
-            gyroX = null,
-            gyroY = null,
-            gyroZ = null,
-            gyroAccuracy = null,
-            gyroAccuracyLabel = null,
-
-            magX = null,
-            magY = null,
-            magZ = null,
-            magnetAccuracy = null,
-            magnetAccuracyLabel = null,
-
-            pressureHpa = null,
-            pressureAccuracy = null,
-            pressureAccuracyLabel = null,
-
-            headingDeg = null
+            powerSource = currentPowerSource
         )
 
         /*
@@ -1286,106 +1180,17 @@ class TelemetryForegroundService : Service(), SensorEventListener {
         serviceScope.launch(if (detached) NonCancellable else EmptyCoroutineContext) {
             telemetryDao.insert(sample)
         }
-
     }
 
-    private fun accuracyToLabel(accuracy: Int): String {
-        return when (accuracy) {
-            SensorManager.SENSOR_STATUS_UNRELIABLE -> "UNRELIABLE"
-            SensorManager.SENSOR_STATUS_ACCURACY_LOW -> "LOW"
-            SensorManager.SENSOR_STATUS_ACCURACY_MEDIUM -> "MEDIUM"
-            SensorManager.SENSOR_STATUS_ACCURACY_HIGH -> "HIGH"
-            else -> "UNKNOWN"
-        }
-    }
-
-    // ----------------------------------------------------
-    // Notification
-    // ----------------------------------------------------
-
-    private fun createNotificationChannel() {
-
-        val channel = NotificationChannel(
-            CHANNEL_ID, "Telemetry Logger", NotificationManager.IMPORTANCE_LOW
-        ).apply {
-            description = "Logs location and sensor data while driving"
-        }
-
-        val manager = getSystemService(NotificationManager::class.java)
-        manager.createNotificationChannel(channel)
-
-    }
-
-    private fun buildNotification(
-        status: String,
-        gpsPart: String?,
-        powerPart: String?,
-        headingPart: String?
-    ): Notification {
-        return NotificationCompat.Builder(this, CHANNEL_ID).setContentTitle("Car telemetry logger")
-            .setContentText("$status $gpsPart")
-            .setStyle(
-                NotificationCompat.BigTextStyle().bigText(
-                    """
-                    $status
-                    $gpsPart
-                    $powerPart
-                    $headingPart
-                    """.trimIndent()
-                )
-            )
-            .setSmallIcon(android.R.drawable.ic_menu_mylocation)
-            .setOngoing(true)
-            .setOnlyAlertOnce(true).build()
-    }
-
-    private fun updateNotification() {
-        // Same staleness rule as a sample: a fix this old is not a position.
-        val loc = latestLocation?.takeIf { it.ageMs() <= MAX_LOCATION_AGE_MS }
-
-        val gpsPart = if (loc == null) {
-            "GPS: waiting"
-        } else {
-            val speedKmh = (loc.speed * MPS_TO_KMH).roundToInt()
-            "GPS: ${"%.5f".format(Locale.US, loc.latitude)}, " + "${
-                "%.5f".format(
-                    Locale.US,
-                    loc.longitude
-                )
-            } | $speedKmh km/h"
-        }
-
-        val powerPart = if (isCurrentlyCharging) {
-            "Power: $currentPowerSource"
-        } else {
-            "Power: unplugged"
-        }
-
-        val headingPart = headingDegrees?.let {
-            "Heading: ${it.roundToInt()}°"
-        } ?: "Heading: n/a"
-
-        updateNotificationText(gpsPart, powerPart, headingPart)
-    }
-
-    private fun updateNotificationText(gpsPart: String, powerPart: String, headingPart: String) {
-        val base = when (_loggerState.value) {
-            LoggerState.RECORDING -> "Logging active"
-            LoggerState.ARMED -> "Waiting for movement"
-            LoggerState.OFF -> "Stopped"
-        }
-
-        // Being cut back looks identical to being broken unless it is said.
-        val status = if (powerTier == PowerTier.FULL) {
-            base
-        } else {
-            "$base (battery saving: ${powerTier.name.lowercase().replace('_', ' ')})"
-        }
-
-        val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
-        manager.notify(
-            NOTIFICATION_ID,
-            buildNotification(status, gpsPart, powerPart, headingPart)
+    private fun updateNotification() = loggerNotification.show(
+        LoggerNotification.Content(
+            loggerState = _loggerState.value,
+            powerTier = powerTier,
+            // Same staleness rule as a sample: a fix this old is not a position.
+            location = latestLocation?.takeIf { it.ageMs() <= MAX_LOCATION_AGE_MS },
+            charging = isCurrentlyCharging,
+            powerSource = currentPowerSource,
+            headingDegrees = heading.degrees
         )
-    }
+    )
 }

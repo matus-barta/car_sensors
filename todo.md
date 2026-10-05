@@ -78,12 +78,6 @@ step, and there are three states. The tokens are still worth adding so the badge
 has something to name; wiring the map to them is the part to leave until there
 is a fourth state or somebody actually changes a colour.
 
-The Android app has a plainer one: `SectionDivider` in `CarSensorsScreen.kt`
-draws `Color.Gray.copy(alpha = 0.3f)`, which is the "stock colour with an
-opacity to approximate a shade" case the rule in `.claude/CLAUDE.md` names.
-`MaterialTheme.colorScheme.outlineVariant` is what a divider is meant to use and
-needs no new token, so that one is a straight substitution.
-
 ### Expand the vehicle info card, grouped into tabs
 
 `vehicle-info-card.svelte` shows name, id, status, last seen, coordinates,
@@ -127,6 +121,61 @@ values a schema would - so it is worth doing for consistency, one validation
 approach for data that crosses a boundary rather than two, not because
 anything is broken today.
 
+### Show on the vehicle card what the phone is not allowed to do
+
+The phone reports the settings that decide whether it can work unattended, and
+nothing reads them yet. Without background location ("Allow all the time"), a
+logger restarted after a reboot records rows with no position in them; without
+notifications, the warning that uploads have stopped is never seen; with its
+battery use restricted, it may not run at all. The app's own screen says all of
+it, but a phone in a car is the one whose screen nobody opens, and the web
+application is where somebody actually looks.
+
+They arrive as event rows in `telemetry_samples`, under the same keys in the
+JSON held in `payload` (a TEXT column):
+
+- `service_started`, written at every start of the logger;
+- `access_changed`, written when any of them changes while the logger runs.
+
+```json
+{
+  "locationAccess": "WHILE_IN_USE",
+  "preciseLocation": true,
+  "notificationsEnabled": false,
+  "batteryUnrestricted": false,
+  "backgroundRestricted": false,
+  "dataSaverRestricted": false
+}
+```
+
+`service_started` also carries `previousExitReason`, `previousExitDescription`
+and `previousExitAt` from Android 11: how the process before it ended.
+`USER_REQUESTED` there means somebody stopped the app from Active apps or with
+Force stop, which nothing restarts - worth saying on the card in its own right,
+since it is the one reason a logger stops for good without anything being
+broken. Of the others, `backgroundRestricted` is the most serious: from Android
+13 a restricted app may not run the logger at all.
+
+`locationAccess` is `NONE`, `WHILE_IN_USE` or `ALWAYS`. Android 9 has no
+separate background permission and reports `ALWAYS` whenever location is
+allowed at all, so only newer phones ever show the middle value.
+
+The newest of those two events for a device is its current state. That is one
+more lateral join beside the two `getVehicleSummaries()` already makes, ordered
+by `timestamp` and limited to one, with the payload cast to `jsonb` to pick the
+fields out. Rows from phones older than this reporting carry none of the keys,
+which should read as unknown rather than as fine.
+
+On the card it wants to be a remedy rather than a status, worded the way the
+app's own warnings are (`ui/SetupWarnings.kt` has them): `WHILE_IN_USE` as
+"Location is allowed only while the app is open - after a reboot it records
+without GPS", notifications off as "the phone cannot warn about failed
+uploads", and so on. Silent when all is well.
+
+What it cannot show: a phone whose uploads have stopped never sends the row
+that would say why. That case is already visible as the last-seen time going
+stale.
+
 ## Continuous integration
 
 ### Make the schema check name the database it checked
@@ -161,7 +210,6 @@ migrations on disk, so a database that is behind says so once at boot rather
 than once per failed query - that catches a correct environment pointing at an
 unmigrated database, which fails in exactly the same way and which the shared
 file does nothing about.
-
 
 ### Extract a setup-rust action once a second Rust job exists
 
@@ -355,7 +403,6 @@ listens, so something would have to be configured for it to send - probably an
 together with the name if it is done at all, since both change the same payload
 and the same screen.
 
-
 ### Keep every sample with the identity it was recorded under
 
 `TelemetrySampleEntity` has no device column. The identity is only ever the
@@ -371,11 +418,11 @@ while its credential is withdrawn, and pairing already asks what to do with
 rows recorded before an identity existed - but that question can only be
 answered one way at a time, because the phone holds a single pairing. Draining
 one car's backlog with its own credential while recording for another still
-needs the table below. A local `pairings` table - identity, token, when it was paired, a
-label - and a nullable `pairing_id` on `telemetry_samples` pointing at it. An
-integer rather than the UUID itself, because at two rows a second a
-thirty-six-character string would cost several megabytes a day to repeat the
-same fact.
+needs somewhere to keep both: a local `pairings` table - identity, token, when
+it was paired, a label - and a nullable `pairing_id` on `telemetry_samples`
+pointing at it. An integer rather than the UUID itself, because at two rows a
+second a thirty-six-character string would cost several megabytes a day to
+repeat the same fact.
 
 Keeping the old *token*, and not merely the old identity, is what stops "do not
 lose the data" and "do not misattribute the data" being a choice between two
@@ -608,13 +655,15 @@ careless instance would take the rest down and nobody could tell themselves
 apart. So the header should name the software and its version, and carry a
 contact belonging to whoever runs that copy:
 
-    car-sensors-geocoder/0.1.0 (+https://example.org/contact)
+```text
+car-sensors-geocoder/0.1.0 (+https://example.org/contact)
+```
 
 The mechanism matters more than the format: the contact should be required
 configuration that the service refuses to start without, rather than a default
 that quietly works, because a default that works is a default nobody replaces.
-The convention for redistributable software talking to Nominatim is exactly this
-- force the operator to set their own, and point them at the policy - and the
+The convention for redistributable software talking to Nominatim is exactly
+this - force the operator to set their own, and point them at the policy - and the
 reward is that a contactable operator receives an email where an anonymous one
 receives a block. It only helps if the address is theirs. The policy is explicit
 that a User-Agent is required and silent on whether it should distinguish
@@ -629,8 +678,8 @@ numbers, only a request to be fair. Keeping the provider configurable makes that
 a later decision rather than a rewrite.
 
 On the cache itself: there is no established project worth depending on. The one
-purpose-built thing that exists has no users to speak of, and the generic answer
-- nginx `proxy_cache` with `limit_req`, or Varnish - only caches identical URLs,
+purpose-built thing that exists has no users to speak of, and the generic
+answer - nginx `proxy_cache` with `limit_req`, or Varnish - only caches identical URLs,
 which reverse geocoding rarely produces. Since the results are being stored
 anyway, for the structured components trips keep, the cache is that table rather
 than a component in front of it. Matching on proximity rather than exact
@@ -644,8 +693,8 @@ requirement.
 
 Release builds refuse `http://` outright, which was the right instinct and the
 wrong rule. The ordinary way this is used is a phone on the same network as the
-server - parked on the drive within reach of the house Wi-Fi, or carried indoors
-- uploading to a machine that has no certificate and no name on the public
+server - parked on the drive within reach of the house Wi-Fi, or carried
+indoors - uploading to a machine that has no certificate and no name on the public
 internet. Demanding HTTPS there asks someone to run a certificate authority for
 a server only they can reach.
 
@@ -679,6 +728,14 @@ the user chooses at runtime. So the platform's own backstop has to come off and
 the rule has to live in `ServerUrl` instead. That is a real loss of a guarantee
 and worth being deliberate about: what stops a credential going out in clear is
 then the app's own arithmetic and nothing beneath it.
+
+Whichever way it goes, the switch should not be `usesCleartextTraffic`. Android
+17 announced a plan to deprecate the manifest attribute and points apps at a
+network security configuration instead, where `<base-config
+cleartextTrafficPermitted="true">` is the same app-wide switch in its supported
+form. The debug manifest's `android:usesCleartextTraffic="true"` wants moving
+to a debug-only `network_security_config.xml` at the same time, before the
+attribute stops being honoured rather than after.
 
 The precondition for this has now been met. It was worth waiting for the
 per-device token, because what used to travel over cleartext was the device id,
@@ -726,47 +783,71 @@ within a day; one that is parked for a month hears nothing until it next
 records. That is the right trade for a warning about data still being
 collected, but a warning about storage pressure may not want to inherit it.
 
-### Work out why the API 28 managed device will not set itself up
+### Confirm the API 28 managed device sets itself up on a runner
 
-The `api28` device is declared and grouped with `api30atd`, but running it on a
-runner fails inside AGP's own `ManagedDeviceInstrumentationTestSetupTask` with
-"Cannot query the value of this property because it has no value available".
-Only the ATD device runs in CI as a result, so the level this app actually
-targets is covered locally - the handset is API 28 - and not automatically,
-which was the whole point of adding it.
+The `api28` device once failed on a runner inside AGP's own
+`ManagedDeviceInstrumentationTestSetupTask`, with "Cannot query the value of
+this property because it has no value available", after its system image had
+installed. That was AGP 9.4.0, running the `allApis` group (`api30atd` and
+`api28`), and it could not be tried anywhere else because the workstation was
+arm64.
 
-Two things about the failure are worth keeping, because they narrow it. The
-system image installs perfectly well first, so resolving `systemImageSource =
-"aosp"` to `system-images;android-28;default;x86` is not the problem; whatever
-is unset is needed after that, while the device itself is being created. And
-AGP reports that the device "does not specify a testedAbi" when
-`testedAbi = "x86"` is plainly set on it and the same setting on `api30atd`
-silenced the identical warning there. Something is not reading that device's
-configuration, and the missing property is likely the same fault seen from the
-other end.
+It no longer reproduces off a runner. On an x86_64 workstation with AGP 9.4.1,
+`api28` sets itself up and passes every instrumented test, both alone and
+grouped with `api33`. So it is back in CI, in the post-merge job, on a runner of
+its own - its first run there either clears this entry or produces the stack
+trace that names the property. The workflow can also be started by hand from
+the Actions tab, so that run need not wait for a merge.
 
-Nothing was found searching for the combination, so this is not a well-trodden
-path. Things to try, cheapest first: `systemImageSource = "google"` instead of
-`"aosp"`, in case the `default` image family is what is unhandled; a device
-profile other than `Pixel 2`; and API 29, which would still be below the ATD
-floor of 30 while being a more travelled configuration. The job now runs with
-`--stacktrace`, so the next failure should name the property outright.
+One thing that looked like a clue was not. AGP says the device "does not
+specify a testedAbi" although it does - but it says the same of every device,
+`api37` included, whatever `testedAbi` is set to, and falls back to `x86` or
+`x86_64` by itself. It ignores the setting rather than failing on it, which is
+an AGP quirk and not this fault.
 
-This cannot be reproduced on the workstation - an arm64 machine cannot run
-these x86 images - so each attempt costs a CI run, which is the main reason to
-have a theory before trying one.
+If it does fail again, what remains different from the workstation is the
+runner's environment and the ATD device sharing a run, since the post-merge
+job runs each device separately. The ideas from before still apply, cheapest
+first: `systemImageSource = "google"`, a device profile other than `Pixel 2`,
+and API 29.
+
+### Test what newer Android does to a logger nobody watches
+
+The restricted battery state, approximate location, Data Saver and a stop from
+Active apps have each been tried by hand on an API 33 emulator, but nothing
+checks them automatically, and several other things have not been tried at all.
+In rough order of how quietly they could end logging:
+
+- **A real reboot.** `TelemetryRecordingTest` starts the logger from the
+  background the way `BootReceiver` does, but nothing reboots a device and
+  watches `BOOT_COMPLETED` arrive. An emulator can: `adb reboot`, with fixes fed
+  through `adb emu geo fix`, once with "Allow all the time" and once without.
+- **Doze.** `adb shell dumpsys deviceidle force-idle` while recording, then
+  whether samples keep arriving, optimized and exempt.
+- **Upload jobs under the Android 16 quota.** A backlog large enough to take a
+  while, uploading on the API 37 device while the logger runs, recording
+  `WorkInfo.getStopReason()` - the uploader does not record it today, which is
+  worth doing anyway.
+- **Notifications switched off before Android 13**, the one path to
+  `access_changed` not yet seen to work.
+- **A real handset from an aggressive manufacturer.** Samsung or Xiaomi stop
+  apps in ways no emulator reproduces.
 
 ### Split the foreground service up
 
-detekt records four findings in its baseline rather than at the current
-threshold, and three of them are the same observation: `TelemetryForegroundService`
+detekt records three findings in its baseline rather than at the current
+threshold, and all three are the same observation: `TelemetryForegroundService`
 is a large class, with too many functions, containing one long method. They are
 baselined rather than configured away because they are true.
 
 The service does several separable jobs. It owns the armed and recording state
 machine; it registers and reads sensors; it listens to power and decides which
 tier of work the battery still justifies; it assembles and writes samples; and
-it maintains a notification. The state machine in particular wants lifting out
+it decides when to upload and when to push a position live. The notification,
+the heading and the sensor labels have already gone to classes of their own -
+`LoggerNotification`, `HeadingTracker`, `sensorAccuracyLabel` - which took it
+from 1,437 lines to about 1,190 but left it over both thresholds, at 29
+functions against 20. The state machine in particular wants lifting out
 into something that takes charge, battery level, whether movement was confirmed
 and how long ago as arguments and returns the state that should follow - which
 would also make it decidable in a plain JVM test, where today it needs a device.
@@ -795,58 +876,31 @@ than puzzled over.
 ### Declare a foreground service type before raising the target SDK
 
 `targetSdk` is 28, and that is what keeps several things simple: a foreground
-service needs no declared type, background location needs no separate
-permission, and cleartext is a manifest attribute rather than a negotiation.
+service needs no declared type, and cleartext is a manifest attribute rather
+than a negotiation. Background location is not among them - Android 11 enforces
+that whatever the target, so the app already asks for it separately.
 Staying off the Play Store is what makes it tenable, since Play enforces a
 minimum target version and nothing else does.
 
-Should the target ever be raised - a newer handset, or a Play listing after all
-- the service will need `android:foregroundServiceType="location"` in the
+Should the target ever be raised - a newer handset, or a Play listing after
+all - the service will need `android:foregroundServiceType="location"` in the
 manifest and the `FOREGROUND_SERVICE_LOCATION` permission, or on API 34 and
-above it will not be allowed to start at all. API 29 also splits background
-location into a permission of its own, which changes what has to be asked for
-and when. None of this is work today; all of it is work on the day that number
-changes, and it is better known in advance than discovered by a service that
-refuses to start.
+above it will not be allowed to start at all.
+
+App hibernation arrives with it too. From a target of Android 11 (API 30) up,
+an app nobody opens for a few months has its permissions revoked - and from
+Android 12 its jobs and alarms stopped - and a running foreground service does
+not count as being used. A logger in a car is exactly an app nobody opens, so
+raising the target means asking the user to exempt it, through
+`IntentCompat.createManageUnusedAppRestrictionsIntent`, and saying on the screen
+when it is not. At 28 none of this applies, which is one more thing the old
+target is quietly doing.
+
+None of this is work today; all of it is work on the day that number changes,
+and it is better known in advance than discovered by a service that refuses to
+start.
 
 ## Distribution
-
-### The web application image size is settled, not open
-
-Recorded so nobody reopens it. The image is about 355 MB, of which roughly
-206 MB is `node_modules` for five runtime dependencies, and that is being left
-alone deliberately.
-
-What it costs to leave: a little pull time on the machine that already runs
-Postgres, Valkey, pgAdmin and `ingest`, and some registry storage. That is the
-whole bill. There is no scale here at which those megabytes matter.
-
-What was tried, so it is not tried again. `pnpm install --prod` in place of
-pruning a build stage did help and is what the Dockerfile does. Disabling
-pnpm's automatic peer installation is refused outright, because pnpm records
-the setting in the lockfile and rejects a frozen install that disagrees -
-getting past it means regenerating the lockfile for development and CI too.
-`pnpm deploy --prod` needs a workspace with named projects, and
-`www/pnpm-workspace.yaml` exists only to carry `allowBuilds`.
-
-Most of what is left is not ours to remove. `better-auth` is a runtime
-dependency declaring `@sveltejs/kit`, `vite` and `vitest` as peers, and pnpm
-installs peers, so `typescript`, a `@rolldown` binding and `playwright-core`
-arrive with it - around 55 MB the server never opens. `pnpm why --prod` shows
-the chain.
-
-The one thing that would genuinely work is bundling the server's dependencies
-rather than leaving them external, through `ssr.noExternal`, so that
-`node_modules` need not ship at all. It is not worth it. That moves failures to
-run time on paths no test covers - `better-auth` loads integrations lazily - and
-buys disk on a machine that has plenty. Should this ever be revisited, it wants
-a reason better than the size.
-
-Worth separating from all of the above: moving `maplibre-gl` to
-`devDependencies` was not an optimisation. The server bundle never referenced
-it, because the map imports it dynamically in the browser and the client bundle
-carries its own copy; it was simply in the wrong list. The thirty megabytes
-were a side effect.
 
 ### Publish signed builds to GitHub Releases for Obtainium
 
@@ -863,9 +917,9 @@ the way "Ingest - build" already calls "Ingest - validation" so that an image is
 only built once its checks have passed. Both already expose `workflow_call` for
 it. Calling "Android - migration tests" matters most: a release is the last
 point at which an unusual failure can be caught before it reaches a phone, and
-it is the only place where waiting for the slower API 28 device costs nobody
-anything, because nobody is waiting on a release the way they wait on a pull
-request.
+its post-merge job is where the slower devices - API 28, the level the app
+targets, and API 33 and 37 - run, which costs a release nothing because nobody
+is waiting on one the way they wait on a pull request.
 
 One prerequisite regardless: the release build type has no signing configuration
 and everything installed so far is debug-signed. Moving to a release key means
@@ -873,6 +927,12 @@ the first such install cannot upgrade what is there and has to replace it, which
 deletes the database - so the backlog has to be uploaded before that switch, not
 after. The keystore then lives as a CI secret, and losing it means no existing
 install can ever be upgraded again.
+
+Debug builds have their own id now, `com.anonymus09.carsensors.debug`, so they
+install beside the app rather than over it. The phones that already have it
+therefore hold a debug-signed build under the release id, and that install is
+the one the switch replaces - nothing a debug build does will update or remove
+it in the meantime.
 
 Worth noting that staying off Play is what keeps `targetSdk = 28` tenable at
 all, since Play enforces a minimum target version and nothing else does. That is
