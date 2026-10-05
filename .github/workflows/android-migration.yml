@@ -58,7 +58,7 @@ jobs:
   migration:
     name: Run the migration tests on an emulator
     # Pinned rather than ubuntu-latest, which becomes 26.04 on 2026-10-19 - see
-    # tasks/move-the-workflows-to-ubuntu-26-04.md.
+    # docs/tasks/move-the-workflows-to-ubuntu-26-04.md.
     runs-on: ubuntu-24.04
 
     defaults:
@@ -125,7 +125,7 @@ jobs:
     name: Run the instrumented tests on ${{ matrix.device }}
     if: github.event_name != 'pull_request'
     # Pinned rather than ubuntu-latest, which becomes 26.04 on 2026-10-19 - see
-    # tasks/move-the-workflows-to-ubuntu-26-04.md.
+    # docs/tasks/move-the-workflows-to-ubuntu-26-04.md.
     runs-on: ubuntu-24.04
 
     strategy:

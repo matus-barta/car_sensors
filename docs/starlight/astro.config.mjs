@@ -64,6 +64,11 @@ export default defineConfig({
 						},
 						...openAPISidebarGroups
 					]
+				},
+				{
+					label: 'Open work',
+					collapsed: true,
+					items: [{ label: 'Tasks', slug: 'tasks' }, { autogenerate: { directory: 'tasks' } }]
 				}
 			]
 		})

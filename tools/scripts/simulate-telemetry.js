@@ -4,7 +4,7 @@
  * tracking in `www` can be observed without a real device.
  *
  * Out of date: this predates device tokens, and `ingest` refuses every upload it
- * makes - see `tasks/update-the-telemetry-simulator-for-token-authentication.md`.
+ * makes - see `docs/tasks/update-the-telemetry-simulator-for-token-authentication.md`.
  *
  * `X-Device-ID` is both the device's name and its credential: `ingest` only accepts uploads
  * from a device already present in `known_devices`, and there is no endpoint

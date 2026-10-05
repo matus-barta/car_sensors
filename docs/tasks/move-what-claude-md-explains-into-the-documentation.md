@@ -8,7 +8,7 @@ depends_on: []
 `.claude/CLAUDE.md` has grown to 148 lines across seven sections - what this
 is, the migration rule, commands, environment, `www` architecture, testing and
 conventions - and a good part of it is explanation rather than instruction. Its
-opening section restates [`docs/architecture.md`](../docs/architecture.md)
+opening section restates [`docs/architecture.md`](../architecture.md)
 almost word for word: one database on purpose, data moving through it rather
 than through calls, one writer per table. Two copies of the same reasoning drift
 apart, and only one of them is read by people.

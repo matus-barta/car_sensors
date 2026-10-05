@@ -1,4 +1,6 @@
-# Tasks
+---
+title: "Tasks"
+---
 
 Work that is understood but not scheduled yet, one file per task. A task that
 has been done is deleted, not marked done: this directory only ever holds what
@@ -33,6 +35,6 @@ closing paragraph that starts **Related.**
 
 ## Referring to tasks
 
-By path, from anywhere in the repository: `tasks/rate-limit-the-upload-endpoint.md`.
+By path, from anywhere in the repository: `docs/tasks/rate-limit-the-upload-endpoint.md`.
 Inside a task, as a relative link: `[Rate limit the upload endpoint](rate-limit-the-upload-endpoint.md)`.
 Never as "the entry below" - the files have no order.

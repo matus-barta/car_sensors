@@ -134,7 +134,7 @@
       "groupName": "docs site dependencies"
     },
     {
-      "description": "Mermaid stays on 11: astro-mermaid supports only 10 and 11, and GitHub renders the same Markdown with 11, so 12's new default layout and look would make the site disagree with GitHub. See tasks/move-the-docs-site-to-mermaid-12.md for when that changes.",
+      "description": "Mermaid stays on 11: astro-mermaid supports only 10 and 11, and GitHub renders the same Markdown with 11, so 12's new default layout and look would make the site disagree with GitHub. See docs/tasks/move-the-docs-site-to-mermaid-12.md for when that changes.",
       "matchFileNames": [
         "docs/starlight/package.json"
       ],

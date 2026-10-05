@@ -39,7 +39,7 @@ jobs:
   schema:
     name: Check the generated schema documentation
     # Pinned rather than ubuntu-latest, which becomes 26.04 on 2026-10-19 - see
-    # tasks/move-the-workflows-to-ubuntu-26-04.md.
+    # docs/tasks/move-the-workflows-to-ubuntu-26-04.md.
     runs-on: ubuntu-24.04
 
     services:
@@ -115,7 +115,7 @@ jobs:
   links:
     name: Check links between files
     # Pinned rather than ubuntu-latest, which becomes 26.04 on 2026-10-19 - see
-    # tasks/move-the-workflows-to-ubuntu-26-04.md.
+    # docs/tasks/move-the-workflows-to-ubuntu-26-04.md.
     runs-on: ubuntu-24.04
 
     steps:
@@ -134,7 +134,7 @@ jobs:
   site:
     name: Build the documentation site
     # Pinned rather than ubuntu-latest, which becomes 26.04 on 2026-10-19 - see
-    # tasks/move-the-workflows-to-ubuntu-26-04.md.
+    # docs/tasks/move-the-workflows-to-ubuntu-26-04.md.
     runs-on: ubuntu-24.04
 
     steps:

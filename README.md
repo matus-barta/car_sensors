@@ -102,10 +102,9 @@ table before the migration that changed it had run.
 ```text
 android/    Android application
 db/         Authoritative PostgreSQL migrations
-docs/       Topic documentation
+docs/       Documentation, its site, and open work in docs/tasks/
 ingest/     Rust telemetry ingestion service (see ingest/README.md)
 shared/     Shared Rust crate
-tasks/      Open work, one file per task (see tasks/README.md)
 tools/      Development and synchronization utilities
 www/        SvelteKit web application
 ```

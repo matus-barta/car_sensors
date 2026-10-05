@@ -27,3 +27,7 @@ and adds search.
 ## Reference
 
 - [Database schema](schema/README.md) - every table, column and relation, generated from the migrations
+
+## Open work
+
+- [Tasks](tasks/README.md) - work that is understood but not scheduled yet, one page per task

@@ -36,7 +36,7 @@ A generator whose output is compared byte for byte is pinned to an exact version
 
 ## Runners are pinned
 
-Every job runs on `ubuntu-24.04`, not `ubuntu-latest`. A new image arriving unannounced is a failure that looks like a code change; pinned, it arrives when somebody decides it should. Moving to the next one is [a task of its own](../tasks/move-the-workflows-to-ubuntu-26-04.md).
+Every job runs on `ubuntu-24.04`, not `ubuntu-latest`. A new image arriving unannounced is a failure that looks like a code change; pinned, it arrives when somebody decides it should. Moving to the next one is [a task of its own](tasks/move-the-workflows-to-ubuntu-26-04.md).
 
 ## Shared setup is a composite action, one purpose each
 
@@ -53,5 +53,5 @@ Steps that several jobs repeat live in `.github/actions/`:
 Three rules follow from how they have been used:
 
 - **Extract at the second user, not before.** A composite action used by one job is indirection for its own sake. The moment a second job needs the same steps, they move into an action.
-- **One purpose per action.** Two setups that look alike but want different things stay apart. `setup-sqlx` installs a toolchain only to build the CLI - no components, no workspace cache. A job that builds the Rust workspace wants `clippy`, `rustfmt` and `Swatinem/rust-cache`, so when a second such job appears it gets a `setup-rust` of its own (see [the task](../tasks/extract-a-setup-rust-action-once-a-second-rust-job-exists.md)) rather than flags added to `setup-sqlx` that select between unrelated behaviours.
+- **One purpose per action.** Two setups that look alike but want different things stay apart. `setup-sqlx` installs a toolchain only to build the CLI - no components, no workspace cache. A job that builds the Rust workspace wants `clippy`, `rustfmt` and `Swatinem/rust-cache`, so when a second such job appears it gets a `setup-rust` of its own (see [the task](tasks/extract-a-setup-rust-action-once-a-second-rust-job-exists.md)) rather than flags added to `setup-sqlx` that select between unrelated behaviours.
 - **Services cannot be shared this way.** `services` is a job-level key, so a Postgres or Valkey container cannot live in a composite action. Each job declares its own; sharing that setup is what a reusable workflow is for.
