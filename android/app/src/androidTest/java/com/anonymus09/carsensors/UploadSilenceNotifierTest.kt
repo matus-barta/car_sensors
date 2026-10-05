@@ -81,7 +81,15 @@ class UploadSilenceNotifierTest {
             )
         }
 
+        /*
+         * Cancelling crosses the same binder as posting, so the previous test's
+         * warning can still be in the shade when this one posts its own - and
+         * awaitPosted, which takes the first notification it finds, would then
+         * return that one. Waiting for an empty shade means whatever appears
+         * next is this test's.
+         */
         notifier.clear()
+        assertNull("the previous test's warning should have gone", awaitCleared())
     }
 
     @After

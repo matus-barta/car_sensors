@@ -38,7 +38,9 @@ concurrency:
 jobs:
   validate:
     name: Validate WWW project and database schemas
-    runs-on: ubuntu-latest
+    # Pinned rather than ubuntu-latest, which becomes 26.04 on 2026-10-19 - see
+    # "Move the workflows to Ubuntu 26.04" in todo.md.
+    runs-on: ubuntu-24.04
 
     services:
       postgres:
@@ -155,7 +157,9 @@ jobs:
 
   e2e:
     name: Run end-to-end tests
-    runs-on: ubuntu-latest
+    # Pinned rather than ubuntu-latest, which becomes 26.04 on 2026-10-19 - see
+    # "Move the workflows to Ubuntu 26.04" in todo.md.
+    runs-on: ubuntu-24.04
 
     services:
       postgres:

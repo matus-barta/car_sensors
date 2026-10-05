@@ -33,7 +33,9 @@ concurrency:
 jobs:
   submit:
     name: Submit the Android dependency graph
-    runs-on: ubuntu-latest
+    # Pinned rather than ubuntu-latest, which becomes 26.04 on 2026-10-19 - see
+    # "Move the workflows to Ubuntu 26.04" in todo.md.
+    runs-on: ubuntu-24.04
 
     permissions:
       # Submitting a dependency graph is a write to the repository's

@@ -36,7 +36,9 @@ concurrency:
 jobs:
   validate:
     name: Validate the Android app
-    runs-on: ubuntu-latest
+    # Pinned rather than ubuntu-latest, which becomes 26.04 on 2026-10-19 - see
+    # "Move the workflows to Ubuntu 26.04" in todo.md.
+    runs-on: ubuntu-24.04
 
     defaults:
       run:
@@ -103,8 +105,15 @@ jobs:
       # address field accepts http, so a release-only break would otherwise go
       # unnoticed until someone tried to publish one. Release is unsigned,
       # which needs no key and still exercises the manifest merge and dexing.
-      - name: Assemble both variants
-        run: ./gradlew assembleDebug assembleRelease
+      #
+      # The instrumented test APK too, for two reasons. The tests only run on
+      # an emulator, in "Android - migration tests", which a pull request
+      # triggers only for some paths - so without this, a change that stops
+      # them compiling could pass here. And this is the one Android job that
+      # saves the Gradle cache: the emulator jobs only restore it, so it has to
+      # hold what they need.
+      - name: Assemble both variants and the instrumented tests
+        run: ./gradlew assembleDebug assembleRelease assembleDebugAndroidTest
 
       - name: Upload the test report
         if: failure()

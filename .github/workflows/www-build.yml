@@ -31,7 +31,9 @@ jobs:
       contents: read
       packages: write
 
-    runs-on: ubuntu-latest
+    # Pinned rather than ubuntu-latest, which becomes 26.04 on 2026-10-19 - see
+    # "Move the workflows to Ubuntu 26.04" in todo.md.
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout

@@ -53,7 +53,9 @@ concurrency:
 jobs:
   migration:
     name: Run the migration tests on an emulator
-    runs-on: ubuntu-latest
+    # Pinned rather than ubuntu-latest, which becomes 26.04 on 2026-10-19 - see
+    # "Move the workflows to Ubuntu 26.04" in todo.md.
+    runs-on: ubuntu-24.04
 
     defaults:
       run:
@@ -69,8 +71,17 @@ jobs:
           distribution: temurin
           java-version: "21"
 
+      # Read-only: this job restores the Gradle cache but never saves one. With
+      # no entry of its own, setup-gradle falls back to the newest entry on the
+      # runner's OS, which on main is the validation job's - and that job
+      # builds the instrumented test APK precisely so its entry already holds
+      # what this one needs. Saving here as well wrote a fresh third of a
+      # gigabyte on every dependency change, and the repository's cache was
+      # over its limit, evicting other workflows' caches to make room.
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-read-only: true
 
       # The runners ship the SDK with most licences accepted, but not the one
       # for the ATD system image, and Gradle cannot install a package whose
@@ -85,31 +96,18 @@ jobs:
         run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
 
       # The runners ship no emulator. Gradle never installs one by name: it
-      # arrives only as a dependency of a system image as that image is
-      # installed, so it is missing whenever the image comes from the cache
-      # below, and always for API 28, whose image declares no such dependency.
-      # AGP then fails setting the device up, with "Cannot query the value of
-      # this property because it has no value available" - nothing that names
-      # the emulator.
+      # arrives only as a dependency of a system image, and API 28's image
+      # declares no such dependency. AGP then fails setting the device up, with
+      # "Cannot query the value of this property because it has no value
+      # available" - nothing that names the emulator.
+      #
+      # Neither the emulator nor the system image is cached. A cache step here
+      # never saved anything - its paths did not exist on the runner - and a
+      # working one would hold up to 2 GB per image in a repository cache that
+      # is already full. Downloading takes under a minute, even for API 37's.
       - name: Install the Android emulator
         working-directory: .
         run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" emulator'
-
-      # The system image is a few hundred megabytes and the device built from
-      # it is rebuilt from scratch otherwise, which is most of what this job
-      # would spend its time on. Keyed on the build file because that is where
-      # the device is declared, so changing the API level or the image fetches
-      # a fresh one rather than reusing the wrong one.
-      - name: Cache the managed device and its system image
-        uses: actions/cache@v6
-        with:
-          path: |
-            ~/.android/avd
-            ~/.android/gradle-managed-device*
-            ${{ env.ANDROID_HOME }}/system-images
-          key: gmd-${{ runner.os }}-${{ hashFiles('android/app/build.gradle.kts') }}
-          restore-keys: |
-            gmd-${{ runner.os }}-
 
       # Without this the emulator falls back to software emulation and takes
       # long enough to be worth avoiding. The runners have KVM; the device node
@@ -121,6 +119,21 @@ jobs:
             | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
+
+      # Setting the device up - downloading its system image, creating it and
+      # booting it once - is what the test task does first anyway. It is a step
+      # of its own so that it alone can be retried: a download once arrived
+      # corrupt, failing a run that had nothing wrong with it. The tests are
+      # never retried, so a flaky test still fails.
+      - name: Set up the device
+        run: |
+          for attempt in 1 2 3; do
+            ./gradlew api30atdSetup \
+              -Pandroid.testoptions.manageddevices.emulator.gpu=swiftshader_indirect \
+              --stacktrace && exit 0
+            echo "::warning::Setting up api30atd failed (attempt $attempt of 3)"
+          done
+          exit 1
 
       # The device is declared in build.gradle.kts rather than here, so this is
       # the same command a developer runs, and Gradle can skip it entirely when
@@ -160,7 +173,9 @@ jobs:
   newer-android:
     name: Run the instrumented tests on ${{ matrix.device }}
     if: github.event_name != 'pull_request'
-    runs-on: ubuntu-latest
+    # Pinned rather than ubuntu-latest, which becomes 26.04 on 2026-10-19 - see
+    # "Move the workflows to Ubuntu 26.04" in todo.md.
+    runs-on: ubuntu-24.04
 
     strategy:
       # One version failing says nothing about the other.
@@ -182,8 +197,11 @@ jobs:
           distribution: temurin
           java-version: "21"
 
+      # As above: read-only, restoring the validation job's entry.
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-read-only: true
 
       # As above: the runners do not accept every system image's licence.
       - name: Accept the Android SDK licences
@@ -196,18 +214,6 @@ jobs:
         working-directory: .
         run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" emulator'
 
-      # Keyed on the device as well, so the two images do not evict each other.
-      - name: Cache the managed device and its system image
-        uses: actions/cache@v6
-        with:
-          path: |
-            ~/.android/avd
-            ~/.android/gradle-managed-device*
-            ${{ env.ANDROID_HOME }}/system-images
-          key: gmd-${{ runner.os }}-${{ matrix.device }}-${{ hashFiles('android/app/build.gradle.kts') }}
-          restore-keys: |
-            gmd-${{ runner.os }}-${{ matrix.device }}-
-
       - name: Enable KVM
         working-directory: .
         run: |
@@ -215,6 +221,17 @@ jobs:
             | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
+
+      # As above: only the setup is retried, never the tests.
+      - name: Set up the device
+        run: |
+          for attempt in 1 2 3; do
+            ./gradlew ${{ matrix.device }}Setup \
+              -Pandroid.testoptions.manageddevices.emulator.gpu=swiftshader_indirect \
+              --stacktrace && exit 0
+            echo "::warning::Setting up ${{ matrix.device }} failed (attempt $attempt of 3)"
+          done
+          exit 1
 
       - name: Run the instrumented tests
         run: >-
