@@ -224,13 +224,13 @@ pnpm build     # what CI runs; fails on a link between pages that does not resol
 
 ## AI-assisted development
 
-AI tools may be used to assist with research, documentation, analysis, and code suggestions. They are not autonomous contributors or decision-makers for this project.
+AI tools may be used to assist with research, documentation, analysis, code, and preparing commits. They are not autonomous contributors or decision-makers for this project.
 
-All AI-assisted changes must be understood, reviewed, and validated by a human before being committed. AI agents must not create commits, push changes, merge pull requests, deploy releases, apply production migrations, access project secrets, or modify repository settings.
+An AI tool works in a supervised local working tree, and may create commits and write their messages when the developer asks. Every changed line is reviewed by the developer before anything is pushed. AI agents must not push changes, merge pull requests, deploy releases, apply production migrations, access project secrets, or modify repository settings.
 
-The human contributor remains fully responsible for the correctness, security, licensing, and maintainability of every submitted change.
+The developer remains fully responsible for the correctness, security, licensing, and maintainability of every submitted change. An `Assisted-by:` trailer records AI assistance without making the tool an author.
 
-See docs/ai-policy.md for the complete policy.
+See [`docs/ai-policy.md`](docs/ai-policy.md) for the complete policy.
 
 ## License
 

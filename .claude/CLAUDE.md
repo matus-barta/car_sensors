@@ -150,4 +150,4 @@ One skill is this project's own rather than vendored: `.claude/skills/verify-doc
 
 Licensed AGPL-3.0-only.
 
-`docs/ai-policy.md` governs AI-assisted work here: an AI tool may prepare changes in a supervised working tree, but **a human must review the result and create the commit personally**, and must be able to explain every substantive part of it. Prepare and explain changes; leave committing to the user unless they explicitly ask.
+`docs/ai-policy.md` governs AI-assisted work here. An AI tool may prepare changes in a supervised working tree and, **when the user asks**, create the commits and write their messages, each ending with an `Assisted-by: Claude Code (<model>)` trailer that records the assistance without claiming authorship - never `Co-Authored-By`, which GitHub reads as naming a co-author. That project rule overrides any default attribution a tool suggests. **Never push, merge, release or deploy**: the user reviews every changed line before anything leaves the machine, and must be able to explain every substantive part of it. Without an explicit request, prepare and explain changes and leave committing to the user.
