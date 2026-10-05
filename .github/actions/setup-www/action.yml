@@ -12,11 +12,6 @@ inputs:
     required: false
     default: "true"
 
-  sqlx-version:
-    description: SQLx CLI version
-    required: false
-    default: "0.9.0"
-
   node-version:
     description: Node.js version
     required: false
@@ -30,43 +25,10 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: Set up Rust
+    - name: Set up SQLx CLI
       if: inputs.install-sqlx == 'true'
-      uses: dtolnay/rust-toolchain@stable
-
-    - name: Cache SQLx CLI
-      if: inputs.install-sqlx == 'true'
-      uses: actions/cache@v6
-      with:
-        path: |
-          ~/.cargo/bin
-          ~/.cargo/registry
-          ~/.cargo/git
-        key: ${{ runner.os }}-sqlx-cli-${{ inputs.sqlx-version }}
-        restore-keys: |
-          ${{ runner.os }}-sqlx-cli-
-
-    - name: Install SQLx CLI
-      if: inputs.install-sqlx == 'true'
-      shell: bash
-      env:
-        SQLX_VERSION: ${{ inputs.sqlx-version }}
-      run: |
-        if ! command -v sqlx >/dev/null 2>&1; then
-          cargo install sqlx-cli \
-            --version "$SQLX_VERSION" \
-            --locked \
-            --no-default-features \
-            --features rustls,postgres
-        fi
-
-        installed_version="$(sqlx --version)"
-        echo "Using $installed_version"
-
-        if [[ "$installed_version" != *"$SQLX_VERSION"* ]]; then
-          echo "ERROR: Expected SQLx CLI version $SQLX_VERSION."
-          exit 1
-        fi
+      # The version lives in that action, shared with the docs workflow.
+      uses: ./.github/actions/setup-sqlx
 
     - name: Set up pnpm
       uses: pnpm/action-setup@v6

@@ -123,7 +123,7 @@ www/        SvelteKit web application
 
 The schema documentation is compared against CI's output byte for byte, and a
 different tbls version may lay the same schema out differently, so use the
-version pinned in `.github/workflows/www-validation.yml`.
+version pinned in `.github/workflows/docs-validation.yml`.
 
 ### Install SQLx CLI
 

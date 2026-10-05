@@ -1,0 +1,112 @@
+name: Docs - validation
+
+# Checks documentation that belongs to no single piece of the project, starting
+# with output generated from the shared database. Generated output that does
+# belong to one piece is checked there - docs/api/openapi.json by ingest's tests.
+
+on:
+  pull_request:
+    paths:
+      - "db/migrations/**"
+      - ".tbls.yml"
+      - "docs/schema/**"
+      - "tools/scripts/generate-schema-docs.sh"
+      - ".github/actions/setup-sqlx/**"
+      - ".github/workflows/docs-validation.yml"
+
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - "db/migrations/**"
+      - ".tbls.yml"
+      - "docs/schema/**"
+      - "tools/scripts/generate-schema-docs.sh"
+      - ".github/actions/setup-sqlx/**"
+      - ".github/workflows/docs-validation.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docs-validation-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  schema:
+    name: Check the generated schema documentation
+    # Pinned rather than ubuntu-latest, which becomes 26.04 on 2026-10-19 - see
+    # "Move the workflows to Ubuntu 26.04" in todo.md.
+    runs-on: ubuntu-24.04
+
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: postgres
+          # No password: the container only ever exists for this job and is
+          # not reachable outside it, so trusting every connection costs
+          # nothing and keeps no secret literal in the workflow file.
+          POSTGRES_HOST_AUTH_METHOD: trust
+          POSTGRES_DB: carsensors_schema_docs
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d carsensors_schema_docs"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 15
+
+    env:
+      DATABASE_URL: postgres://postgres@127.0.0.1:5432/carsensors_schema_docs
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up SQLx CLI
+        uses: ./.github/actions/setup-sqlx
+
+      # Pinned to the version the committed docs were generated with: a newer
+      # tbls may lay the same schema out differently, and the check below
+      # would then fail on formatting rather than on a real change.
+      - name: Set up tbls
+        uses: k1low/setup-tbls@v1
+        with:
+          version: v1.96.1
+
+      - name: Generate schema documentation
+        run: bash tools/scripts/generate-schema-docs.sh
+
+      - name: Check generated schema documentation
+        shell: bash
+        run: |
+          untracked_files="$(
+            git ls-files --others --exclude-standard -- docs/schema
+          )"
+
+          if ! git diff --exit-code -- docs/schema || [ -n "$untracked_files" ]; then
+            if [ -n "$untracked_files" ]; then
+              echo
+              echo "New files that are not committed:"
+              echo
+              echo "$untracked_files"
+            fi
+
+            echo
+            echo "ERROR: The schema documentation is out of date."
+            echo
+            echo "docs/schema/ is generated from the migrations by tbls and"
+            echo "does not match them."
+            echo
+            echo "Run locally from the repository root:"
+            echo
+            echo "  ./tools/scripts/generate-schema-docs.sh"
+            echo
+            echo "Review and commit docs/schema/."
+            echo
+
+            exit 1
+          fi
+

@@ -12,6 +12,7 @@ on:
       # have - so the checks run on both.
       - "db/migrations/**"
       - ".github/actions/setup-www/**"
+      - ".github/actions/setup-sqlx/**"
       - ".github/workflows/www-build.yml"
       - ".github/workflows/www-validation.yml"
       - "!www/**/*.md"

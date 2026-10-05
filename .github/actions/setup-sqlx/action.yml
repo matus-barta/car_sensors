@@ -1,0 +1,48 @@
+name: Set up SQLx CLI
+description: Install the SQLx CLI, the only tool allowed to apply db/migrations
+
+inputs:
+  sqlx-version:
+    description: SQLx CLI version
+    required: false
+    default: "0.9.0"
+
+runs:
+  using: composite
+  steps:
+    # Only to build the CLI: no components, and no workspace cache, which is
+    # what a Rust job proper would want and this one would never use.
+    - name: Set up Rust
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Cache SQLx CLI
+      uses: actions/cache@v6
+      with:
+        path: |
+          ~/.cargo/bin
+          ~/.cargo/registry
+          ~/.cargo/git
+        key: ${{ runner.os }}-sqlx-cli-${{ inputs.sqlx-version }}
+        restore-keys: |
+          ${{ runner.os }}-sqlx-cli-
+
+    - name: Install SQLx CLI
+      shell: bash
+      env:
+        SQLX_VERSION: ${{ inputs.sqlx-version }}
+      run: |
+        if ! command -v sqlx >/dev/null 2>&1; then
+          cargo install sqlx-cli \
+            --version "$SQLX_VERSION" \
+            --locked \
+            --no-default-features \
+            --features rustls,postgres
+        fi
+
+        installed_version="$(sqlx --version)"
+        echo "Using $installed_version"
+
+        if [[ "$installed_version" != *"$SQLX_VERSION"* ]]; then
+          echo "ERROR: Expected SQLx CLI version $SQLX_VERSION."
+          exit 1
+        fi
