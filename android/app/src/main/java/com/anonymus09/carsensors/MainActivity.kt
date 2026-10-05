@@ -20,9 +20,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.anonymus09.carsensors.data.AppDatabase
-import com.anonymus09.carsensors.data.PowerStateProvider
 import com.anonymus09.carsensors.data.PairingRejection
 import com.anonymus09.carsensors.data.PairingRepository
+import com.anonymus09.carsensors.data.PowerStateProvider
 import com.anonymus09.carsensors.data.ServerHealthChecker
 import com.anonymus09.carsensors.data.SettingsRepository
 import com.anonymus09.carsensors.data.TelemetryRepository

@@ -2,9 +2,9 @@ package com.anonymus09.carsensors.data
 
 import android.util.Log
 import com.anonymus09.carsensors.util.AppConfig.TELEMETRY_UPLOAD_PATH
+import java.net.HttpURLConnection
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import java.net.HttpURLConnection
 
 /**
  * What a check of the configured address found.
@@ -46,9 +46,7 @@ sealed interface ServerHealth {
  * empty batch posted to the upload endpoint answers the second, storing nothing
  * whatever the reply.
  */
-class ServerHealthChecker(
-    private val loadPairing: () -> DevicePairing?
-) {
+class ServerHealthChecker(private val loadPairing: () -> DevicePairing?) {
 
     /**
      * Asks [baseUrl] whether it is there and whether it wants us.
@@ -57,7 +55,6 @@ class ServerHealthChecker(
      * screen can test what somebody has typed before they commit to saving it.
      */
     suspend fun check(baseUrl: String): ServerHealth = withContext(Dispatchers.IO) {
-
         val reachable = try {
             statusOf("$baseUrl$HEALTH_PATH") { it.requestMethod = "GET" }
         } catch (e: Exception) {

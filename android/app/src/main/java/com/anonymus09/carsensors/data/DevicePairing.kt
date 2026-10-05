@@ -11,10 +11,7 @@ import org.json.JSONObject
  * secret, and it is what lets a credential be withdrawn without the vehicle
  * losing the identity every stored sample is filed under.
  */
-data class DevicePairing(
-    val deviceId: String,
-    val token: String
-)
+data class DevicePairing(val deviceId: String, val token: String)
 
 /**
  * Why the server last turned this phone's credential away, if it did.

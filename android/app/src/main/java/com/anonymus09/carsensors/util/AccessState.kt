@@ -76,7 +76,9 @@ data class AccessState(
                 context,
                 Manifest.permission.ACCESS_FINE_LOCATION
             ) == PackageManager.PERMISSION_GRANTED,
-            notificationsEnabled = NotificationManagerCompat.from(context).areNotificationsEnabled(),
+            notificationsEnabled = NotificationManagerCompat.from(
+                context
+            ).areNotificationsEnabled(),
             batteryUnrestricted = context.getSystemService(PowerManager::class.java)
                 .isIgnoringBatteryOptimizations(context.packageName),
             backgroundRestricted = isBackgroundRestricted(context),

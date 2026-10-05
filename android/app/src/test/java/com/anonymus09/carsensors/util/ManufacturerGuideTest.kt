@@ -26,7 +26,10 @@ class ManufacturerGuideTest {
 
     @Test
     fun `spaces become hyphens, as the site names its pages`() {
-        assertEquals("https://dontkillmyapp.com/sony-mobile", ManufacturerGuide.urlFor("Sony Mobile"))
+        assertEquals(
+            "https://dontkillmyapp.com/sony-mobile",
+            ManufacturerGuide.urlFor("Sony Mobile")
+        )
     }
 
     @Test

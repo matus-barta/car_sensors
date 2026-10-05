@@ -19,11 +19,7 @@ import org.json.JSONObject
  *
  * Android keeps this history from Android 11; before that there is none.
  */
-data class LastExit(
-    val reason: String,
-    val description: String?,
-    val atMs: Long
-) {
+data class LastExit(val reason: String, val description: String?, val atMs: Long) {
     /** Stopped on purpose from the system: Active apps, or Force stop. */
     val stoppedByUser: Boolean get() = reason == "USER_REQUESTED"
 
