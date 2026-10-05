@@ -75,7 +75,7 @@ The batch is written to `telemetry_samples` in one transaction, in chunks that s
 
 `known_devices.last_seen_at` is written at most once per device per **30 seconds**, tracked through Valkey. A device uploading every few seconds does not need to write that column every time.
 
-This limits a column write and nothing else. No request is rejected, delayed or shed by it, and `ingest` has no rate limiting of any kind - see `todo.md`.
+This limits a column write and nothing else. No request is rejected, delayed or shed by it, and `ingest` has no rate limiting of any kind - see [`tasks/rate-limit-the-upload-endpoint.md`](../tasks/rate-limit-the-upload-endpoint.md).
 
 If the batch stored anything, the newest sample carrying a position is published to Valkey as the device's live location, under a **15 minute** expiry. That step is best effort: the durable copy is already committed, and a failure to announce leaves the upload successful. It is guarded against a device clock running ahead, and against an older batch arriving after a newer one and dragging a map marker backwards.
 

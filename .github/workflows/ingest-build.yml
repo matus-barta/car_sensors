@@ -35,7 +35,7 @@ jobs:
       packages: write
 
     # Pinned rather than ubuntu-latest, which becomes 26.04 on 2026-10-19 - see
-    # "Move the workflows to Ubuntu 26.04" in todo.md.
+    # tasks/move-the-workflows-to-ubuntu-26-04.md.
     runs-on: ubuntu-24.04
 
     steps:

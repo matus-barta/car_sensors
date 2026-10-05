@@ -105,6 +105,7 @@ db/         Authoritative PostgreSQL migrations
 docs/       Topic documentation
 ingest/     Rust telemetry ingestion service (see ingest/README.md)
 shared/     Shared Rust crate
+tasks/      Open work, one file per task (see tasks/README.md)
 tools/      Development and synchronization utilities
 www/        SvelteKit web application
 ```

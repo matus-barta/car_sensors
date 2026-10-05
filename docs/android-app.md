@@ -32,7 +32,7 @@ The app installs on Android 9 and later and declares itself an Android 9 app, so
 
 Both are kept at 28 for compatibility with older phones, which is what the app is meant to run on - a retired handset left in the car. The lint warning about the old target is suppressed in `app/build.gradle.kts` for that reason.
 
-The cost is Google Play, which does not accept apps or updates that target a level this old. The app is distributed through GitHub instead: the plan is for CI to publish signed APKs to GitHub Releases, for Obtainium to pick up on the phone, and `todo.md` describes it under "Publish signed builds to GitHub Releases for Obtainium". Until that exists, builds are installed with `adb install`. `todo.md` also lists what has to change in the manifest if the target is ever raised, under "Declare a foreground service type before raising the target SDK".
+The cost is Google Play, which does not accept apps or updates that target a level this old. The app is distributed through GitHub instead: the plan is for CI to publish signed APKs to GitHub Releases, for Obtainium to pick up on the phone, and [`tasks/publish-signed-builds-to-github-releases-for-obtainium.md`](../tasks/publish-signed-builds-to-github-releases-for-obtainium.md) describes it. Until that exists, builds are installed with `adb install`. [`tasks/declare-a-foreground-service-type-before-raising-the-target-sdk.md`](../tasks/declare-a-foreground-service-type-before-raising-the-target-sdk.md) lists what has to change in the manifest if the target is ever raised.
 
 ## Platform limitations
 
@@ -58,7 +58,7 @@ This is how Android treats a stopped package and there is nothing the app can do
 
 **From Android 13, notifications start switched off.** Posting one became a permission, and an app targeting an earlier level cannot ask for it - Android shows no dialog. Until it is switched on in the app's notification settings, neither the logger's own notification nor the warning that uploads have stopped is ever seen. The screen says so, and its button opens that settings page directly.
 
-**Cleartext uploads are a debug-build affordance.** Release builds do not permit plain HTTP, so a server reached over `http://` works only from a debug build. See `todo.md` for the intended relaxation, which would allow cleartext to private addresses only.
+**Cleartext uploads are a debug-build affordance.** Release builds do not permit plain HTTP, so a server reached over `http://` works only from a debug build. See [`tasks/allow-cleartext-to-a-private-address-and-only-to-a-private-address.md`](../tasks/allow-cleartext-to-a-private-address-and-only-to-a-private-address.md) for the intended relaxation, which would allow cleartext to private addresses only.
 
 ## Debug and release side by side
 
@@ -66,7 +66,7 @@ The two builds install as separate apps: release as `com.anonymus09.carsensors`,
 
 Each is a logger of its own, though. Both left switched on means two sets of rows, uploaded under whatever each is paired as, so the debug build is best left stopped, or unpaired, on a phone that is logging for real. Its version name ends in `-debug`, which reaches the server in the User-Agent.
 
-Builds installed before this split carry the release id while being debug-signed. A debug build no longer updates them - it installs beside them - and the first signed release build cannot either; see "Publish signed builds to GitHub Releases for Obtainium" in `todo.md`.
+Builds installed before this split carry the release id while being debug-signed. A debug build no longer updates them - it installs beside them - and the first signed release build cannot either; see [`tasks/publish-signed-builds-to-github-releases-for-obtainium.md`](../tasks/publish-signed-builds-to-github-releases-for-obtainium.md).
 
 ## Working on it
 
@@ -95,7 +95,7 @@ Nothing about the devices is cached. The emulator and each system image are down
 
 The steps the Android jobs share live in two composite actions, as `www`'s do in `setup-www`. `.github/actions/setup-android` installs the JDK, sets up Gradle and accepts the SDK licences, for every Android job; `.github/actions/setup-android-device` installs the emulator, enables KVM and sets up a managed device, for the emulator jobs. A workflow that uses one lists it in its `paths:` filter, so changing the action runs the workflows it affects.
 
-Two details worth knowing. detekt's baseline, at `android/config/detekt/baseline.xml`, records three findings that are real rather than false: the foreground service is a large class with too many functions and one long method. They are grandfathered so that anything *new* still fails, and `todo.md` describes the split that would clear them. And `NewerVersionAvailable` and `GradleDependency` are disabled in the lint configuration, because they report what has been published since rather than anything about this code, and would turn a passing build red without a commit being made. `GradleDependency` hid that for a while: lint's result is cached, so it failed only once something invalidated the cache, and any change to the version catalog does. Renovate proposes those updates anyway.
+Two details worth knowing. detekt's baseline, at `android/config/detekt/baseline.xml`, records three findings that are real rather than false: the foreground service is a large class with too many functions and one long method. They are grandfathered so that anything *new* still fails, and [`tasks/split-the-foreground-service-up.md`](../tasks/split-the-foreground-service-up.md) describes the split that would clear them. And `NewerVersionAvailable` and `GradleDependency` are disabled in the lint configuration, because they report what has been published since rather than anything about this code, and would turn a passing build red without a commit being made. `GradleDependency` hid that for a while: lint's result is cached, so it failed only once something invalidated the cache, and any change to the version catalog does. Renovate proposes those updates anyway.
 
 ## Why the version catalog confuses other tools
 

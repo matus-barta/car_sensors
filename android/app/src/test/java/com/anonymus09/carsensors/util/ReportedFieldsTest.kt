@@ -11,8 +11,8 @@ import org.robolectric.annotation.Config
  * The names the server reads the phone's state by.
  *
  * `service_started` and `access_changed` carry these into `telemetry_samples`,
- * and the web application is to read them back by name - see "Show on the
- * vehicle card what the phone is not allowed to do" in `todo.md`. Renaming one
+ * and the web application is to read them back by name - see
+ * `tasks/show-on-the-vehicle-card-what-the-phone-is-not-allowed-to-do.md`. Renaming one
  * here would break that silently, on the server, long after the phone was
  * updated, so the names are restated rather than read from the code under test.
  */
