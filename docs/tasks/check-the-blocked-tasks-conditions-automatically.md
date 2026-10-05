@@ -13,7 +13,7 @@ remember to:
 | --- | --- | --- |
 | [Move to TypeScript 7](move-to-typescript-7.md) | `svelte-check`, `typescript-eslint` and `@astrojs/check` to admit TypeScript 7 | `npm view <package> peerDependencies.typescript` |
 | [Move the docs site to Mermaid 12](move-the-docs-site-to-mermaid-12.md) | `astro-mermaid` to admit Mermaid 12, and GitHub to render with it | `npm view astro-mermaid peerDependencies.mermaid`; GitHub's version by hand |
-| [Move to detekt 2.0 before Gradle 10](move-to-detekt-2-0-before-gradle-10.md) | a stable detekt 2.0 | the `<release>` in the Gradle plugin portal's `maven-metadata.xml` for `dev.detekt` |
+| [Move to detekt 2.0 before Gradle 10](move-to-detekt-2-0-before-gradle-10.md) | a stable detekt 2.0 | the `<release>` in the Gradle plugin portal's [`maven-metadata.xml`](https://plugins.gradle.org/m2/dev/detekt/dev.detekt.gradle.plugin/maven-metadata.xml) for `dev.detekt` |
 
 Renovate does not help here: the `allowedVersions` rules that hold TypeScript
 and Mermaid back also hide the newer majors from its dependency dashboard, and

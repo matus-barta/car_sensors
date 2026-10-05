@@ -46,7 +46,7 @@ This is how Android treats a stopped package and there is nothing the app can do
 
 **Battery settings decide whether the logger is allowed to run at all.** Android 12 introduced a "Restricted" level for an app's battery use, which the user can choose and Android can also apply by itself to an app it judges to use too much. A restricted app may not run a foreground service: choosing it stops the logger at once, and it cannot start again after a reboot. Short of that, the default "Optimized" lets Doze hold the logger's work back while the phone is idle. The screen says when either applies; "Optimized" is fixed with Android's own one-tap dialog for "Unrestricted", "Restricted" by changing it in the app's battery settings, which the warning opens.
 
-**Some manufacturers stop background apps regardless.** Samsung, Xiaomi, Huawei and OnePlus among others add battery management of their own, beyond anything Android does, with settings an app can neither see nor change. The screen links to dontkillmyapp.com's page for the phone's manufacturer, which lists them; it opens in the browser and the app sends nothing.
+**Some manufacturers stop background apps regardless.** Samsung, Xiaomi, Huawei and OnePlus among others add battery management of their own, beyond anything Android does, with settings an app can neither see nor change. The screen links to [dontkillmyapp.com](https://dontkillmyapp.com)'s page for the phone's manufacturer, which lists them; it opens in the browser and the app sends nothing.
 
 **From Android 12, location can be approximate.** The user may switch off "Use precise location", leaving positions that can be a kilometre or more out. The screen says so and asks for precise location again.
 

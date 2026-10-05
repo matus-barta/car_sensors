@@ -12,11 +12,11 @@ stay on TypeScript 6, and Renovate is told not to offer 7 (`allowedVersions` in
 The reason is the type checkers rather than TypeScript itself. In October 2026,
 with TypeScript at 7.0.2:
 
-- `svelte-check`, which `pnpm check` runs in `www`, declared support for
+- [`svelte-check`](https://www.npmjs.com/package/svelte-check), which `pnpm check` runs in `www`, declared support for
   TypeScript 5 and 6 only;
-- `typescript-eslint`, which `pnpm lint` runs in `www`, declared support below
+- [`typescript-eslint`](https://www.npmjs.com/package/typescript-eslint), which `pnpm lint` runs in `www`, declared support below
   6.1;
-- `@astrojs/check`, which `pnpm check` runs in the documentation site, declared
+- [`@astrojs/check`](https://www.npmjs.com/package/@astrojs/check), which `pnpm check` runs in the documentation site, declared
   support for 5 and 6 only.
 
 Moving now would mean type checking either failing or running against a

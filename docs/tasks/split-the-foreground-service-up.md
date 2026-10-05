@@ -16,8 +16,8 @@ tier of work the battery still justifies; it assembles and writes samples; and
 it decides when to upload and when to push a position live. The notification,
 the heading and the sensor labels have already gone to classes of their own -
 `LoggerNotification`, `HeadingTracker`, `sensorAccuracyLabel` - which took it
-from 1,437 lines to about 1,190 but left it over both thresholds, at 29
-functions against 20. The state machine in particular wants lifting out
+from 1,437 lines to about 1,190 - it has grown back to 1,221 since - but left
+it over both thresholds, with more functions than detekt's limit of 20. The state machine in particular wants lifting out
 into something that takes charge, battery level, whether movement was confirmed
 and how long ago as arguments and returns the state that should follow - which
 would also make it decidable in a plain JVM test, where today it needs a device.

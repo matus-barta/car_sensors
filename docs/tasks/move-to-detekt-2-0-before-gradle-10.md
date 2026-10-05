@@ -10,7 +10,7 @@ The detekt plugin, 1.23.8, calls `ReportingExtension.file(String)`, which Gradle
 "Deprecated Gradle features were used in this build, making it incompatible
 with Gradle 10" - `--warning-mode all` names it. 1.23.8 is the last 1.x release,
 so no update will fix it. The fix is in detekt 2.0, which was still at
-`2.0.0-alpha.6` in October 2026.
+`2.0.0-alpha.6` in October 2026 ([Gradle plugin portal](https://plugins.gradle.org/plugin/dev.detekt)).
 
 detekt 2.0 is not a drop-in update. The plugin id changes from
 `io.gitlab.arturbosch.detekt` to `dev.detekt`, and a major version renames
