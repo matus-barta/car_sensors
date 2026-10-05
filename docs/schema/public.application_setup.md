@@ -1,4 +1,6 @@
-# public.application_setup
+---
+title: "public.application_setup"
+---
 
 ## Columns
 

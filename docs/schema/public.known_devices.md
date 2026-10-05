@@ -1,4 +1,6 @@
-# public.known_devices
+---
+title: "public.known_devices"
+---
 
 ## Columns
 

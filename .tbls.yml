@@ -23,6 +23,14 @@ disableOutputSchema: true
 er:
   format: mermaid
 
+# The default Markdown templates of the pinned tbls version, changed only to
+# give each page the `title` frontmatter the documentation site requires in
+# place of its first heading.
+templates:
+  md:
+    index: tools/tbls/index.md.tmpl
+    table: tools/tbls/table.md.tmpl
+
 exclude:
   - _sqlx_migrations
 

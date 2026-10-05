@@ -1,4 +1,6 @@
-# public.verification
+---
+title: "public.verification"
+---
 
 ## Columns
 

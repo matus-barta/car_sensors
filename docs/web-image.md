@@ -1,4 +1,6 @@
-# Why the web application image is the size it is
+---
+title: "Why the web application image is the size it is"
+---
 
 A decision rather than an open question, written down so it is not reopened by
 accident. The image is about 355 MB, of which roughly 206 MB is `node_modules`

@@ -1,11 +1,16 @@
-# How the pieces fit together
+---
+title: How the pieces fit together
+---
 
 Four independent pieces share one PostgreSQL database.
 
-```text
-Android app  ──uploads──▶  ingest  ──writes──▶  PostgreSQL  ◀──reads──  www
-                              │                                          ▲
-                              └──────publishes latest position──▶ Valkey ┘
+```mermaid
+flowchart LR
+    android[Android app] -- uploads --> ingest
+    ingest -- writes --> postgres[(PostgreSQL)]
+    www -- reads --> postgres
+    ingest -- publishes latest position --> valkey[(Valkey)]
+    valkey --> www
 ```
 
 ## One database, not one per service

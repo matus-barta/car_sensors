@@ -1,4 +1,6 @@
-# car_sensors
+---
+title: "Database schema"
+---
 
 ## Description
 

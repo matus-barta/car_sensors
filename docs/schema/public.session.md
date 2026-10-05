@@ -1,4 +1,6 @@
-# public.session
+---
+title: "public.session"
+---
 
 ## Columns
 

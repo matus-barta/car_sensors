@@ -1,4 +1,6 @@
-# Continuous integration
+---
+title: "Continuous integration"
+---
 
 How the workflows in `.github/` are laid out, and the rules that keep them that way. Check any change to them with `actionlint` before committing.
 

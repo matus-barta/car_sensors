@@ -1,4 +1,6 @@
-# public.user
+---
+title: "public.user"
+---
 
 ## Columns
 

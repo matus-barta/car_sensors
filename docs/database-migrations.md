@@ -1,4 +1,6 @@
-# Database migrations and schema synchronization
+---
+title: "Database migrations and schema synchronization"
+---
 
 This document describes how the Car Sensors database schema is managed and how changes are propagated to the SvelteKit web application.
 
@@ -183,7 +185,7 @@ Then regenerate the schema documentation:
 ./tools/scripts/generate-schema-docs.sh
 ```
 
-That script applies the migrations the same way, then runs [tbls](https://github.com/k1LoW/tbls) with the settings in `.tbls.yml`, writing a Markdown page per table and Mermaid ER diagrams to `docs/schema/`. It needs the `tbls` binary on `PATH`.
+That script applies the migrations the same way, then runs [tbls](https://github.com/k1LoW/tbls) with the settings in `.tbls.yml`, writing a Markdown page per table and Mermaid ER diagrams to `docs/schema/`. The page templates in `tools/tbls/` are tbls's own defaults, changed only to give each page the `title` frontmatter the documentation site needs. It needs the `tbls` binary on `PATH`.
 
 The complete local workflow is:
 

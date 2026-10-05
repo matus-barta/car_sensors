@@ -1,4 +1,6 @@
-# Artificial intelligence usage policy
+---
+title: "Artificial intelligence usage policy"
+---
 
 AI tools may be used to assist with research, documentation, analysis, debugging, testing ideas, and code suggestions.
 

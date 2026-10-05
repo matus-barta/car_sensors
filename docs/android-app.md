@@ -1,4 +1,6 @@
-# The Android logger
+---
+title: "The Android logger"
+---
 
 The app records location and sensor data while a vehicle is moving and uploads it to `ingest`. It is written to live in a car unattended - typically an old handset wired to the car's power - rather than to be opened and driven by hand.
 

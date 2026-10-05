@@ -1,4 +1,6 @@
-# public.telemetry_samples
+---
+title: "public.telemetry_samples"
+---
 
 ## Columns
 
