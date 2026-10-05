@@ -13,6 +13,9 @@ activityCompose = "1.13.0"
 composeBom = "2026.09.00"
 
 room = "2.8.5"
+# The version the instrumented tests force on kotlinx-serialization - see the
+# block that uses it in app/build.gradle.kts.
+kotlinxSerialization = "1.11.0"
 work = "2.12.0"
 ksp = "2.3.11"
 ktlint = "13.1.0"
@@ -43,6 +46,9 @@ room-runtime = { module = "androidx.room:room-runtime", version.ref = "room" }
 room-ktx = { module = "androidx.room:room-ktx", version.ref = "room" }
 room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
 room-testing = { module = "androidx.room:room-testing", version.ref = "room" }
+# Nothing depends on this. It is here so Renovate has a package to update
+# kotlinxSerialization from, which it does not do for a bare version.
+kotlinx-serialization-bom = { module = "org.jetbrains.kotlinx:kotlinx-serialization-bom", version.ref = "kotlinxSerialization" }
 
 work-runtime = { module = "androidx.work:work-runtime-ktx", version.ref = "work" }
 work-testing = { module = "androidx.work:work-testing", version.ref = "work" }
