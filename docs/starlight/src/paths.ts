@@ -22,7 +22,7 @@ export const repoUrl = 'https://github.com/matus-barta/car_sensors';
  * A README is the index of its directory, as it is on GitHub: `README.md` is
  * the home page and `schema/README.md` is `schema`.
  */
-export function pageId(relativePath) {
+export function pageId(relativePath: string): string {
 	const withoutExtension = relativePath.replace(/\.mdx?$/, '');
 
 	if (/^README$/i.test(withoutExtension)) return 'index';

@@ -8,8 +8,8 @@ import { defineConfig } from 'astro/config';
 import mermaid from 'astro-mermaid';
 import starlightLinksValidator from 'starlight-links-validator';
 import starlightOpenAPI, { openAPISidebarGroups } from 'starlight-openapi';
-import { repoUrl } from './src/paths.mjs';
-import { rehypeMarkdownLinks } from './src/plugins/rehype-markdown-links.mjs';
+import { repoUrl } from './src/paths.ts';
+import { rehypeMarkdownLinks } from './src/plugins/rehype-markdown-links.ts';
 
 const base = '/car_sensors';
 

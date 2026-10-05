@@ -146,6 +146,12 @@ jobs:
         with:
           working-directory: docs/starlight
 
+      # Type-checks the site's own TypeScript - the config, the content
+      # collections and the link plugin - which the build only strips.
+      - name: Type-check the site
+        working-directory: docs/starlight
+        run: pnpm check
+
       # The build fails on a link between pages that does not resolve, through
       # starlight-links-validator, and on a page whose frontmatter is invalid.
       - name: Build the site

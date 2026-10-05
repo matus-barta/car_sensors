@@ -7,29 +7,40 @@
 // go to that file on GitHub. starlight-links-validator then checks every link
 // this produces, so a wrong rewrite fails the build rather than shipping.
 
+import type { RehypePlugin } from '@astrojs/markdown-remark';
 import path from 'node:path';
-import { docsRoot, pageId, repoRoot, repoUrl, siteRoot } from '../paths.mjs';
+import { docsRoot, pageId, repoRoot, repoUrl, siteRoot } from '../paths.ts';
 
 const SCHEME = /^[a-z][a-z\d+.-]*:/i;
 
-/** @param {{ base?: string }} options */
-export function rehypeMarkdownLinks({ base = '' } = {}) {
+type Options = { base?: string };
+
+// Only the parts of the HTML syntax tree and the file this plugin touches.
+type Node = { type: string; tagName?: string; properties?: Record<string, unknown>; children?: Node[] };
+type MarkdownFile = { path?: string; data: { astro?: { frontmatter?: Record<string, unknown> } } };
+
+export const rehypeMarkdownLinks: RehypePlugin<[Options?]> = ({ base = '' } = {}) => {
 	const prefix = base.replace(/\/$/, '');
 
-	return (tree, file) => {
-		if (!file.path) return;
+	return (tree, vfile) => {
+		const file = vfile as MarkdownFile;
+		const source = file.path;
 
-		announceSlug(file);
+		if (!source) return;
 
-		walk(tree, (node) => {
-			if (node.tagName !== 'a' || typeof node.properties?.href !== 'string') return;
+		announceSlug(file, source);
 
-			const rewritten = rewrite(node.properties.href, file.path, prefix);
+		walk(tree as Node, (node) => {
+			const href = node.properties?.href;
 
-			if (rewritten) node.properties.href = rewritten;
+			if (node.tagName !== 'a' || typeof href !== 'string') return;
+
+			const rewritten = rewrite(href, source, prefix);
+
+			if (rewritten && node.properties) node.properties.href = rewritten;
 		});
 	};
-}
+};
 
 /*
  * starlight-links-validator works a page's URL out from its file path, as if
@@ -39,23 +50,23 @@ export function rehypeMarkdownLinks({ base = '' } = {}) {
  * there. Only the frontmatter seen by the Markdown pipeline changes; the file
  * and the route do not.
  */
-function announceSlug(file) {
+function announceSlug(file: MarkdownFile, source: string): void {
 	const frontmatter = file.data.astro?.frontmatter;
 
 	if (!frontmatter || frontmatter.slug !== undefined) return;
-	if (!isInside(docsRoot, file.path) || isInside(siteRoot, file.path)) return;
+	if (!isInside(docsRoot, source) || isInside(siteRoot, source)) return;
 
-	const id = pageId(toPosix(path.relative(docsRoot, file.path)));
+	const id = pageId(toPosix(path.relative(docsRoot, source)));
 
 	// The validator joins the base and the slug, so the home page needs a slug
 	// that adds nothing but the trailing slash its links end with.
 	frontmatter.slug = id === 'index' ? './' : id;
 }
 
-function rewrite(href, sourceFile, prefix) {
+function rewrite(href: string, sourceFile: string, prefix: string): string | null {
 	if (SCHEME.test(href) || href.startsWith('/') || href.startsWith('#')) return null;
 
-	const [, target, suffix] = href.match(/^([^?#]*)(.*)$/);
+	const [, target = '', suffix = ''] = /^([^?#]*)(.*)$/.exec(href) ?? [];
 
 	if (!target) return null;
 
@@ -76,17 +87,17 @@ function rewrite(href, sourceFile, prefix) {
 	return null;
 }
 
-function isInside(directory, file) {
+function isInside(directory: string, file: string): boolean {
 	const relative = path.relative(directory, file);
 
 	return relative !== '' && !relative.startsWith('..') && !path.isAbsolute(relative);
 }
 
-function toPosix(relative) {
+function toPosix(relative: string): string {
 	return relative.split(path.sep).join('/');
 }
 
-function walk(node, visit) {
+function walk(node: Node, visit: (node: Node) => void): void {
 	if (node.type === 'element') visit(node);
 
 	for (const child of node.children ?? []) walk(child, visit);

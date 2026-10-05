@@ -206,6 +206,7 @@ The documentation site, built from the same Markdown:
 cd docs/starlight
 pnpm install
 pnpm dev       # a local preview that reloads as pages change
+pnpm check     # type-checks the site's TypeScript
 pnpm build     # what CI runs; fails on a link between pages that does not resolve
 ```
 

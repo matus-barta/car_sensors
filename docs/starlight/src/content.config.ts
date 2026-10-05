@@ -1,7 +1,7 @@
 import { docsSchema } from '@astrojs/starlight/schema';
 import { defineCollection } from 'astro:content';
 import { glob } from 'astro/loaders';
-import { pageId } from './paths.mjs';
+import { pageId } from './paths.ts';
 
 /*
  * Starlight's own docsLoader() is a glob fixed to src/content/docs. The pages
