@@ -24,3 +24,6 @@ src/lib/map/generated/
 
 # Generated shadcn-svelte components
 src/lib/components/ui/
+
+# Markdown is linted and formatted by rumdl from the repository root (.rumdl.toml)
+*.md

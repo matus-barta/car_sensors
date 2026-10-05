@@ -20,7 +20,7 @@ Each piece of the project has a `<Piece> - validation` workflow that runs on pul
 | [`docs-validation.yml`](../.github/workflows/docs-validation.yml) | pull requests | |
 | [`docs-build.yml`](../.github/workflows/docs-build.yml) | every push to `main` | `docs-validation.yml` |
 
-`docs-validation.yml` is the one that belongs to no piece: it checks what is shared - documentation generated from the database, the links between Markdown files, and the [documentation site](README.md) built from them. `docs-build.yml` publishes that site to GitHub Pages, and runs on every push to `main` rather than on a path filter, because the link check is also what notices a link broken by renaming the file it points at.
+`docs-validation.yml` is the one that belongs to no piece: it checks what is shared - documentation generated from the database, the links between Markdown files and their style, and the [documentation site](README.md) built from them. `docs-build.yml` publishes that site to GitHub Pages, and runs on every push to `main` rather than on a path filter, because the link check is also what notices a link broken by renaming the file it points at.
 
 ## Generated output is checked where it belongs
 

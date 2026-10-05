@@ -96,12 +96,17 @@ lychee './**/*.md' .claude/CLAUDE.md   # links between files, settings in lychee
 actionlint                             # the workflows in .github/
 ```
 
-The documentation site, built from the same Markdown:
+Markdown style and the documentation site, from `docs/starlight/` - its
+dependencies include [rumdl](https://rumdl.dev/), the Markdown linter, which
+checks every Markdown file in the repository with the rules in
+[`.rumdl.toml`](../.rumdl.toml):
 
 ```bash
 cd docs/starlight
 pnpm install
-pnpm dev       # a local preview that reloads as pages change
-pnpm check     # type-checks the site's TypeScript
-pnpm build     # what CI runs; fails on a link between pages that does not resolve
+pnpm lint:md     # every Markdown file in the repository, as CI checks it
+pnpm format:md   # fixes what can be fixed automatically
+pnpm dev         # a local preview that reloads as pages change
+pnpm check       # type-checks the site's TypeScript
+pnpm build       # what CI runs; fails on a link between pages that does not resolve
 ```
