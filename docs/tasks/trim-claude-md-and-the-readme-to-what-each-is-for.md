@@ -1,11 +1,11 @@
 ---
-title: "Move what CLAUDE.md explains into the documentation"
+title: "Trim CLAUDE.md and the README to what each is for"
 status: backlog
 area: docs
 depends_on: []
 ---
 
-`.claude/CLAUDE.md` has grown to 148 lines across seven sections - what this
+`.claude/CLAUDE.md` has grown to 153 lines across seven sections - what this
 is, the migration rule, commands, environment, `www` architecture, testing and
 conventions - and a good part of it is explanation rather than instruction. Its
 opening section restates [`docs/architecture.md`](../architecture.md)
@@ -41,6 +41,25 @@ and belongs in the repository instead:
   often is installed locally once agreed; a one-off or troubleshooting tool runs
   from a Docker image with `--rm`, and nothing is left running afterwards.
   `CLAUDE.md` has half of this already, under the Dev Requirements rule.
+
+The root `README.md` has the same problem from the other side: 251 lines over
+six sections, where a reader arriving at the repository wants to learn what
+this is and get it running. The shape to aim for, still to be discussed before
+anything moves:
+
+- what the project is, and what the repository contains;
+- how to install and run it;
+- how to set up for development;
+- the closing essentials - licence, the AI policy;
+
+each with a link to the documentation for the rest. Candidates to move out:
+
+- **Deployment** - the reverse proxy and the scope of the Compose deployment,
+  around sixty lines, read as a deployment guide in `docs/`.
+- **Validation** - the per-piece commands, around sixty lines, overlap with
+  what `docs/ci.md` says CI runs and belong in a development guide.
+- **Documentation** - the list repeats `docs/README.md`, which is the index
+  already; a single link to it would do.
 
 Whatever moves, the result should be checked the way the rest of the
 documentation is: lychee for the links, and the claims verified against the
