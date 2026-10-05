@@ -93,23 +93,15 @@ pnpm install
 
 ## Environment configuration
 
-The migration and synchronization commands require `DATABASE_URL`.
+The migration and synchronization commands require `DATABASE_URL`. There is one environment file, `.env` at the repository root - copy `.env.example` to start one. Both halves read it without being told: `sqlx` finds it by walking up from the working directory, and `www/drizzle.config.ts` loads it explicitly. A variable exported in the shell still wins over the file, which is how CI supplies its database.
 
 For the default local PostgreSQL deployment:
 
 ```bash
-export DATABASE_URL="postgres://postgres:postgres@localhost:5432/postgres"
+DATABASE_URL="postgres://postgres:postgres@localhost:5432/postgres"
 ```
 
-If the environment variables are stored in `www/.env`, export them from the repository root:
-
-```bash
-set -a
-. ./www/.env
-set +a
-```
-
-The local environment file contains secrets and must not be committed.
+The environment file contains secrets and must not be committed.
 
 ## Creating a migration
 
