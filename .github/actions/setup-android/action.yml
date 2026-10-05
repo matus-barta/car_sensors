@@ -1,0 +1,66 @@
+name: Set up Android
+description: Set up the JDK, Gradle and the Android SDK licences for the Android build
+
+inputs:
+  gradle:
+    description: >-
+      Set up Gradle and its cache. Off for a job whose Gradle comes from
+      another action, such as gradle/actions/dependency-submission.
+    required: false
+    default: "true"
+
+  cache-read-only:
+    description: >-
+      Restore the Gradle cache without saving one, on every branch. Only the
+      validation job saves; see the comment in android-migration.yml for why.
+      Left false, the cache is still read-only off the default branch, as
+      setup-gradle has it.
+    required: false
+    default: "false"
+
+  java-version:
+    description: >-
+      The JDK that runs Gradle. Keep it to what
+      android/gradle/gradle-daemon-jvm.properties asks for.
+    required: false
+    default: "21"
+
+runs:
+  using: composite
+  steps:
+    # The Gradle daemon wants JDK 21 per gradle-daemon-jvm.properties. One is
+    # installed here so the build does not begin by downloading a toolchain;
+    # if the pinned vendor differs, Gradle provisions it once and the Gradle
+    # cache keeps it.
+    - name: Install JDK
+      uses: actions/setup-java@v5
+      with:
+        distribution: temurin
+        java-version: ${{ inputs.java-version }}
+
+    # Passing cache-read-only at all replaces setup-gradle's own default, which
+    # is read-only on any branch but the default one so that pull requests do
+    # not fill the cache with entries nothing else can use. That default is
+    # restated here rather than lost.
+    - name: Set up Gradle
+      if: inputs.gradle == 'true'
+      uses: gradle/actions/setup-gradle@v6
+      with:
+        cache-read-only: >-
+          ${{ inputs.cache-read-only == 'true'
+          || (github.event.repository != null
+          && github.ref_name != github.event.repository.default_branch) }}
+
+    # The runners ship the SDK with most licences accepted, but not the one
+    # for the ATD system image, and Gradle cannot install a package whose
+    # licence it has not been given. Accepting them all is cheap and is what
+    # the failure message itself asks for. Even a job that only resolves the
+    # dependency graph needs this: that builds enough of the project to need
+    # the SDK.
+    # `|| true` because `yes` is killed by SIGPIPE once sdkmanager stops
+    # reading, which some shells report as a failure. A licence that genuinely
+    # could not be accepted still fails loudly further down, where Gradle says
+    # exactly which package it was.
+    - name: Accept the Android SDK licences
+      shell: bash
+      run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true

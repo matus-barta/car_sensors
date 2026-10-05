@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - "android/**"
+      - ".github/actions/setup-android/**"
       - ".github/workflows/android-validation.yml"
       - "!android/**/*.md"
 
@@ -18,6 +19,7 @@ on:
       - master
     paths:
       - "android/**"
+      - ".github/actions/setup-android/**"
       - ".github/workflows/android-validation.yml"
       - "!android/**/*.md"
 
@@ -48,32 +50,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      # The Gradle daemon wants JDK 21 per gradle-daemon-jvm.properties. One is
-      # installed here so the build does not begin by downloading a toolchain;
-      # if the pinned vendor differs, Gradle provisions it once and the cache
-      # below keeps it.
-      - name: Install JDK
-        uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: "21"
-
-      # Also restores the Gradle caches, which is what keeps a re-run cheap on
-      # a pull request that has not changed anything the build depends on.
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v6
-
-      # The runners ship the SDK with most licences accepted, but not the one
-      # for the ATD system image, and Gradle cannot install a package whose
-      # licence it has not been given. Accepting them all is cheap and is what
-      # the failure message itself asks for.
-      # `|| true` because `yes` is killed by SIGPIPE once sdkmanager stops
-      # reading, which some shells report as a failure. A licence that genuinely
-      # could not be accepted still fails loudly further down, where Gradle says
-      # exactly which package it was.
-      - name: Accept the Android SDK licences
-        working-directory: .
-        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+      # The one Android job that saves the Gradle cache; the others only
+      # restore it. That also keeps a re-run cheap on a pull request that has
+      # not changed anything the build depends on.
+      - name: Set up Android
+        uses: ./.github/actions/setup-android
 
       # Robolectric downloads an `android-all` jar for each SDK level it is
       # asked to emulate, the first time it needs one - into the local Maven

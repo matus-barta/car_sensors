@@ -17,6 +17,8 @@ on:
       - "android/app/src/androidTest/**"
       - "android/gradle/libs.versions.toml"
       - "android/app/build.gradle.kts"
+      - ".github/actions/setup-android/**"
+      - ".github/actions/setup-android-device/**"
       - ".github/workflows/android-migration.yml"
 
   # After a merge, on anything under android/. This is where the other devices
@@ -35,6 +37,8 @@ on:
     paths:
       - "android/**"
       - "!android/**/*.md"
+      - ".github/actions/setup-android/**"
+      - ".github/actions/setup-android-device/**"
       - ".github/workflows/android-migration.yml"
 
   workflow_call:
@@ -65,12 +69,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      - name: Install JDK
-        uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: "21"
-
       # Read-only: this job restores the Gradle cache but never saves one. With
       # no entry of its own, setup-gradle falls back to the newest entry on the
       # runner's OS, which on main is the validation job's - and that job
@@ -78,62 +76,15 @@ jobs:
       # what this one needs. Saving here as well wrote a fresh third of a
       # gigabyte on every dependency change, and the repository's cache was
       # over its limit, evicting other workflows' caches to make room.
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v6
+      - name: Set up Android
+        uses: ./.github/actions/setup-android
         with:
-          cache-read-only: true
+          cache-read-only: "true"
 
-      # The runners ship the SDK with most licences accepted, but not the one
-      # for the ATD system image, and Gradle cannot install a package whose
-      # licence it has not been given. Accepting them all is cheap and is what
-      # the failure message itself asks for.
-      # `|| true` because `yes` is killed by SIGPIPE once sdkmanager stops
-      # reading, which some shells report as a failure. A licence that genuinely
-      # could not be accepted still fails loudly further down, where Gradle says
-      # exactly which package it was.
-      - name: Accept the Android SDK licences
-        working-directory: .
-        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
-
-      # The runners ship no emulator. Gradle never installs one by name: it
-      # arrives only as a dependency of a system image, and API 28's image
-      # declares no such dependency. AGP then fails setting the device up, with
-      # "Cannot query the value of this property because it has no value
-      # available" - nothing that names the emulator.
-      #
-      # Neither the emulator nor the system image is cached. A cache step here
-      # never saved anything - its paths did not exist on the runner - and a
-      # working one would hold up to 2 GB per image in a repository cache that
-      # is already full. Downloading takes under a minute, even for API 37's.
-      - name: Install the Android emulator
-        working-directory: .
-        run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" emulator'
-
-      # Without this the emulator falls back to software emulation and takes
-      # long enough to be worth avoiding. The runners have KVM; the device node
-      # just is not readable by the job's user by default.
-      - name: Enable KVM
-        working-directory: .
-        run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
-            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-
-      # Setting the device up - downloading its system image, creating it and
-      # booting it once - is what the test task does first anyway. It is a step
-      # of its own so that it alone can be retried: a download once arrived
-      # corrupt, failing a run that had nothing wrong with it. The tests are
-      # never retried, so a flaky test still fails.
       - name: Set up the device
-        run: |
-          for attempt in 1 2 3; do
-            ./gradlew api30atdSetup \
-              -Pandroid.testoptions.manageddevices.emulator.gpu=swiftshader_indirect \
-              --stacktrace && exit 0
-            echo "::warning::Setting up api30atd failed (attempt $attempt of 3)"
-          done
-          exit 1
+        uses: ./.github/actions/setup-android-device
+        with:
+          device: api30atd
 
       # The device is declared in build.gradle.kts rather than here, so this is
       # the same command a developer runs, and Gradle can skip it entirely when
@@ -168,8 +119,8 @@ jobs:
   # its name - pull requests may be required to pass it under that name.
   #
   # API 28's device failed to set itself up here until the emulator was
-  # installed explicitly - see that step. Its own runner means a failure costs
-  # only its own result.
+  # installed explicitly - see .github/actions/setup-android-device. Its own
+  # runner means a failure costs only its own result.
   newer-android:
     name: Run the instrumented tests on ${{ matrix.device }}
     if: github.event_name != 'pull_request'
@@ -191,47 +142,16 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      - name: Install JDK
-        uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: "21"
-
       # As above: read-only, restoring the validation job's entry.
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v6
+      - name: Set up Android
+        uses: ./.github/actions/setup-android
         with:
-          cache-read-only: true
+          cache-read-only: "true"
 
-      # As above: the runners do not accept every system image's licence.
-      - name: Accept the Android SDK licences
-        working-directory: .
-        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
-
-      # As above: the runners ship no emulator, and API 28's image does not
-      # bring one.
-      - name: Install the Android emulator
-        working-directory: .
-        run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" emulator'
-
-      - name: Enable KVM
-        working-directory: .
-        run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
-            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-
-      # As above: only the setup is retried, never the tests.
       - name: Set up the device
-        run: |
-          for attempt in 1 2 3; do
-            ./gradlew ${{ matrix.device }}Setup \
-              -Pandroid.testoptions.manageddevices.emulator.gpu=swiftshader_indirect \
-              --stacktrace && exit 0
-            echo "::warning::Setting up ${{ matrix.device }} failed (attempt $attempt of 3)"
-          done
-          exit 1
+        uses: ./.github/actions/setup-android-device
+        with:
+          device: ${{ matrix.device }}
 
       - name: Run the instrumented tests
         run: >-

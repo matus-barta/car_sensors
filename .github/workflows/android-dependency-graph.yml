@@ -20,6 +20,7 @@ on:
       - master
     paths:
       - "android/**"
+      - ".github/actions/setup-android/**"
       - ".github/workflows/android-dependency-graph.yml"
       - "!android/**/*.md"
 
@@ -47,16 +48,12 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      - name: Install JDK
-        uses: actions/setup-java@v5
+      # Gradle itself comes from dependency-submission below, which sets it up
+      # the way setup-gradle would.
+      - name: Set up Android
+        uses: ./.github/actions/setup-android
         with:
-          distribution: temurin
-          java-version: "21"
-
-      # Resolving the graph builds enough of the project to need the SDK, and
-      # an unaccepted licence stops that as surely as it stops a compile.
-      - name: Accept the Android SDK licences
-        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+          gradle: "false"
 
       - name: Generate and submit the dependency graph
         uses: gradle/actions/dependency-submission@v6
@@ -65,3 +62,9 @@ jobs:
           # what the action uses - `working-directory` would only affect `run`
           # steps, not an action.
           build-root-directory: android
+          # Only the validation job saves the Gradle cache. This job resolves
+          # the graph without compiling anything, so what it would save is
+          # mostly dependency metadata - 120 MB against validation's 700 - and
+          # the emulator jobs, which restore the newest entry, would then
+          # download every jar again.
+          cache-read-only: true

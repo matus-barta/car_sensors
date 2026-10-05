@@ -1,0 +1,59 @@
+name: Set up an Android device
+description: Install the emulator, enable KVM and set up a Gradle managed device, retrying the setup
+
+inputs:
+  device:
+    description: The managed device to set up, as declared in android/app/build.gradle.kts
+    required: true
+
+runs:
+  using: composite
+  steps:
+    # The runners ship no emulator. Gradle never installs one by name: it
+    # arrives only as a dependency of a system image, and API 28's image
+    # declares no such dependency. AGP then fails setting the device up, with
+    # "Cannot query the value of this property because it has no value
+    # available" - nothing that names the emulator.
+    #
+    # Neither the emulator nor the system image is cached. A cache step for
+    # them never saved anything - its paths did not exist on the runner - and a
+    # working one would hold up to 2 GB per image in a repository cache that is
+    # already full. Downloading takes under a minute, even for API 37's.
+    - name: Install the Android emulator
+      shell: bash
+      run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" emulator'
+
+    # Without this the emulator falls back to software emulation and takes
+    # long enough to be worth avoiding. The runners have KVM; the device node
+    # just is not readable by the job's user by default.
+    - name: Enable KVM
+      shell: bash
+      run: |
+        echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+          | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+        sudo udevadm control --reload-rules
+        sudo udevadm trigger --name-match=kvm
+
+    # Setting the device up - downloading its system image, creating it and
+    # booting it once - is what the test task does first anyway. It is a step
+    # of its own so that it alone can be retried: a download once arrived
+    # corrupt, failing a run that had nothing wrong with it. The tests are
+    # never retried, so a flaky test still fails. Running it separately costs
+    # about two seconds, which is how long the test task then takes to find
+    # the device ready.
+    #
+    # The same GPU option the tests run with, so the device is booted the same
+    # way both times.
+    - name: Set up the device
+      shell: bash
+      working-directory: android
+      env:
+        DEVICE: ${{ inputs.device }}
+      run: |
+        for attempt in 1 2 3; do
+          ./gradlew "${DEVICE}Setup" \
+            -Pandroid.testoptions.manageddevices.emulator.gpu=swiftshader_indirect \
+            --stacktrace && exit 0
+          echo "::warning::Setting up $DEVICE failed (attempt $attempt of 3)"
+        done
+        exit 1
