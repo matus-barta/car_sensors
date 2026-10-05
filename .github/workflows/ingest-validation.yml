@@ -6,6 +6,8 @@ on:
       - "ingest/**"
       - "shared/**"
       - "db/migrations/**"
+      # Generated from ingest and checked by its tests.
+      - "docs/api/openapi.json"
       - "Cargo.toml"
       - "Cargo.lock"
       - ".github/workflows/ingest-validation.yml"

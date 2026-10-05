@@ -16,6 +16,14 @@ The first two are fatal if missing rather than defaulted, because a silent fallb
 
 ## API
 
+The contract is [`docs/api/openapi.json`](../docs/api/openapi.json), an OpenAPI 3.1 document generated from this crate - the routes, the request body, every field and every status. It is committed so it can be read without building anything, and a test fails when it no longer matches the code. After changing a route or `TelemetrySample`, regenerate it from the repository root:
+
+```bash
+cargo run -p ingest -- openapi > docs/api/openapi.json
+```
+
+A route has to be listed in `ApiDoc` in `src/routes/mod.rs` as well as in the router; the integration tests fail on a documented path the router does not serve. What follows is the reasoning the document has no room for.
+
 Everything is served under `/api`. The prefix is not stripped and not optional: a device configured without it gets 404 on every upload, which is a failure that looks exactly like success until somebody notices the backlog growing.
 
 | Route | Auth | |

@@ -12,4 +12,6 @@ pub struct Cli {
 pub enum Command {
     /// Exit 0 if the server running on SERVER_IP_PORT reports healthy, 1 otherwise
     Healthcheck,
+    /// Print the OpenAPI document for the API to stdout, as JSON
+    Openapi,
 }

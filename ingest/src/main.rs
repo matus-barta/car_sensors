@@ -10,8 +10,20 @@ mod healthcheck;
 
 #[tokio::main]
 async fn main() {
-    if let Some(Command::Healthcheck) = Cli::parse().command {
-        std::process::exit(if healthcheck::check().await { 0 } else { 1 });
+    match Cli::parse().command {
+        Some(Command::Healthcheck) => {
+            std::process::exit(if healthcheck::check().await { 0 } else { 1 });
+        }
+        Some(Command::Openapi) => {
+            let json = ingest::openapi()
+                .to_pretty_json()
+                .expect("the OpenAPI document should serialise");
+
+            println!("{json}");
+
+            return;
+        }
+        None => {}
     }
 
     rustls::crypto::aws_lc_rs::default_provider()

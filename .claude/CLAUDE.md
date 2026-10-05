@@ -58,6 +58,8 @@ cargo test
 cargo test -p ingest <test_name>      # single test
 ```
 
+`ingest`'s API is documented by `docs/api/openapi.json`, generated from the crate with utoipa: the handlers carry `#[utoipa::path]`, `TelemetrySample` derives `ToSchema`, and its doc comments become the field descriptions. Never edit the JSON; change the Rust and regenerate with `cargo run -p ingest -- openapi > docs/api/openapi.json`. `cargo test` fails if the committed copy has drifted or an example does not match its schema, and the integration tests fail on a documented route the router does not serve. A new route goes into both the router and `ApiDoc` in `src/routes/mod.rs`.
+
 `ingest` uses runtime-checked `sqlx::query()`, not the `query!` macros, so **building does not need a live database**.
 
 Web (`www/`, pnpm — the only JS package; it has its own lockfile and is not part of a JS workspace):

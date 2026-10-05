@@ -197,6 +197,8 @@ needs typing. See [`docs/android-app.md`](docs/android-app.md).
 - [`docs/architecture.md`](docs/architecture.md) - how the four pieces fit together and why they share one database
 - [`docs/android-app.md`](docs/android-app.md) - what the Android logger does, and the platform limitations worth knowing
 - [`docs/database-migrations.md`](docs/database-migrations.md) - how the schema is owned and propagated
+- [`docs/schema/`](docs/schema/README.md) - every table, column and relation, generated from the migrations
+- [`docs/api/openapi.json`](docs/api/openapi.json) - the `ingest` API as OpenAPI 3.1, generated from the code
 - [`docs/web-image.md`](docs/web-image.md) - why the web application image is the size it is, and what was tried
 - [`docs/ai-policy.md`](docs/ai-policy.md) - how AI-assisted changes are made here
 

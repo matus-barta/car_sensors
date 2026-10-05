@@ -622,3 +622,55 @@ async fn an_older_batch_should_not_move_the_live_snapshot_backwards() {
         "a delayed upload must not drag the live position back in time"
     );
 }
+
+/// The OpenAPI document is written by hand alongside the router, so nothing
+/// but this keeps them in step: every path it documents must be one the router
+/// serves, with the method it names.
+///
+/// An unauthenticated, empty request is enough to tell. A served route answers
+/// with whatever its middleware or handler decides - 200, 401, 415 - while one
+/// the router does not have answers 404, and a wrong method 405.
+#[tokio::test]
+async fn every_documented_route_should_be_served() {
+    let state = state_or_skip!();
+
+    let document =
+        serde_json::to_value(ingest::openapi()).expect("the OpenAPI document should serialise");
+
+    let paths = document["paths"]
+        .as_object()
+        .expect("the document should declare paths");
+
+    let mut checked = 0;
+
+    for (path, operations) in paths {
+        let operations = operations
+            .as_object()
+            .expect("each path should hold its operations");
+
+        for method in operations.keys() {
+            let response = build_app(state.clone())
+                .oneshot(
+                    Request::builder()
+                        .method(method.to_uppercase().as_str())
+                        .uri(path)
+                        .body(Body::empty())
+                        .expect("the request should build"),
+                )
+                .await
+                .expect("the service should answer");
+
+            assert!(
+                response.status() != StatusCode::NOT_FOUND
+                    && response.status() != StatusCode::METHOD_NOT_ALLOWED,
+                "{} {path} is documented but not served: answered {}",
+                method.to_uppercase(),
+                response.status()
+            );
+
+            checked += 1;
+        }
+    }
+
+    assert!(checked > 0, "the document declared no operations");
+}
