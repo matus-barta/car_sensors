@@ -19,11 +19,23 @@
       "skillPath": "security/SKILL.md",
       "computedHash": "7a230edf3a24ce18162cb4379f59b6a19b8d24ca04db530609d0f15cede556dc"
     },
+    "c4-architecture": {
+      "source": "softaworks/agent-toolkit",
+      "sourceType": "github",
+      "skillPath": "skills/c4-architecture/SKILL.md",
+      "computedHash": "f35f57420c35f2e8413e1e22934ca3950cae8286499f6fbe978cff604c35cfcd"
+    },
     "docker-patterns": {
       "source": "affaan-m/ecc",
       "sourceType": "github",
       "skillPath": "skills/docker-patterns/SKILL.md",
       "computedHash": "af6deba271429bcb5198a7e56a4f71f948509e06037e6a3210d0ad5f516eeb29"
+    },
+    "documentation-and-adrs": {
+      "source": "addyosmani/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/documentation-and-adrs/SKILL.md",
+      "computedHash": "2ed98ee303c23d228c76c7bfe6a5f0e5c0571df81670e5eb099f14929eac47e9"
     },
     "find-skills": {
       "source": "vercel-labs/skills",
