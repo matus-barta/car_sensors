@@ -39,9 +39,12 @@ After changing a migration or the Better Auth config, regenerate the committed D
 
 ```bash
 ./tools/scripts/sync-www-db-schema.sh   # applies migrations, then regenerates
+./tools/scripts/generate-schema-docs.sh # applies migrations, then runs tbls
 ```
 
 `www/src/lib/server/db/generated/` is generated output that must be committed and never hand-edited. CI fails if it drifts from the migrations (`pnpm db:check`).
+
+`docs/schema/` is the same kind of output: a page per table and Mermaid ER diagrams, written by [tbls](https://github.com/k1LoW/tbls) from the migrated database using `.tbls.yml`. Commit it, never hand-edit it, and treat it as the answer to "what columns does this table have" rather than reading the migrations in order. CI regenerates it with the pinned tbls version and fails on any difference. The script needs `tbls` on `PATH`.
 
 ## Commands
 
