@@ -24,7 +24,7 @@ What the work is, why it is worth doing, and what is still to be decided.
 | --- | --- |
 | `title` | The task, as a sentence saying what to do. Quoted. |
 | `status` | `backlog` - understood, not started. `next` - the one to pick up next. `in-progress` - being worked on. `blocked` - waiting on something outside the repository; the text says what. |
-| `area` | The part of the project it belongs to: `www`, `ingest`, `android`, `protocol`, `device-auth`, `database`, `ci`, `trips`, `geocoding`, `distribution`, `tools`. |
+| `area` | The part of the project it belongs to: `www`, `ingest`, `android`, `protocol`, `device-auth`, `database`, `ci`, `docs`, `trips`, `geocoding`, `distribution`, `tools`. |
 | `depends_on` | Ids of tasks that have to be done first - file names without `.md`. Only what the task's own text says it needs. |
 
 Tasks that are merely related - touching the same code, or better done in a
