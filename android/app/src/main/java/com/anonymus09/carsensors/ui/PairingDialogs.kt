@@ -126,10 +126,7 @@ private fun PairingOption(
  * open it in a browser and copy the values across.
  */
 @Composable
-fun ManualPairingDialog(
-    onSubmit: (DevicePairing) -> Unit,
-    onDismiss: () -> Unit
-) {
+fun ManualPairingDialog(onSubmit: (DevicePairing) -> Unit, onDismiss: () -> Unit) {
     var deviceId by remember { mutableStateOf("") }
     var token by remember { mutableStateOf("") }
 
@@ -217,11 +214,7 @@ fun UntaggedRowsDialog(
  * single tap costs somebody a trip to the web application.
  */
 @Composable
-fun ConfirmUnpairDialog(
-    hasPendingRows: Boolean,
-    onConfirm: () -> Unit,
-    onDismiss: () -> Unit
-) {
+fun ConfirmUnpairDialog(hasPendingRows: Boolean, onConfirm: () -> Unit, onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Unpair this phone?") },
@@ -265,11 +258,7 @@ fun ConfirmUnpairDialog(
  * send them from the phone - so the question is put plainly and left at that.
  */
 @Composable
-fun ConfirmDiscardPendingRowsDialog(
-    rowCount: Int,
-    onConfirm: () -> Unit,
-    onDismiss: () -> Unit
-) {
+fun ConfirmDiscardPendingRowsDialog(rowCount: Int, onConfirm: () -> Unit, onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Discard unsent recordings?") },

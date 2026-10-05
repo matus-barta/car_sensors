@@ -17,8 +17,15 @@ indent_size = 4
 
 [*.{kt,kts}]
 # Pinned rather than left to the default, so a ktlint upgrade cannot quietly
-# restyle the codebase.
-ktlint_code_style = ktlint_official
+# restyle the codebase. android_studio because it is what the IDE's own
+# formatter produces, and what the code was written in before ktlint ever
+# checked it - which it did not until ktlint-gradle 14, since 13 could not
+# find Kotlin sources compiled by AGP 9 and checked only the build scripts.
+ktlint_code_style = android_studio
+
+# Composables are named like types by convention, which the naming rule would
+# otherwise reject.
+ktlint_function_naming_ignore_when_annotated_with = Composable
 
 # Matches the 100 columns Prettier already enforces in `www`.
 max_line_length = 100

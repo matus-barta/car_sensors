@@ -20,7 +20,7 @@ abstract class AppDatabase : RoomDatabase() {
 
     companion object {
         @Volatile
-        private var INSTANCE: AppDatabase? = null
+        private var instance: AppDatabase? = null
 
         /**
          * `uploadAttemptCount` changed meaning in this version.
@@ -40,13 +40,12 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
-        fun getInstance(context: Context): AppDatabase {
-            return INSTANCE ?: synchronized(this) {
-                INSTANCE ?: Room.databaseBuilder(
-                    context.applicationContext,
-                    AppDatabase::class.java,
-                    DB_NAME
-                )
+        fun getInstance(context: Context): AppDatabase = instance ?: synchronized(this) {
+            instance ?: Room.databaseBuilder(
+                context.applicationContext,
+                AppDatabase::class.java,
+                DB_NAME
+            )
                     /*
                      * No destructive fallback here on purpose. This database is
                      * the only copy of telemetry that has not reached the
@@ -55,14 +54,11 @@ abstract class AppDatabase : RoomDatabase() {
                      * should fail loudly instead, which is also why the schema
                      * is exported from this version on.
                      */
-                    .addMigrations(MIGRATION_2_3)
-                    .build().also { INSTANCE = it }
-            }
+                .addMigrations(MIGRATION_2_3)
+                .build().also { instance = it }
         }
 
         // expose DB file path for UI/debug
-        fun getDatabaseFile(context: Context): File {
-            return context.getDatabasePath(DB_NAME)
-        }
+        fun getDatabaseFile(context: Context): File = context.getDatabasePath(DB_NAME)
     }
 }

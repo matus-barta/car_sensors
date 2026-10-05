@@ -1,14 +1,14 @@
 package com.anonymus09.carsensors.data
 
+import com.anonymus09.carsensors.util.AppConfig.UPLOAD_MAX_ATTEMPTS
+import java.io.File
+import kotlin.time.Duration
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.withContext
-import com.anonymus09.carsensors.util.AppConfig.UPLOAD_MAX_ATTEMPTS
-import java.io.File
-import kotlin.time.Duration
 
 /** Row counts and upload progress, as one query returns them. */
 data class TelemetryStats(
@@ -30,10 +30,7 @@ data class TelemetryStorage(
     val databasePath: String = ""
 )
 
-class TelemetryRepository(
-    private val dao: TelemetryDao,
-    private val databaseFile: File
-) {
+class TelemetryRepository(private val dao: TelemetryDao, private val databaseFile: File) {
 
     /**
      * Re-reads the storage figures every [interval] for as long as it is

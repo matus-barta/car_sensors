@@ -74,6 +74,8 @@ Three tools guard the Kotlin, mirroring what `www` already has: **ktlint** for f
 
 Android Studio needs nothing installed to work with this. `android/.editorconfig` is read by the IDE and by ktlint alike, so the formatter produces code ktlint already accepts rather than code it then rejects - which is the usual friction when a project adds a linter. It is deliberately scoped to the Android tree by `root = true`, so it cannot reach `www/` and its Prettier settings.
 
+The style it pins is `android_studio`, the one the IDE's formatter produces. For a while ktlint checked only the build scripts: ktlint-gradle 13 looks for Kotlin sources through the `kotlin-android` plugin, which AGP 9 no longer uses, so it found none and passed. Version 14 finds them. A check that passes is not the same as a check that ran - if a ktlint task reports `NO-SOURCE` for `main`, it is not looking at the app.
+
 Two run configurations are shared through `.idea/runConfigurations/` and appear in the Run menu without anything having to be typed:
 
 | Configuration | Runs |

@@ -47,7 +47,7 @@ android {
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro",
+                "proguard-rules.pro"
             )
         }
     }
@@ -218,7 +218,7 @@ configurations.matching { it.name.contains("AndroidTest") }.configureEach {
         "org.jetbrains.kotlinx:kotlinx-serialization-core:$serialization",
         "org.jetbrains.kotlinx:kotlinx-serialization-core-jvm:$serialization",
         "org.jetbrains.kotlinx:kotlinx-serialization-json:$serialization",
-        "org.jetbrains.kotlinx:kotlinx-serialization-json-jvm:$serialization",
+        "org.jetbrains.kotlinx:kotlinx-serialization-json-jvm:$serialization"
     )
 }
 

@@ -67,7 +67,6 @@ data class TelemetrySampleEntity(
     val pressureAccuracy: Int? = null,
     val pressureAccuracyLabel: String? = null,
 
-
     // Upload state
     val uploaded: Boolean = false,
     val uploadedAt: Long? = null,

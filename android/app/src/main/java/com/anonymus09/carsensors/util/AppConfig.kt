@@ -96,6 +96,7 @@ object AppConfig {
 
     // Metres per second to kilometres per hour.
     const val MPS_TO_KMH = 3.6f
+
     // Write one merged sample every 500 ms
     const val FLUSH_INTERVAL_MS = 500L
 

@@ -1,6 +1,7 @@
 package com.anonymus09.carsensors.data
 
 import com.anonymus09.carsensors.util.AppConfig.TELEMETRY_UPLOAD_PATH
+import java.util.zip.GZIPInputStream
 import kotlinx.coroutines.test.runTest
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
@@ -11,7 +12,6 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
-import java.util.zip.GZIPInputStream
 
 /**
  * What "Test connection" reports, against a server that answers however the

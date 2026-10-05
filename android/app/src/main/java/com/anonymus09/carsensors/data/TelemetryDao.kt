@@ -39,10 +39,7 @@ interface TelemetryDao {
         LIMIT :limit
     """
     )
-    suspend fun getNewestLocatedPending(
-        limit: Int,
-        maxAttempts: Int
-    ): List<TelemetrySampleEntity>
+    suspend fun getNewestLocatedPending(limit: Int, maxAttempts: Int): List<TelemetrySampleEntity>
 
     @Query(
         """
