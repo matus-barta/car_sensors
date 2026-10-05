@@ -785,31 +785,26 @@ collected, but a warning about storage pressure may not want to inherit it.
 
 ### Confirm the API 28 managed device sets itself up on a runner
 
-The `api28` device once failed on a runner inside AGP's own
+The `api28` device failed on a runner inside AGP's own
 `ManagedDeviceInstrumentationTestSetupTask`, with "Cannot query the value of
 this property because it has no value available", after its system image had
-installed. That was AGP 9.4.0, running the `allApis` group (`api30atd` and
-`api28`), and it could not be tried anywhere else because the workstation was
-arm64.
+installed - on AGP 9.4.0 in the `allApis` group, and again on 9.4.1 alone.
 
-It no longer reproduces off a runner. On an x86_64 workstation with AGP 9.4.1,
-`api28` sets itself up and passes every instrumented test, both alone and
-grouped with `api33`. So it is back in CI, in the post-merge job, on a runner of
-its own - its first run there either clears this entry or produces the stack
-trace that names the property. The workflow can also be started by hand from
-the Actions tab, so that run need not wait for a merge.
+The second run's stack trace places it at line 270, which in 9.4.1 is the
+emulator directory provider: AGP found no emulator package in the SDK. The
+runners ship none, and Gradle installs one only as a dependency of a system
+image. Every image this project uses declares that dependency except
+`system-images;android-28;default;x86` (revision 4), which is why only API 28
+failed, and why a workstation that already had an emulator never saw it.
 
-One thing that looked like a clue was not. AGP says the device "does not
-specify a testedAbi" although it does - but it says the same of every device,
-`api37` included, whatever `testedAbi` is set to, and falls back to `x86` or
-`x86_64` by itself. It ignores the setting rather than failing on it, which is
-an AGP quirk and not this fault.
+The workflow now installs the emulator explicitly before Gradle runs, which
+also covers the other devices whenever their image comes from the cache rather
+than a fresh install. This entry goes once a run of `api28` on a runner passes -
+the workflow can be started by hand from the Actions tab. The same run is the
+first of `api33atd`, the API 33 device moved to ATD for a quicker boot.
 
-If it does fail again, what remains different from the workstation is the
-runner's environment and the ATD device sharing a run, since the post-merge
-job runs each device separately. The ideas from before still apply, cheapest
-first: `systemImageSource = "google"`, a device profile other than `Pixel 2`,
-and API 29.
+AGP's warning that the device "does not specify a testedAbi" is unrelated: it
+says the same of every device, whatever `testedAbi` is set to.
 
 ### Test what newer Android does to a logger nobody watches
 

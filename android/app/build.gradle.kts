@@ -68,9 +68,10 @@ android {
          *
          * aosp-atd is an Automated Test Device: the pre-installed apps and
          * background services are stripped out and rendering is headless,
-         * which is what makes it affordable on a runner. ATD images exist only
-         * for API 30, which is newer than this app targets - immaterial for a
-         * Room migration, which is SQLite and framework.
+         * which is what makes it affordable on a runner. ATD images are
+         * published for API 30 to 36 only. The quick device below runs 30,
+         * which is newer than this app targets - immaterial for a Room
+         * migration, which is SQLite and framework.
          */
         managedDevices {
             localDevices {
@@ -103,18 +104,22 @@ android {
                  * Where notifications became a runtime permission - one of the
                  * platform changes that reaches this app despite its target.
                  * 32-bit images stop well before this level, hence x86_64.
+                 *
+                 * ATD, because the tests use only the framework, which ATD
+                 * keeps. A test that needs one of the apps or services it
+                 * strips out needs "aosp" here instead.
                  */
-                create("api33") {
+                create("api33atd") {
                     device = "Pixel 2"
                     apiLevel = 33
-                    systemImageSource = "aosp"
+                    systemImageSource = "aosp-atd"
                     testedAbi = "x86_64"
                 }
 
                 /*
                  * The newest Android, where restrictions that apply whatever
-                 * the target arrive first. No plain AOSP image is published at
-                 * this level, so this one carries the Google APIs.
+                 * the target arrive first. No plain AOSP or ATD image is
+                 * published at this level, so this one carries the Google APIs.
                  */
                 create("api37") {
                     device = "Pixel 2"
@@ -135,7 +140,7 @@ android {
                 create("allApis") {
                     targetDevices.add(localDevices["api30atd"])
                     targetDevices.add(localDevices["api28"])
-                    targetDevices.add(localDevices["api33"])
+                    targetDevices.add(localDevices["api33atd"])
                     targetDevices.add(localDevices["api37"])
                 }
             }
