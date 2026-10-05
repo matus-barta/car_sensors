@@ -36,9 +36,7 @@ cd tools && docker compose up -d
 
 There is one environment file, `.env` at the repository root. `ingest`, `www` and the SQLx CLI all find it there; the Android app has none.
 
-`ingest` reads `DATABASE_URL`, `REDIS_URL`, `SERVER_IP_PORT`.
-
-`www` requires `DATABASE_URL`, `ORIGIN` and `BETTER_AUTH_SECRET`; each is validated at startup and throws if missing. The rest are optional. `PUBLIC_OSM_VECTOR_TILE_URL` and `PUBLIC_OSM_STYLE_URL` fall back to the public OpenStreetMap tiles and the VersaTiles style. `REDIS_URL` enables live tracking of the selected vehicle, and lets a token rotation clear `ingest`'s credential cache at once. `TRUSTED_PROXIES` lists the proxies Better Auth skips over in `X-Forwarded-For` to find the client address it rate-limits sign-in by.
+Each service's README lists the variables it reads, which it requires and what the rest do: [`ingest`](../ingest/README.md#environment) and [`www`](../www/README.md#environment). A deployment sets them on the containers instead - see [`docs/deployment.md`](deployment.md).
 
 `www/.env.test` holds E2E-only values and is committed on purpose; the Playwright config loads it and passes it to the preview server, because `vite preview` runs in production mode and would not read it otherwise.
 
@@ -55,11 +53,9 @@ cargo clippy --all-targets --all-features -- -D warnings
 cargo test
 ```
 
-The `ingest` integration tests run only when `TEST_DATABASE_URL` and
-`TEST_REDIS_URL` are set, and skip their assertions otherwise - with the
-variables set and nothing listening, they fail. `cd tools && docker compose up
--d` starts Postgres and Valkey; the tests want a database of their own, created
-once:
+The `ingest` integration tests need the local infrastructure running, a
+database of their own and two variables - the [`ingest` README](../ingest/README.md#development)
+says why:
 
 ```bash
 docker compose -f tools/docker-compose.yml exec postgres createdb -U postgres ingest_test
@@ -83,17 +79,15 @@ cd android
 ./gradlew ktlintCheck detekt lintDebug testDebugUnitTest
 ```
 
-That is formatting, static analysis, Android lint and the unit tests, which run
-on the JVM and need no device - and what Android Studio's shared run
-configuration **Verify (lint + tests)** runs, beside **Format (ktlint)**. The
-instrumented tests do need a device:
+The instrumented tests need a device:
 
 ```bash
 ./gradlew connectedDebugAndroidTest        # a handset over adb
 ./gradlew api30atdDebugAndroidTest         # or a Gradle-managed emulator
 ```
 
-See [`docs/android-app.md`](android-app.md) for both.
+What each of these checks, and the Android Studio run configurations that do the
+same, are in [`docs/android-app.md`](android-app.md#development).
 
 Documentation, from the repository root:
 

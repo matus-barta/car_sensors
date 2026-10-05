@@ -67,7 +67,7 @@ The distinction matters at the other end. "Re-pair this phone" and "this vehicle
 
 Uploads are limited to **4 MiB on the wire** and **32 MiB once decompressed**. Both are needed: telemetry compresses extremely well - around 3 KB for 500 samples - so a small compressed body can expand far enough to matter, and the JSON extractor buffers the whole thing before parsing it.
 
-A reverse proxy in front of this needs a body limit at least as large, or it will reject a device's backlog before the service ever sees it.
+What that asks of a reverse proxy in front of it is in [`docs/deployment.md`](../docs/deployment.md#running-behind-a-reverse-proxy).
 
 ## What an upload does
 
@@ -89,4 +89,4 @@ cargo clippy --all-targets --all-features -- -D warnings
 cargo test
 ```
 
-`ingest` uses runtime-checked `sqlx::query()` rather than the macros, so **building needs no live database**. The integration tests do: they read `TEST_DATABASE_URL` and `TEST_REDIS_URL` and skip their assertions without them, so a green run that quietly tested nothing is possible - CI fails the job if it detects that. `cd tools && docker compose up -d` provides both locally.
+`ingest` uses runtime-checked `sqlx::query()` rather than the macros, so **building needs no live database**. The integration tests do: they read `TEST_DATABASE_URL` and `TEST_REDIS_URL` and skip their assertions without them, so a green run that quietly tested nothing is possible - CI fails the job if it detects that. [`docs/development.md`](../docs/development.md#checking-each-piece) has the commands to run them locally.

@@ -61,47 +61,20 @@ drizzle-kit studio
 
 ## Requirements
 
-Database migration and schema synchronization operations require:
+The tools are listed under [Dev Requirements](../README.md#dev-requirements) in
+the root README, and [`docs/development.md`](development.md#setting-up) installs
+the SQLx CLI with the features this project needs and the web dependencies.
 
-- PostgreSQL
-- Rust toolchain
-- SQLx CLI
-- Node.js
-- pnpm
-- Web dependencies installed under `www/`
-
-Install SQLx CLI with PostgreSQL and Rustls support:
-
-```bash
-cargo install sqlx-cli \
-    --no-default-features \
-    --features rustls,postgres
-```
-
-Verify the installation:
-
-```bash
-sqlx --version
-```
-
-Install the web dependencies:
-
-```bash
-cd www
-pnpm install
-```
-
-## Environment configuration
-
-The migration and synchronization commands require `DATABASE_URL`. There is one environment file, `.env` at the repository root - copy `.env.example` to start one. Both halves read it without being told: `sqlx` finds it by walking up from the working directory, and `www/drizzle.config.ts` loads it explicitly. A variable exported in the shell still wins over the file, which is how CI supplies its database.
-
-For the default local PostgreSQL deployment:
+The commands below need `DATABASE_URL`, from the root `.env` described in
+[`docs/development.md`](development.md#environment). Both halves find it without
+being told: `sqlx` by walking up from the working directory, and
+`www/drizzle.config.ts` by loading it explicitly. A variable exported in the
+shell still wins over the file, which is how CI supplies its database. The local
+infrastructure's database is the default:
 
 ```bash
 DATABASE_URL="postgres://postgres:postgres@localhost:5432/postgres"
 ```
-
-The environment file contains secrets and must not be committed.
 
 ## Creating a migration
 

@@ -94,7 +94,7 @@ The root `docker-compose.yml` is the *deployment* file: Postgres, Valkey, pgAdmi
 
 ## Environment
 
-`ingest` needs `DATABASE_URL` and `REDIS_URL`; `www` needs `DATABASE_URL`, `ORIGIN` and `BETTER_AUTH_SECRET`. Everything else is optional. There is one `.env`, at the repository root - what each variable does is in [`docs/development.md`](../docs/development.md#environment).
+`ingest` needs `DATABASE_URL` and `REDIS_URL`; `www` needs `DATABASE_URL`, `ORIGIN` and `BETTER_AUTH_SECRET`. Everything else is optional. There is one `.env`, at the repository root; each service's README lists what its variables do ([`ingest`](../ingest/README.md#environment), [`www`](../www/README.md#environment)).
 
 ## www architecture
 
@@ -114,7 +114,7 @@ The reasons are in [`docs/www-architecture.md`](../docs/www-architecture.md). Th
 
 E2E tests run serially against a real Postgres database whose name must end in `_test`; the fixture refuses anything else and refuses to share a database with `POSTGRES_ADMIN_URL`. Each test truncates and reseeds. They need a running Postgres and the SQLx CLI on `PATH`.
 
-`www/.env.test` holds E2E-only values and is committed on purpose; the Playwright config loads it and passes it to the preview server, because `vite preview` runs in production mode and would not read it otherwise.
+`www/.env.test` is committed on purpose and loaded by the Playwright config itself - see [`docs/development.md`](../docs/development.md#environment).
 
 ## Conventions
 

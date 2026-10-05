@@ -28,15 +28,14 @@ reached around the proxy.
 
 Two things the proxy has to get right:
 
-- **`ingest` serves everything under `/api`.** Health is `/api/health` and
-  uploads are `/api/telemetry/upload`. Route that prefix to the ingestion
-  service and leave the rest to the web application - a single hostname works if
-  the proxy selects by path prefix. Do not strip the prefix: the service expects
-  to receive it. The device's configured base URL must include whatever prefix
-  the deployment uses.
-- **Request bodies must be allowed through.** `ingest` accepts uploads up to
-  4 MiB on the wire, expanding to 32 MiB once decompressed. A proxy with a
-  smaller body limit will reject a device's backlog before the service sees it.
+- **Route `/api` to `ingest`, and leave the rest to the web application.** A
+  single hostname works if the proxy selects by path prefix. Do not strip the
+  prefix: [`ingest` serves everything under it](../ingest/README.md#api). The
+  device's configured base URL must include whatever prefix the deployment
+  uses.
+- **Allow a request body at least as large as `ingest` accepts** - its
+  [request size limits](../ingest/README.md#request-size). A proxy with a
+  smaller body limit rejects a device's backlog before the service sees it.
 
 ## What the Compose file runs
 
