@@ -57,7 +57,7 @@ Refusals follow [RFC 6750](https://datatracker.ietf.org/doc/html/rfc6750#section
 | **413** | | A body larger than the limits below |
 | **415** | | A body without `Content-Type: application/json` |
 | **422** | | JSON that is not an array of samples - a field of the wrong type, or a required one missing |
-| **500** | | The database refused the batch |
+| **500** | | The device lookup or the database write failed |
 
 An unknown identity is answered exactly as a bad token is, on purpose: distinguishing them would turn the endpoint into a way of discovering which devices exist.
 

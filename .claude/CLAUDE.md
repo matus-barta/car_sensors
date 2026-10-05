@@ -43,7 +43,7 @@ After changing a migration or the Better Auth config, regenerate the committed D
 ./tools/scripts/generate-schema-docs.sh # applies migrations, then runs tbls
 ```
 
-`www/src/lib/server/db/generated/` is generated output that must be committed and never hand-edited. CI fails if it drifts from the migrations (`pnpm db:check`).
+`www/src/lib/server/db/generated/` is generated output that must be committed and never hand-edited. CI fails if it drifts from the migrations: it runs the sync script and compares the result with what is committed. `pnpm db:check` makes the same comparison locally, against a database the migrations are already applied to.
 
 `docs/schema/` is the same kind of output: a page per table and Mermaid ER diagrams, written by [tbls](https://github.com/k1LoW/tbls) from the migrated database using `.tbls.yml`. Commit it, never hand-edit it, and treat it as the answer to "what columns does this table have" rather than reading the migrations in order. CI regenerates it with the pinned tbls version and fails on any difference. The script needs `tbls` on `PATH`.
 
@@ -84,7 +84,7 @@ Local infrastructure (Postgres, Valkey, pgAdmin):
 cd tools && docker compose up
 ```
 
-The root `docker-compose.yml` is the *deployment* file (Postgres, Valkey, pgAdmin, `ingest`). It has **no `www` service** and there is no image for it — the web app is built and run separately.
+The root `docker-compose.yml` is the *deployment* file: Postgres, Valkey, pgAdmin, `ingest` and `www`, the last two from the images `ingest-build.yml` and `www-build.yml` publish to GHCR. It is not for development - `tools/docker-compose.yml` is.
 
 **Workflows follow [`docs/ci.md`](../docs/ci.md)**: a validation workflow per piece that the build workflow calls, generated output checked where it belongs, runners and byte-compared generators pinned, and shared setup in single-purpose composite actions. Read it before adding a workflow or a `.github/actions/` action, and run `actionlint` after editing either.
 
@@ -94,7 +94,7 @@ The root `docker-compose.yml` is the *deployment* file (Postgres, Valkey, pgAdmi
 
 `ingest` reads `DATABASE_URL`, `REDIS_URL`, `SERVER_IP_PORT`.
 
-`www` reads `DATABASE_URL`, `ORIGIN`, `BETTER_AUTH_SECRET`, `PUBLIC_OSM_VECTOR_TILE_URL`, `PUBLIC_OSM_STYLE_URL`. Each is validated at startup and throws if missing. `TRUSTED_PROXIES` is optional: the proxies Better Auth strips from `X-Forwarded-For` to find the client address it rate-limits sign-in by.
+`www` requires `DATABASE_URL`, `ORIGIN` and `BETTER_AUTH_SECRET`; each is validated at startup and throws if missing. The rest are optional. `PUBLIC_OSM_VECTOR_TILE_URL` and `PUBLIC_OSM_STYLE_URL` fall back to the public OpenStreetMap tiles and the VersaTiles style. `REDIS_URL` enables live tracking of the selected vehicle, and lets a token rotation clear `ingest`'s credential cache at once. `TRUSTED_PROXIES` lists the proxies Better Auth skips over in `X-Forwarded-For` to find the client address it rate-limits sign-in by.
 
 `www/.env.test` holds E2E-only values and is committed on purpose; the Playwright config loads it and passes it to the preview server, because `vite preview` runs in production mode and would not read it otherwise.
 
@@ -132,7 +132,7 @@ Third-party widgets that build their DOM imperatively cannot be reached by an or
 
 `www` keeps its tokens in `src/routes/layout.css`; the Android app keeps its in `ui/theme/Color.kt`, wired up in `Theme.kt`. If a component seems to need a colour the theme does not offer, **say so and ask** - a new colour is added to the theme only after a human has agreed to it, so the palette stays something that was decided rather than something that accumulated one component at a time.
 
-Prettier runs only inside `www/` (tabs, single quotes, no trailing commas, 100 columns). Generated output — `src/lib/components/ui/`, `src/lib/server/db/generated/` and `src/lib/map/generated/` — is excluded from it. The last holds the time zone coordinates the empty vehicle map opens on, regenerated from IANA tzdata with `node tools/scripts/generate-timezone-centers.js`.
+Prettier runs only inside `www/` (tabs, single quotes, no trailing commas, 100 columns). Generated output in `src/lib/components/ui/` and `src/lib/map/generated/` is excluded from it. The generated Drizzle schema in `src/lib/server/db/generated/` is not - `pnpm db:format` formats it with Prettier, so it already matches - and only that directory's `meta/` and `.sql` leftovers are ignored. `src/lib/map/generated/` holds the time zone coordinates the empty vehicle map opens on, regenerated from IANA tzdata with `node tools/scripts/generate-timezone-centers.js`.
 
 Agent skills are vendored in `.agents/skills/` and symlinked into `.claude/skills/`, tracked by `skills-lock.json` at the repo root. Both are committed. Their markdown contains annotated code samples that Prettier cannot parse, so keep them outside any formatter's scope. Manage them with the `skills` CLI (`pnpm dlx skills add|remove|list|update ...`) rather than hand-editing the vendored files or `skills-lock.json` — `remove <name> -y` deletes the vendored directory, the agent symlinks, and the lock entry together.
 

@@ -38,8 +38,14 @@ docker compose down
 ### Running behind a reverse proxy
 
 Exposing the services publicly is left to the operator, and so is TLS. The
-Compose file publishes plain HTTP on the loopback interface; putting a reverse
-proxy in front of it is the expected way to serve it to the internet.
+Compose file publishes plain HTTP - `ingest` on port 3000, the web application
+on 3001 - and putting a reverse proxy in front of it is the expected way to
+serve it to the internet. Those two ports, and pgAdmin's 8888, are bound to
+every network interface today; only Postgres and Valkey are limited to
+loopback. Until that changes - see
+[`docs/tasks/take-pgadmin-out-of-the-deployment-compose-file.md`](docs/tasks/take-pgadmin-out-of-the-deployment-compose-file.md) -
+keep them closed to the outside with a firewall, so the services cannot be
+reached around the proxy.
 
 Two things the proxy has to get right:
 
@@ -163,8 +169,17 @@ cargo clippy --all-targets --all-features -- -D warnings
 cargo test
 ```
 
-The `ingest` integration tests need a reachable database and cache, and skip
-their assertions without one. `cd tools && docker compose up -d` provides both.
+The `ingest` integration tests run only when `TEST_DATABASE_URL` and
+`TEST_REDIS_URL` are set, and skip their assertions otherwise - with the
+variables set and nothing listening, they fail. `cd tools && docker compose up
+-d` starts Postgres and Valkey; the tests want a database of their own, created
+once:
+
+```bash
+docker compose -f tools/docker-compose.yml exec postgres createdb -U postgres ingest_test
+TEST_DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/ingest_test \
+  TEST_REDIS_URL=redis://127.0.0.1:6379 cargo test -p ingest
+```
 
 Web application:
 
@@ -183,15 +198,16 @@ cd android
 ```
 
 That is formatting, static analysis, Android lint and the unit tests, which run
-on the JVM and need no device. The instrumented tests do need one:
+on the JVM and need no device - and what Android Studio's shared run
+configuration **Verify (lint + tests)** runs, beside **Format (ktlint)**. The
+instrumented tests do need a device:
 
 ```bash
 ./gradlew connectedDebugAndroidTest        # a handset over adb
 ./gradlew api30atdDebugAndroidTest         # or a Gradle-managed emulator
 ```
 
-Android Studio has the first of these as a shared run configuration, so neither
-needs typing. See [`docs/android-app.md`](docs/android-app.md).
+See [`docs/android-app.md`](docs/android-app.md) for both.
 
 Documentation, from the repository root:
 

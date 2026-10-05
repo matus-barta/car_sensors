@@ -14,7 +14,7 @@ The application provides:
 ## Requirements
 
 - Node.js 24
-- pnpm 11
+- pnpm 12, the version pinned in `package.json`
 - PostgreSQL
 - SQLx CLI when synchronizing database schemas
 
@@ -78,7 +78,7 @@ http://localhost:5173
 
 On a new installation with no users, the application redirects to `/auth/setup` and asks for the initial administrator account.
 
-Public registration is disabled after setup. Additional accounts must be created through an administrator workflow.
+Public registration is disabled: the setup screen creates the first account. There is no way to add further accounts from the application yet - Better Auth's admin plugin is enabled, but nothing uses it; see [`docs/tasks/manage-accounts-from-the-web-application.md`](../docs/tasks/manage-accounts-from-the-web-application.md).
 
 ## Validation
 
@@ -212,7 +212,9 @@ pnpm dlx shadcn-svelte@latest add <component>
 
 Vehicle data reaches the browser through the remote functions in
 `src/lib/vehicles/vehicle.remote.ts`. The returned query is the single source
-of truth for the list; `VehicleState` wraps it and owns only the selection.
+of truth for the list; `VehicleState` wraps it and owns the selection plus what
+is derived from it - the selected vehicle's live position merged in, and every
+vehicle's status, worked out in the browser.
 
 ## Useful commands
 
