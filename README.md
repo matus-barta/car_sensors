@@ -4,264 +4,67 @@
 
 [![Ingest - build](https://github.com/matus-barta/car_sensors/actions/workflows/ingest-build.yml/badge.svg)](https://github.com/matus-barta/car_sensors/actions/workflows/ingest-build.yml) [![WWW - validation](https://github.com/matus-barta/car_sensors/actions/workflows/www-validation.yml/badge.svg)](https://github.com/matus-barta/car_sensors/actions/workflows/www-validation.yml) [![Android - validation](https://github.com/matus-barta/car_sensors/actions/workflows/android-validation.yml/badge.svg)](https://github.com/matus-barta/car_sensors/actions/workflows/android-validation.yml) [![Android - migration tests](https://github.com/matus-barta/car_sensors/actions/workflows/android-migration.yml/badge.svg)](https://github.com/matus-barta/car_sensors/actions/workflows/android-migration.yml)
 
-Open-source GPS tracking platform.
+An open-source GPS tracking platform. An Android app records where a vehicle goes and what its sensors read, a Rust service receives it, and a web application shows it on a map - all three sharing one PostgreSQL database.
 
-The project consists of:
+## Repository layout
 
-- Android application for collecting location and sensor data
-- Rust telemetry ingestion service
-- PostgreSQL database
-- Valkey cache and storage
-- SvelteKit web frontend for administration and map visualization
+| Directory | What it is |
+| --- | --- |
+| [`android/`](android/) | The Android logger - see [`docs/android-app.md`](docs/android-app.md) |
+| [`ingest/`](ingest/README.md) | The Rust service devices upload telemetry to |
+| [`shared/`](shared/) | A Rust library crate `ingest` builds on: Postgres and Valkey connections, the embedded migrations, time helpers |
+| [`www/`](www/README.md) | The SvelteKit web application: administration and the map |
+| [`db/migrations/`](db/migrations/) | The database schema, owned by SQLx - see [`docs/database-migrations.md`](docs/database-migrations.md) |
+| [`docs/`](docs/README.md) | The documentation, the site built from it, and open work in [`docs/tasks/`](docs/tasks/README.md) |
+| [`tools/`](tools/) | Local infrastructure and maintenance scripts |
+
+How the pieces fit together, and why they share one database: [`docs/architecture.md`](docs/architecture.md).
 
 ## Deployment
 
-### Deployment Requirements
-
-- Docker
-- Docker Compose
-
-### Start
+It needs Docker with Compose. Both services run from published images, so nothing is built:
 
 ```bash
-git clone https://github.com/matus-barta/car_sensors.git
+git clone --depth 1 https://github.com/matus-barta/car_sensors.git
 cd car_sensors
-docker compose up -d
-```
 
-### Stop
-
-```bash
-docker compose down
-```
-
-### Running behind a reverse proxy
-
-Exposing the services publicly is left to the operator, and so is TLS. The
-Compose file publishes plain HTTP - `ingest` on port 3000, the web application
-on 3001 - and putting a reverse proxy in front of it is the expected way to
-serve it to the internet. Those two ports, and pgAdmin's 8888, are bound to
-every network interface today; only Postgres and Valkey are limited to
-loopback. Until that changes - see
-[`docs/tasks/take-pgadmin-out-of-the-deployment-compose-file.md`](docs/tasks/take-pgadmin-out-of-the-deployment-compose-file.md) -
-keep them closed to the outside with a firewall, so the services cannot be
-reached around the proxy.
-
-Two things the proxy has to get right:
-
-- **`ingest` serves everything under `/api`.** Health is `/api/health` and
-  uploads are `/api/telemetry/upload`. Route that prefix to the ingestion
-  service and leave the rest to the web application - a single hostname works if
-  the proxy selects by path prefix. Do not strip the prefix: the service expects
-  to receive it. The device's configured base URL must include whatever prefix
-  the deployment uses.
-- **Request bodies must be allowed through.** `ingest` accepts uploads up to
-  4 MiB on the wire, expanding to 32 MiB once decompressed. A proxy with a
-  smaller body limit will reject a device's backlog before the service sees it.
-
-### Scope of the Compose deployment
-
-The Compose file starts PostgreSQL, Valkey, pgAdmin, the Rust ingestion service
-and the SvelteKit web application. Both services are published as images and
-neither has to be built to deploy.
-
-Two variables have no default and the stack refuses to start without them:
-
-```bash
 export ORIGIN="https://cars.example.org"     # where the web application is reached
 export BETTER_AUTH_SECRET="$(openssl rand -base64 32)"
 
-docker compose up -d
+docker compose up -d                          # docker compose down stops it
 ```
 
-`ORIGIN` has to match the address in the browser, because Better Auth checks it
-and a mismatch rejects sign-in. `BETTER_AUTH_SECRET` deliberately has no
-fallback: a predictable signing key is worse than a service that will not start.
-
-Everything else is optional. `PUBLIC_OSM_VECTOR_TILE_URL` and
-`PUBLIC_OSM_STYLE_URL` point the map at your own tile server. They fall back to
-the public OpenStreetMap tiles and to the VersaTiles "colorful" style, because
-OpenStreetMap serves its own style only to its own sites and localhost. They
-are read when the container starts rather than baked into the image, so one
-image serves every deployment.
-
-`TRUSTED_PROXIES` matters once the application sits behind more than one proxy.
-Sign-in is rate limited per client address, which Better Auth reads from
-`X-Forwarded-For`; it trusts that header on its own only when it holds a single
-address. A lone reverse proxy that sets the header itself needs nothing here.
-Behind a CDN such as Cloudflare, list the CDN's published ranges
-(comma-separated IPs or CIDR ranges) *and* have the reverse proxy trust the
-same ranges, so it passes the header on rather than replacing it with the CDN's
-address. Missing either half leaves every visitor sharing one limit.
-
-Migrations need no separate step. They are embedded into the `ingest` binary by
-`sqlx::migrate!` and applied when it connects, so bringing the stack up brings
-the schema up with it. That is also why `www` waits for `ingest` to be healthy
-rather than only for the database - it is not a runtime dependency between the
-two, only an ordering one, and without it the web application could query a
-table before the migration that changed it had run.
+The stack refuses to start without those two. It serves plain HTTP and expects a reverse proxy in front - [`docs/deployment.md`](docs/deployment.md) covers the proxy, the ports, the optional settings and how the schema is migrated.
 
 ## Development
 
-### Repository Structure
-
-```text
-android/    Android application
-db/         Authoritative PostgreSQL migrations
-docs/       Documentation, its site, and open work in docs/tasks/
-ingest/     Rust telemetry ingestion service (see ingest/README.md)
-shared/     Shared Rust crate
-tools/      Development and synchronization utilities
-www/        SvelteKit web application
-```
-
 ### Dev Requirements
 
-- Docker
-- Docker Compose
-- Rust toolchain
-- SQLx CLI
-- Node.js LTS
-- pnpm
+- [Docker](https://docs.docker.com/get-started/get-docker/)
+- [Docker Compose](https://docs.docker.com/compose/install/)
+- [Rust toolchain](https://www.rust-lang.org/tools/install)
+- [SQLx CLI](https://github.com/launchbadge/sqlx/tree/main/sqlx-cli), installed with the features this project needs as shown in [`docs/development.md`](docs/development.md#setting-up)
+- [Node.js LTS](https://nodejs.org/en/download)
+- [pnpm](https://pnpm.io/installation)
 - [tbls](https://github.com/k1LoW/tbls), to regenerate the schema documentation in `docs/schema/` after a migration (`brew install tbls`, or see its README for other platforms)
 - [actionlint](https://github.com/rhysd/actionlint), to check the workflows in `.github/` after editing them (`brew install actionlint`, or see its README for other platforms)
 - [lychee](https://lychee.cli.rs), to check the links between Markdown files (`brew install lychee`, or see its README for other platforms)
-- Android Studio and JDK 21, when developing the Android application
+- [Android Studio](https://developer.android.com/studio) and JDK 21, when developing the Android application
 
 The schema documentation is compared against CI's output byte for byte, and a
 different tbls version may lay the same schema out differently, so use the
 version pinned in `.github/workflows/docs-validation.yml`.
 
-### Install SQLx CLI
-
-Install SQLx CLI with PostgreSQL and Rustls support:
-
-```bash
-cargo install sqlx-cli \
-    --no-default-features \
-    --features rustls,postgres
-```
-
-### Install web dependencies
-
-```bash
-cd www
-pnpm install
-```
-
-### Start infrastructure
-
-```bash
-cd ./tools
-docker compose up
-```
-
-## Validation
-
-Each piece is checked the same way locally as it is in CI, so a green run here
-means a green run there.
-
-Rust, from the repository root:
-
-```bash
-cargo fmt --all --check
-cargo clippy --all-targets --all-features -- -D warnings
-cargo test
-```
-
-The `ingest` integration tests run only when `TEST_DATABASE_URL` and
-`TEST_REDIS_URL` are set, and skip their assertions otherwise - with the
-variables set and nothing listening, they fail. `cd tools && docker compose up
--d` starts Postgres and Valkey; the tests want a database of their own, created
-once:
-
-```bash
-docker compose -f tools/docker-compose.yml exec postgres createdb -U postgres ingest_test
-TEST_DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/ingest_test \
-  TEST_REDIS_URL=redis://127.0.0.1:6379 cargo test -p ingest
-```
-
-Web application:
-
-```bash
-cd www
-pnpm check    # svelte-kit sync and svelte-check
-pnpm lint     # prettier and eslint
-pnpm test     # unit, component and end-to-end
-```
-
-Android application:
-
-```bash
-cd android
-./gradlew ktlintCheck detekt lintDebug testDebugUnitTest
-```
-
-That is formatting, static analysis, Android lint and the unit tests, which run
-on the JVM and need no device - and what Android Studio's shared run
-configuration **Verify (lint + tests)** runs, beside **Format (ktlint)**. The
-instrumented tests do need a device:
-
-```bash
-./gradlew connectedDebugAndroidTest        # a handset over adb
-./gradlew api30atdDebugAndroidTest         # or a Gradle-managed emulator
-```
-
-See [`docs/android-app.md`](docs/android-app.md) for both.
-
-Documentation, from the repository root:
-
-```bash
-lychee './**/*.md' .claude/CLAUDE.md   # links between files, settings in lychee.toml
-actionlint                             # the workflows in .github/
-```
-
-The documentation site, built from the same Markdown:
-
-```bash
-cd docs/starlight
-pnpm install
-pnpm dev       # a local preview that reloads as pages change
-pnpm check     # type-checks the site's TypeScript
-pnpm build     # what CI runs; fails on a link between pages that does not resolve
-```
+Then start the local infrastructure - Postgres, Valkey and pgAdmin - with `cd tools && docker compose up -d`. [`docs/development.md`](docs/development.md) covers the rest: installing the SQLx CLI, the environment file, and checking each piece the way CI does.
 
 ## Documentation
 
-- [`docs/README.md`](docs/README.md) - the index of everything below, and the home page of the documentation site
-- [`docs/architecture.md`](docs/architecture.md) - how the four pieces fit together and why they share one database
-- [`docs/android-app.md`](docs/android-app.md) - what the Android logger does, and the platform limitations worth knowing
-- [`docs/database-migrations.md`](docs/database-migrations.md) - how the schema is owned and propagated
-- [`docs/schema/`](docs/schema/README.md) - every table, column and relation, generated from the migrations
-- [`docs/api/openapi.json`](docs/api/openapi.json) - the `ingest` API as OpenAPI 3.1, generated from the code
-- [`docs/ci.md`](docs/ci.md) - how the workflows are laid out, and the rules that keep them that way
-- [`docs/web-image.md`](docs/web-image.md) - why the web application image is the size it is, and what was tried
-- [`docs/ai-policy.md`](docs/ai-policy.md) - how AI-assisted changes are made here
+Everything is indexed in [`docs/README.md`](docs/README.md), which is also the home page of the documentation site, published from `main` to [matus-barta.github.io/car_sensors](https://matus-barta.github.io/car_sensors/).
 
 ## AI-assisted development
 
-AI tools may be used to assist with research, documentation, analysis, code, and preparing commits. They are not autonomous contributors or decision-makers for this project.
-
-An AI tool works in a supervised local working tree, and may create commits and write their messages when the developer asks. Every changed line is reviewed by the developer before anything is pushed. AI agents must not push changes, merge pull requests, deploy releases, apply production migrations, access project secrets, or modify repository settings.
-
-The developer remains fully responsible for the correctness, security, licensing, and maintainability of every submitted change. An `Assisted-by:` trailer records AI assistance without making the tool an author.
-
-See [`docs/ai-policy.md`](docs/ai-policy.md) for the complete policy.
+AI tools may help here - with research, code and preparing commits - but a developer reviews every changed line before it is pushed and answers for it, and an `Assisted-by:` trailer records the help. The full policy is [`docs/ai-policy.md`](docs/ai-policy.md).
 
 ## License
 
-Copyright © Matus Barta.
-
-This project is licensed under the **GNU Affero General Public License version 3 only**.
-
-The corresponding SPDX license identifier is:
-
-```text
-AGPL-3.0-only
-```
-
-You may use, study, modify, and redistribute this software under the terms of the GNU Affero General Public License version 3.
-
-If you modify the software and make the modified version available to users over a network, you must make the corresponding source code available to those users as required by the license.
-
-See the LICENSE file for the complete license terms.
+Copyright © Matus Barta. Licensed under the GNU Affero General Public License version 3 only (`AGPL-3.0-only`); see [`LICENSE`](LICENSE). If you make a modified version available to users over a network, you must offer them its source code.

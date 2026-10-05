@@ -216,6 +216,9 @@ of truth for the list; `VehicleState` wraps it and owns the selection plus what
 is derived from it - the selected vehicle's live position merged in, and every
 vehicle's status, worked out in the browser.
 
+The decisions behind this, and the rest of the code's structure and styling, are
+in [`docs/www-architecture.md`](../docs/www-architecture.md).
+
 ## Useful commands
 
 ```bash

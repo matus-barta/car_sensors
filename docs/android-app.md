@@ -70,7 +70,7 @@ Each is a logger of its own, though. Both left switched on means two sets of row
 
 Builds installed before this split carry the release id while being debug-signed. A debug build no longer updates them - it installs beside them - and the first signed release build cannot either; see [`docs/tasks/publish-signed-builds-to-github-releases-for-obtainium.md`](tasks/publish-signed-builds-to-github-releases-for-obtainium.md).
 
-## Working on it
+## Development
 
 Three tools guard the Kotlin, mirroring what `www` already has: **ktlint** for formatting, which is Prettier's counterpart; **detekt** for code smells, which is ESLint's; and **Android Lint**, which catches platform mistakes neither of the others can see. All three run on every pull request that touches `android/`.
 

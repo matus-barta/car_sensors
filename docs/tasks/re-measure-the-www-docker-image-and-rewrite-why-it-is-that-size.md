@@ -1,11 +1,11 @@
 ---
-title: "Re-measure the web image and rewrite why it is that size"
+title: "Re-measure the web application's Docker image and rewrite why it is that size"
 status: backlog
 area: www
 depends_on: []
 ---
 
-[Why the web application image is the size it is](../web-image.md) explains the
+[Why the web application's Docker image is the size it is](../www-docker-image.md) explains the
 size by a dependency chain that no longer exists. `/verify-docs` found, against
 the lockfile in October 2026:
 

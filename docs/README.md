@@ -12,14 +12,20 @@ on GitHub as they are. The same files are built into the documentation site by
 the Starlight project in [`starlight/`](starlight/), which links them together
 and adds search.
 
-## Start here
+## Overview
 
 - [How the pieces fit together](architecture.md) - the four pieces, the one database they share, and why
 - [The Android logger](android-app.md) - what the Android logger does, and the platform limitations worth knowing
-- [Why the web application image is the size it is](web-image.md) - and what was tried
 
-## Working on it
+## Deployment
 
+- [Deploying with Docker Compose](deployment.md) - the Compose file, the reverse proxy in front of it, and the settings it takes
+- [Why the web application's Docker image is the size it is](www-docker-image.md) - and what was tried
+
+## Development
+
+- [Development setup](development.md) - setting up a machine, the environment file, and checking each piece the way CI does
+- [How the web application is put together](www-architecture.md) - the decisions behind the `www` code, and why
 - [Database migrations and schema synchronization](database-migrations.md) - how the schema is owned and propagated
 - [Continuous integration](ci.md) - how the workflows are laid out, and the rules that keep them that way
 - [Artificial intelligence usage policy](ai-policy.md) - how AI-assisted changes are made here

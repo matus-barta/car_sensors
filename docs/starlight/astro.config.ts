@@ -52,8 +52,12 @@ export default defineConfig({
 			],
 			// The same groups as the landing page, docs/README.md.
 			sidebar: [
-				{ label: 'Start here', items: ['architecture', 'android-app', 'web-image'] },
-				{ label: 'Working on it', items: ['database-migrations', 'ci', 'ai-policy'] },
+				{ label: 'Overview', items: ['architecture', 'android-app'] },
+				{ label: 'Deployment', items: ['deployment', 'www-docker-image'] },
+				{
+					label: 'Development',
+					items: ['development', 'www-architecture', 'database-migrations', 'ci', 'ai-policy']
+				},
 				{
 					label: 'Reference',
 					items: [
