@@ -12,9 +12,9 @@ on:
       - "android/app/src/androidTest/**"
       - ".github/workflows/android-migration.yml"
 
-  # After a merge, on anything under android/. This is where the devices with
-  # no stripped-down ATD image run - API 28, the level the app targets, and API
-  # 33 and 37 - since each is too slow for a pull request to wait on.
+  # After a merge, on anything under android/. This is where the other devices
+  # run - API 28, the level the app targets, and API 33 and 37 - since each is
+  # too slow for a pull request to wait on.
   #
   # A merge rather than a schedule, because what this guards against can only
   # arrive with a code change: a calendar fires when nothing has happened and
@@ -77,6 +77,17 @@ jobs:
         working-directory: .
         run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
 
+      # The runners ship no emulator. Gradle never installs one by name: it
+      # arrives only as a dependency of a system image as that image is
+      # installed, so it is missing whenever the image comes from the cache
+      # below, and always for API 28, whose image declares no such dependency.
+      # AGP then fails setting the device up, with "Cannot query the value of
+      # this property because it has no value available" - nothing that names
+      # the emulator.
+      - name: Install the Android emulator
+        working-directory: .
+        run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" emulator'
+
       # The system image is a few hundred megabytes and the device built from
       # it is rebuilt from scratch otherwise, which is most of what this job
       # would spend its time on. Keyed on the build file because that is where
@@ -126,21 +137,19 @@ jobs:
           path: android/app/build/reports/androidTests/
           retention-days: 7
 
-  # The levels with no stripped-down ATD image, after a merge only: API 28,
-  # the level the app targets and the handset runs, and API 33 and 37, where
-  # the platform changes this app's behaviour whatever it targets - 33 made
-  # notifications a permission, 37 is the newest. Each costs several minutes a
-  # pull request should not have to wait for; after the merge it holds nobody
-  # up, while still being something that happens on its own.
+  # The other levels, after a merge only: API 28, the level the app targets and
+  # the handset runs, and API 33 and 37, where the platform changes this app's
+  # behaviour whatever it targets - 33 made notifications a permission, 37 is
+  # the newest. Each costs several minutes a pull request should not have to
+  # wait for; after the merge it holds nobody up, while still being something
+  # that happens on its own.
   #
   # A job of its own rather than a matrix on the one above, so that job keeps
   # its name - pull requests may be required to pass it under that name.
   #
-  # API 28's device once failed to set itself up on a runner, inside AGP, and
-  # could not then be tried anywhere else. It now sets up and passes on an
-  # x86_64 workstation, alone and in a group, so it is back to find out
-  # whether the runner agrees - see todo.md. Its own runner means a failure
-  # costs only its own result.
+  # API 28's device failed to set itself up here until the emulator was
+  # installed explicitly - see that step. Its own runner means a failure costs
+  # only its own result.
   newer-android:
     name: Run the instrumented tests on ${{ matrix.device }}
     if: github.event_name != 'pull_request'
@@ -150,7 +159,7 @@ jobs:
       # One version failing says nothing about the other.
       fail-fast: false
       matrix:
-        device: [api28, api33, api37]
+        device: [api28, api33atd, api37]
 
     defaults:
       run:
@@ -173,6 +182,12 @@ jobs:
       - name: Accept the Android SDK licences
         working-directory: .
         run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+
+      # As above: the runners ship no emulator, and API 28's image does not
+      # bring one.
+      - name: Install the Android emulator
+        working-directory: .
+        run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" emulator'
 
       # Keyed on the device as well, so the two images do not evict each other.
       - name: Cache the managed device and its system image
