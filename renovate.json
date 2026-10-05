@@ -144,6 +144,17 @@
       "allowedVersions": "<12"
     },
     {
+      "description": "TypeScript stays on 6: svelte-check and @astrojs/check support only 5 and 6, and typescript-eslint stops below 6.1, so 7 would break type checking in both www and the documentation site. See docs/tasks/move-to-typescript-7.md for when that changes.",
+      "matchFileNames": [
+        "www/package.json",
+        "docs/starlight/package.json"
+      ],
+      "matchPackageNames": [
+        "typescript"
+      ],
+      "allowedVersions": "<7"
+    },
+    {
       "description": "A floating tag is already whatever it is; a pull request saying so tells nobody anything.",
       "matchDatasources": [
         "docker"
