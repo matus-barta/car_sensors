@@ -15,6 +15,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.anonymus09.carsensors.data.AppDatabase
 import com.anonymus09.carsensors.data.SettingsRepository
 import com.anonymus09.carsensors.data.TelemetrySettings
+import kotlin.math.abs
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -25,7 +26,6 @@ import org.junit.FixMethodOrder
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.junit.runners.MethodSorters
-import kotlin.math.abs
 
 /**
  * Whether the logger, started the way the app starts it, turns GPS fixes into

@@ -1,7 +1,7 @@
 package com.anonymus09.carsensors
 
-import android.annotation.SuppressLint
 import android.Manifest
+import android.annotation.SuppressLint
 import android.app.Service
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -21,24 +21,52 @@ import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.Handler
 import android.os.HandlerThread
-import android.os.SystemClock
 import android.os.IBinder
-import android.os.PowerManager
 import android.os.Looper
+import android.os.PowerManager
+import android.os.SystemClock
 import android.util.Log
 import androidx.core.content.ContextCompat
 import com.anonymus09.carsensors.data.AppDatabase
-import com.anonymus09.carsensors.data.PowerState
-import com.anonymus09.carsensors.data.PowerTier
 import com.anonymus09.carsensors.data.PairingRepository
+import com.anonymus09.carsensors.data.PowerState
 import com.anonymus09.carsensors.data.PowerStateProvider
+import com.anonymus09.carsensors.data.PowerTier
 import com.anonymus09.carsensors.data.ServerHealthChecker
 import com.anonymus09.carsensors.data.SettingsRepository
+import com.anonymus09.carsensors.data.TelemetrySampleEntity
 import com.anonymus09.carsensors.data.TelemetryUploader
 import com.anonymus09.carsensors.data.UploadOutcome
 import com.anonymus09.carsensors.data.uploadSilenceMessage
-import com.anonymus09.carsensors.data.TelemetrySampleEntity
+import com.anonymus09.carsensors.util.AccessState
+import com.anonymus09.carsensors.util.AppConfig.ACCESS_CHECK_INTERVAL_MS
+import com.anonymus09.carsensors.util.AppConfig.BATTERY_REDUCED_RATE_FACTOR
+import com.anonymus09.carsensors.util.AppConfig.FLUSH_INTERVAL_MS
+import com.anonymus09.carsensors.util.AppConfig.GPS_UPDATE_INTERVAL_MS
+import com.anonymus09.carsensors.util.AppConfig.LIVE_PUSH_MAX_ROWS
+import com.anonymus09.carsensors.util.AppConfig.LIVE_PUSH_MIN_INTERVAL_MS
+import com.anonymus09.carsensors.util.AppConfig.MAX_LOCATION_AGE_MS
+import com.anonymus09.carsensors.util.AppConfig.MOTION_CONFIRM_WINDOW_MS
+import com.anonymus09.carsensors.util.AppConfig.MOTION_IDLE_TIMEOUT_MS
+import com.anonymus09.carsensors.util.AppConfig.MOVEMENT_SPEED_MPS
+import com.anonymus09.carsensors.util.AppConfig.MPS_TO_KMH
+import com.anonymus09.carsensors.util.AppConfig.NETWORK_UPDATE_INTERVAL_MS
+import com.anonymus09.carsensors.util.AppConfig.SENSOR_BATCH_LATENCY_FACTOR
+import com.anonymus09.carsensors.util.AppConfig.SENSOR_SAMPLING_US
+import com.anonymus09.carsensors.util.AppConfig.UPLOAD_CHECK_EVERY_N_SAMPLES
+import com.anonymus09.carsensors.util.AppConfig.UPLOAD_MAX_ATTEMPTS
+import com.anonymus09.carsensors.util.AppConfig.UPLOAD_SILENCE_RENOTIFY_MS
+import com.anonymus09.carsensors.util.AppConfig.UPLOAD_SILENCE_WARNING_MS
+import com.anonymus09.carsensors.util.AppConfig.UPLOAD_TRIGGER_PENDING_ROWS
+import com.anonymus09.carsensors.util.GpsClock
+import com.anonymus09.carsensors.util.HeadingTracker
+import com.anonymus09.carsensors.util.LastExit
+import com.anonymus09.carsensors.util.ageMs
+import com.anonymus09.carsensors.util.sensorAccuracyLabel
 import com.anonymus09.carsensors.work.WifiUploadScheduler
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
+import kotlin.coroutines.EmptyCoroutineContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
@@ -49,36 +77,10 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import org.json.JSONObject
-import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicInteger
-import kotlin.coroutines.EmptyCoroutineContext
-import com.anonymus09.carsensors.util.AppConfig.ACCESS_CHECK_INTERVAL_MS
-import com.anonymus09.carsensors.util.AppConfig.BATTERY_REDUCED_RATE_FACTOR
-import com.anonymus09.carsensors.util.AppConfig.FLUSH_INTERVAL_MS
-import com.anonymus09.carsensors.util.AppConfig.GPS_UPDATE_INTERVAL_MS
-import com.anonymus09.carsensors.util.AppConfig.MPS_TO_KMH
-import com.anonymus09.carsensors.util.AppConfig.NETWORK_UPDATE_INTERVAL_MS
-import com.anonymus09.carsensors.util.AppConfig.SENSOR_BATCH_LATENCY_FACTOR
-import com.anonymus09.carsensors.util.AppConfig.LIVE_PUSH_MAX_ROWS
-import com.anonymus09.carsensors.util.AppConfig.MAX_LOCATION_AGE_MS
-import com.anonymus09.carsensors.util.AppConfig.MOTION_CONFIRM_WINDOW_MS
-import com.anonymus09.carsensors.util.AppConfig.MOTION_IDLE_TIMEOUT_MS
-import com.anonymus09.carsensors.util.AppConfig.MOVEMENT_SPEED_MPS
-import com.anonymus09.carsensors.util.AppConfig.LIVE_PUSH_MIN_INTERVAL_MS
-import com.anonymus09.carsensors.util.AppConfig.SENSOR_SAMPLING_US
-import com.anonymus09.carsensors.util.AppConfig.UPLOAD_CHECK_EVERY_N_SAMPLES
-import com.anonymus09.carsensors.util.AppConfig.UPLOAD_MAX_ATTEMPTS
-import com.anonymus09.carsensors.util.AppConfig.UPLOAD_SILENCE_RENOTIFY_MS
-import com.anonymus09.carsensors.util.AppConfig.UPLOAD_SILENCE_WARNING_MS
-import com.anonymus09.carsensors.util.GpsClock
-import com.anonymus09.carsensors.util.HeadingTracker
-import com.anonymus09.carsensors.util.sensorAccuracyLabel
-import com.anonymus09.carsensors.util.LastExit
-import com.anonymus09.carsensors.util.AccessState
-import com.anonymus09.carsensors.util.ageMs
-import com.anonymus09.carsensors.util.AppConfig.UPLOAD_TRIGGER_PENDING_ROWS
 
-class TelemetryForegroundService : Service(), SensorEventListener {
+class TelemetryForegroundService :
+    Service(),
+    SensorEventListener {
 
     companion object {
         private const val SENSOR_THREAD_NAME = "TelemetryLoggerThread"
@@ -121,7 +123,6 @@ class TelemetryForegroundService : Service(), SensorEventListener {
 
         private val _locationStatus = MutableStateFlow(TelemetryLocationStatus())
         val locationStatus: StateFlow<TelemetryLocationStatus> = _locationStatus.asStateFlow()
-
     }
 
     private lateinit var sensorManager: SensorManager
@@ -281,9 +282,12 @@ class TelemetryForegroundService : Service(), SensorEventListener {
              * reason for not stamping samples with it.
              */
             if (!wasDisciplined && gpsClock.isDisciplined) {
-                writeSimpleEvent("gps_clock_disciplined", JSONObject().apply {
-                    put("systemClockOffsetMs", gpsClock.nowMs() - System.currentTimeMillis())
-                })
+                writeSimpleEvent(
+                    "gps_clock_disciplined",
+                    JSONObject().apply {
+                        put("systemClockOffsetMs", gpsClock.nowMs() - System.currentTimeMillis())
+                    }
+                )
             }
 
             latestLocation = location
@@ -306,9 +310,12 @@ class TelemetryForegroundService : Service(), SensorEventListener {
         }
 
         override fun onProviderEnabled(provider: String) {
-            writeSimpleEvent("location_provider_enabled", JSONObject().apply {
-                put("provider", provider)
-            })
+            writeSimpleEvent(
+                "location_provider_enabled",
+                JSONObject().apply {
+                    put("provider", provider)
+                }
+            )
             updateNotification()
         }
 
@@ -318,18 +325,24 @@ class TelemetryForegroundService : Service(), SensorEventListener {
                 provider = provider
             )
 
-            writeSimpleEvent("location_provider_disabled", JSONObject().apply {
-                put("provider", provider)
-            })
+            writeSimpleEvent(
+                "location_provider_disabled",
+                JSONObject().apply {
+                    put("provider", provider)
+                }
+            )
             updateNotification()
         }
 
         @Deprecated("Deprecated in Java")
         override fun onStatusChanged(provider: String?, status: Int, extras: android.os.Bundle?) {
-            writeSimpleEvent("location_provider_status_changed", JSONObject().apply {
-                put("provider", provider)
-                put("status", status)
-            })
+            writeSimpleEvent(
+                "location_provider_status_changed",
+                JSONObject().apply {
+                    put("provider", provider)
+                    put("status", status)
+                }
+            )
         }
     }
 
@@ -344,9 +357,12 @@ class TelemetryForegroundService : Service(), SensorEventListener {
                     isCurrentlyCharging = true
                     currentPowerSource = powerStateProvider.current().source
 
-                    writeSimpleEvent("power_connected", JSONObject().apply {
-                        put("powerSource", currentPowerSource)
-                    })
+                    writeSimpleEvent(
+                        "power_connected",
+                        JSONObject().apply {
+                            put("powerSource", currentPowerSource)
+                        }
+                    )
 
                     updateNotification()
 
@@ -475,28 +491,31 @@ class TelemetryForegroundService : Service(), SensorEventListener {
         registerPowerReceiver()
         watchPowerState()
 
-        writeSimpleEvent("service_started", JSONObject().apply {
-            put("charging", isCurrentlyCharging)
-            put("powerSource", currentPowerSource)
-            put("autoStartOnBootEnabled", settings.current().autoStartOnBoot)
-            put("wakeOnMotionEnabled", settings.current().wakeOnMotion)
-            put("recordOnBattery", settings.current().recordOnBattery)
-            put("hasMotionSensor", significantMotion != null)
+        writeSimpleEvent(
+            "service_started",
+            JSONObject().apply {
+                put("charging", isCurrentlyCharging)
+                put("powerSource", currentPowerSource)
+                put("autoStartOnBootEnabled", settings.current().autoStartOnBoot)
+                put("wakeOnMotionEnabled", settings.current().wakeOnMotion)
+                put("recordOnBattery", settings.current().recordOnBattery)
+                put("hasMotionSensor", significantMotion != null)
 
             /*
              * Explains, from the server, a session of rows without positions
              * or an upload outage nobody was warned about.
              */
-            reportedAccess = AccessState.of(this@TelemetryForegroundService)
-                .also { it.putInto(this) }
+                reportedAccess = AccessState.of(this@TelemetryForegroundService)
+                    .also { it.putInto(this) }
 
             /*
              * Why the process before this one ended. A logger stopped from
              * Active apps is not restarted, so this is the first the server
              * can hear of it - and it tells a crash from a kill for memory.
              */
-            LastExit.of(this@TelemetryForegroundService)?.putInto(this)
-        })
+                LastExit.of(this@TelemetryForegroundService)?.putInto(this)
+            }
+        )
 
         enterInitialState()
 
@@ -531,10 +550,13 @@ class TelemetryForegroundService : Service(), SensorEventListener {
         val previous = powerTier
         powerTier = tier
 
-        writeSimpleEvent("power_tier_changed", JSONObject().apply {
-            put("from", previous.name)
-            put("to", tier.name)
-        })
+        writeSimpleEvent(
+            "power_tier_changed",
+            JSONObject().apply {
+                put("from", previous.name)
+                put("to", tier.name)
+            }
+        )
 
         updateNotification()
 
@@ -571,8 +593,7 @@ class TelemetryForegroundService : Service(), SensorEventListener {
     }
 
     /** Whether the power settings allow recording at this moment. */
-    private fun canRecordNow(): Boolean =
-        isCurrentlyCharging || settings.current().recordOnBattery
+    private fun canRecordNow(): Boolean = isCurrentlyCharging || settings.current().recordOnBattery
 
     /**
      * Whether the vehicle standing still should mean waiting rather than
@@ -611,10 +632,13 @@ class TelemetryForegroundService : Service(), SensorEventListener {
         _loggerState.value = LoggerState.ARMED
         _locationStatus.value = TelemetryLocationStatus(hasFix = false)
 
-        writeSimpleEvent("logger_armed", JSONObject().apply {
-            put("movementWasConfirmed", movementConfirmed)
-            put("onPower", isCurrentlyCharging)
-        })
+        writeSimpleEvent(
+            "logger_armed",
+            JSONObject().apply {
+                put("movementWasConfirmed", movementConfirmed)
+                put("onPower", isCurrentlyCharging)
+            }
+        )
         updateNotification()
     }
 
@@ -793,11 +817,13 @@ class TelemetryForegroundService : Service(), SensorEventListener {
 
     private fun requestLocationUpdates() {
         val fineGranted = ContextCompat.checkSelfPermission(
-            this, Manifest.permission.ACCESS_FINE_LOCATION
+            this,
+            Manifest.permission.ACCESS_FINE_LOCATION
         ) == PackageManager.PERMISSION_GRANTED
 
         val coarseGranted = ContextCompat.checkSelfPermission(
-            this, Manifest.permission.ACCESS_COARSE_LOCATION
+            this,
+            Manifest.permission.ACCESS_COARSE_LOCATION
         ) == PackageManager.PERMISSION_GRANTED
 
         if (!fineGranted && !coarseGranted) {
@@ -828,9 +854,12 @@ class TelemetryForegroundService : Service(), SensorEventListener {
             }
         } catch (e: SecurityException) {
             Log.e("Telemetry", "Location permission was revoked underneath us", e)
-            writeSimpleEvent("location_security_exception", JSONObject().apply {
-                put("message", e.message)
-            })
+            writeSimpleEvent(
+                "location_security_exception",
+                JSONObject().apply {
+                    put("message", e.message)
+                }
+            )
             updateNotification()
         }
     }
@@ -858,7 +887,6 @@ class TelemetryForegroundService : Service(), SensorEventListener {
             Sensor.TYPE_PRESSURE -> {
                 pressureHpa = event.values.firstOrNull()
             }
-
         }
     }
 
@@ -968,7 +996,6 @@ class TelemetryForegroundService : Service(), SensorEventListener {
                 Log.e("Telemetry", "Room insert failed", e)
             }
         }
-
     }
 
     /**
@@ -1131,7 +1158,6 @@ class TelemetryForegroundService : Service(), SensorEventListener {
                     put("currentPressureHpa", it)
                 }
             }
-
         }
 
         val sample = TelemetrySampleEntity(
@@ -1145,7 +1171,6 @@ class TelemetryForegroundService : Service(), SensorEventListener {
         serviceScope.launch {
             telemetryDao.insert(sample)
         }
-
     }
 
     /**

@@ -8,8 +8,11 @@ class UploadOutcomeTest {
     private fun assertMaps(code: Int, expected: UploadOutcome) =
         assertEquals("HTTP $code", expected, UploadOutcome.forResponseCode(code))
 
-    private fun assertMaps(code: Int, challenge: String?, expected: UploadOutcome) =
-        assertEquals("HTTP $code / $challenge", expected, UploadOutcome.forResponseCode(code, challenge))
+    private fun assertMaps(code: Int, challenge: String?, expected: UploadOutcome) = assertEquals(
+        "HTTP $code / $challenge",
+        expected,
+        UploadOutcome.forResponseCode(code, challenge)
+    )
 
     /*
      * Copied from what `ingest` actually sends, trailing comma and all, rather

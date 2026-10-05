@@ -15,14 +15,14 @@ import com.anonymus09.carsensors.data.TelemetryRepository
 import com.anonymus09.carsensors.data.TelemetrySettings
 import com.anonymus09.carsensors.data.TelemetryStorage
 import com.anonymus09.carsensors.util.AppConfig.DB_STATS_REFRESH_RATE
+import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import kotlin.time.Duration.Companion.seconds
 
 /** Everything the main screen draws, in one value. */
 data class MainUiState(
@@ -228,8 +228,7 @@ class MainViewModel(
 
     fun setUploadOnBattery(enabled: Boolean) = settingsRepository.setUploadOnBattery(enabled)
 
-    fun setLiveUploadEnabled(enabled: Boolean) =
-        settingsRepository.setLiveUploadEnabled(enabled)
+    fun setLiveUploadEnabled(enabled: Boolean) = settingsRepository.setLiveUploadEnabled(enabled)
 
     fun setServerBaseUrl(baseUrl: String) {
         settingsRepository.setServerBaseUrl(baseUrl)

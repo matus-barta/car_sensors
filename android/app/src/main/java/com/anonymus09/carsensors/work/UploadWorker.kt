@@ -22,10 +22,7 @@ import com.anonymus09.carsensors.util.AppConfig.UPLOAD_MIN_BATCH_SIZE
  * and the two share [TelemetryUploader] for everything between building a body
  * and reading the response.
  */
-class UploadWorker(
-    context: Context,
-    params: WorkerParameters
-) : CoroutineWorker(context, params) {
+class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
 
     companion object {
         private const val TAG = "UploadWorker"

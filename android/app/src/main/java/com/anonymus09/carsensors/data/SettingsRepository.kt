@@ -86,11 +86,9 @@ class SettingsRepository(context: Context) {
     fun setAutoStartOnBoot(enabled: Boolean) =
         prefs.edit { putBoolean(KEY_AUTO_START_ON_BOOT, enabled) }
 
-    fun setLoggerEnabled(enabled: Boolean) =
-        prefs.edit { putBoolean(KEY_LOGGER_ENABLED, enabled) }
+    fun setLoggerEnabled(enabled: Boolean) = prefs.edit { putBoolean(KEY_LOGGER_ENABLED, enabled) }
 
-    fun setWakeOnMotion(enabled: Boolean) =
-        prefs.edit { putBoolean(KEY_WAKE_ON_MOTION, enabled) }
+    fun setWakeOnMotion(enabled: Boolean) = prefs.edit { putBoolean(KEY_WAKE_ON_MOTION, enabled) }
 
     fun setRecordOnBattery(enabled: Boolean) =
         prefs.edit { putBoolean(KEY_RECORD_ON_BATTERY, enabled) }
@@ -100,12 +98,10 @@ class SettingsRepository(context: Context) {
     fun setUploadOnBattery(enabled: Boolean) =
         prefs.edit { putBoolean(KEY_UPLOAD_ON_BATTERY, enabled) }
 
-    fun setLiveUploadEnabled(enabled: Boolean) =
-        prefs.edit { putBoolean(KEY_LIVE_UPLOAD, enabled) }
+    fun setLiveUploadEnabled(enabled: Boolean) = prefs.edit { putBoolean(KEY_LIVE_UPLOAD, enabled) }
 
     /** Expects an address already through [com.anonymus09.carsensors.util.ServerUrl]. */
-    fun setServerBaseUrl(baseUrl: String) =
-        prefs.edit { putString(KEY_SERVER_BASE_URL, baseUrl) }
+    fun setServerBaseUrl(baseUrl: String) = prefs.edit { putString(KEY_SERVER_BASE_URL, baseUrl) }
 
     /**
      * Emits the settings now, and again whenever any of them is written -

@@ -8,6 +8,7 @@ import com.anonymus09.carsensors.data.PairingRepository
 import com.anonymus09.carsensors.data.SettingsRepository
 import com.anonymus09.carsensors.data.TelemetryDao
 import com.anonymus09.carsensors.data.TelemetrySampleEntity
+import java.util.zip.GZIPInputStream
 import kotlinx.coroutines.test.runTest
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
@@ -21,7 +22,6 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
-import java.util.zip.GZIPInputStream
 
 /**
  * The worker's loop, against a server that answers however the case requires.
@@ -60,7 +60,10 @@ class UploadWorkerTest {
          * thread, which is where JUnit runs @Before, hence the detour.
          */
         val database = AppDatabase.getInstance(context)
-        Thread { database.clearAllTables() }.apply { start(); join() }
+        Thread { database.clearAllTables() }.apply {
+            start()
+            join()
+        }
 
         dao = database.telemetryDao()
     }

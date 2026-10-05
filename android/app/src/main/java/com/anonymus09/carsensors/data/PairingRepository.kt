@@ -53,7 +53,11 @@ class PairingRepository(context: Context) {
         if (rejection == status().rejection) return
 
         prefs.edit {
-            if (rejection == null) remove(KEY_REJECTION) else putString(KEY_REJECTION, rejection.name)
+            if (rejection == null) {
+                remove(KEY_REJECTION)
+            } else {
+                putString(KEY_REJECTION, rejection.name)
+            }
         }
     }
 

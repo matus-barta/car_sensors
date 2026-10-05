@@ -36,9 +36,8 @@ object SystemSettings {
      * be shown - asking would then come back refused without the user seeing
      * anything.
      */
-    fun notifications(context: Context) =
-        Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
-            .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+    fun notifications(context: Context) = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+        .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
 
     /*
      * Android's own one-tap dialog, the same choice as "Unrestricted" under the
@@ -59,5 +58,6 @@ object SystemSettings {
     /** The manufacturer's page on dontkillmyapp.com, in the browser. */
     fun manufacturerGuide() = Intent(Intent.ACTION_VIEW, ManufacturerGuide.url.toUri())
 
-    private fun packageUri(context: Context): Uri = Uri.fromParts("package", context.packageName, null)
+    private fun packageUri(context: Context): Uri =
+        Uri.fromParts("package", context.packageName, null)
 }
