@@ -23,3 +23,7 @@ being shown through one channel, so the answer is probably a second channel - a
 hollow or dashed marker for a position that is not current, keeping colour for
 whether the device is in touch. Worth sketching before building, and worth
 checking against what the marker already has to say at three zoom levels.
+
+**Related.** [Give the vehicle states colours the theme knows
+about](give-the-vehicle-states-colours-the-theme-knows-about.md) changes the
+same marker paint in `addVehicleLayers`.

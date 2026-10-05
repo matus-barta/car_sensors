@@ -29,3 +29,7 @@ is absolutely positioned over the map at a width capped by the viewport
 screens once there is more inside it; and surfacing more live fields means
 growing `VehicleLivePosition` and the merge in `vehicle-state.svelte.ts`
 beyond the four fields it carries now.
+
+**Related.** [Show on the vehicle card what the phone is not allowed to
+do](show-on-the-vehicle-card-what-the-phone-is-not-allowed-to-do.md) grows the
+same card; the tabs decide where it goes.

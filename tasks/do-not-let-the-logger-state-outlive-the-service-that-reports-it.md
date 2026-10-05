@@ -18,3 +18,7 @@ while it records, and let the screen say so once the claim has gone stale. Worth
 doing only if this is ever seen in practice - it is written down so that a
 screen insisting on `RECORDING` while nothing is recorded is recognised rather
 than puzzled over.
+
+**Related.** Easier after [Split the foreground service
+up](split-the-foreground-service-up.md), once the state machine is a class of
+its own.

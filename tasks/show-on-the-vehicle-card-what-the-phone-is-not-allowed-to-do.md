@@ -57,3 +57,13 @@ uploads", and so on. Silent when all is well.
 What it cannot show: a phone whose uploads have stopped never sends the row
 that would say why. That case is already visible as the last-seen time going
 stale.
+
+**Related.** Better after [Declare a schema for every event
+payload](declare-a-schema-for-every-event-payload.md), so the fields read here
+come from the documented contract rather than being restated. [Expand the
+vehicle info card, grouped into
+tabs](expand-the-vehicle-info-card-grouped-into-tabs.md) decides where on the
+card this lives, and the extra lateral join lands in `getVehicleSummaries()`,
+which [Validate vehicle summary rows with a zod
+schema](validate-vehicle-summary-rows-with-a-zod-schema.md) would make safer to
+change.

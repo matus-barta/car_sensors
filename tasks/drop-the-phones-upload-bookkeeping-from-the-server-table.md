@@ -22,3 +22,8 @@ suggests a mechanism which does not exist.
 Removing them is a migration, a regenerated Drizzle schema and regenerated
 schema docs. Worth checking first that nothing outside the repository - a
 pgAdmin query, an export - has started relying on them.
+
+**Related.** Worth doing before [Consider moving the existing tables into
+schemas of their
+own](consider-moving-the-existing-tables-into-schemas-of-their-own.md), so the
+move carries less.

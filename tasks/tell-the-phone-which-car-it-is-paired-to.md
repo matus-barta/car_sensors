@@ -31,3 +31,7 @@ listens, so something would have to be configured for it to send - probably an
 `INGEST_PUBLIC_URL` that an operator sets alongside the rest. Worth doing
 together with the name if it is done at all, since both change the same payload
 and the same screen.
+
+**Related.** [Keep every sample with the identity it was recorded
+under](keep-every-sample-with-the-identity-it-was-recorded-under.md) plans a
+local `pairings` table with a label, which is where this name would end up.

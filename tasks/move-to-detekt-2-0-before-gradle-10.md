@@ -1,6 +1,6 @@
 ---
 title: "Move to detekt 2.0 before Gradle 10"
-status: backlog
+status: blocked
 area: android
 depends_on: []
 ---

@@ -26,3 +26,9 @@ Nothing is broken, so this is not urgent. It is recorded because the baseline
 would otherwise be the only trace of the decision, and a baseline entry read
 years later looks like something that was ignored rather than something that
 was weighed.
+
+**Related.** Makes [Do not let the logger state outlive the service that reports
+it](do-not-let-the-logger-state-outlive-the-service-that-reports-it.md) and the
+storage warning in [Keep unuploaded data until the storage runs out, and say so
+first](keep-unuploaded-data-until-the-storage-runs-out-and-say-so-first.md)
+easier, since both change the service.

@@ -56,3 +56,7 @@ shared `public`. A foreign key across schemas is precisely what would have to be
 broken to do that. Referential integrity and splittability pull against each
 other here, and at this size integrity is the better buy - but it is a choice
 rather than a free lunch.
+
+**Related.** [Drop the phone's upload bookkeeping from the server
+table](drop-the-phones-upload-bookkeeping-from-the-server-table.md) is worth
+doing first, so the move carries less.

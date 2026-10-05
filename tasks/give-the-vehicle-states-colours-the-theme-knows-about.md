@@ -55,3 +55,7 @@ Against that, the duplication costs one comment asking that two files be kept in
 step, and there are three states. The tokens are still worth adding so the badge
 has something to name; wiring the map to them is the part to leave until there
 is a fourth state or somebody actually changes a colour.
+
+**Related.** [Say on the map that a position is not
+current](say-on-the-map-that-a-position-is-not-current.md) changes the same
+marker.

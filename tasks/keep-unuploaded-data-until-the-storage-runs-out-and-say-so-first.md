@@ -37,3 +37,7 @@ while the logger is actually recording. A phone that is driven regularly hears
 within a day; one that is parked for a month hears nothing until it next
 records. That is the right trade for a warning about data still being
 collected, but a warning about storage pressure may not want to inherit it.
+
+**Related.** The warning lives in the foreground service's backlog check, which
+[Split the foreground service up](split-the-foreground-service-up.md) would
+move.

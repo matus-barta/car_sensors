@@ -69,3 +69,7 @@ unuploaded telemetry, so it wants the same care as the last one: rows written
 before it lands have no pairing and are indistinguishable from rows recorded
 unpaired - which is the same question the pairing prompt above already has to
 answer, and it can be left to it.
+
+**Related.** Easier after [Tell the phone which car it is paired
+to](tell-the-phone-which-car-it-is-paired-to.md): the label the `pairings` table
+wants is the name that task adds to the pairing payload.
