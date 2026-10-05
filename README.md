@@ -201,8 +201,18 @@ lychee './**/*.md' .claude/CLAUDE.md   # links between files, settings in lychee
 actionlint                             # the workflows in .github/
 ```
 
+The documentation site, built from the same Markdown:
+
+```bash
+cd docs/starlight
+pnpm install
+pnpm dev       # a local preview that reloads as pages change
+pnpm build     # what CI runs; fails on a link between pages that does not resolve
+```
+
 ## Documentation
 
+- [`docs/README.md`](docs/README.md) - the index of everything below, and the home page of the documentation site
 - [`docs/architecture.md`](docs/architecture.md) - how the four pieces fit together and why they share one database
 - [`docs/android-app.md`](docs/android-app.md) - what the Android logger does, and the platform limitations worth knowing
 - [`docs/database-migrations.md`](docs/database-migrations.md) - how the schema is owned and propagated

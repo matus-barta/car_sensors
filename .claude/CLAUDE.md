@@ -14,6 +14,8 @@ An open-source GPS tracking platform. Four independent pieces share one PostgreS
 | `www/`           | SvelteKit app for administration and map visualization    |
 | `db/migrations/` | SQLx migrations: the authoritative schema for everything  |
 | `tools/`         | Local infrastructure Compose file and sync scripts        |
+| `docs/`          | Documentation: plain Markdown, built into a Starlight site |
+| `tasks/`         | Open work, one Markdown file per task                     |
 
 The pieces share one PostgreSQL database on purpose, rather than one per service. They are small, and the coupling that buys is cheaper than the operational cost of five databases.
 
@@ -62,7 +64,7 @@ cargo test -p ingest <test_name>      # single test
 
 `ingest` uses runtime-checked `sqlx::query()`, not the `query!` macros, so **building does not need a live database**.
 
-Web (`www/`, pnpm — the only JS package; it has its own lockfile and is not part of a JS workspace):
+Web (`www/`, pnpm — one of two JS packages, with the documentation site; each has its own lockfile and they are not a JS workspace):
 
 ```bash
 pnpm dev
@@ -134,6 +136,8 @@ Third-party widgets that build their DOM imperatively cannot be reached by an or
 Prettier runs only inside `www/` (tabs, single quotes, no trailing commas, 100 columns). Generated output — `src/lib/components/ui/`, `src/lib/server/db/generated/` and `src/lib/map/generated/` — is excluded from it. The last holds the time zone coordinates the empty vehicle map opens on, regenerated from IANA tzdata with `node tools/scripts/generate-timezone-centers.js`.
 
 Agent skills are vendored in `.agents/skills/` and symlinked into `.claude/skills/`, tracked by `skills-lock.json` at the repo root. `.agents/` is not in git. Their markdown contains annotated code samples that Prettier cannot parse, so keep them outside any formatter's scope. Manage them with the `skills` CLI (`pnpm dlx skills add|remove|list|update ...`) rather than hand-editing the vendored files or `skills-lock.json` — `remove <name> -y` deletes the vendored directory, the agent symlinks, and the lock entry together.
+
+**Documentation is the Markdown in `docs/`, written to be read on GitHub as it is.** The Starlight project in `docs/starlight/` builds the same files into a site without moving them (see `docs/starlight/src/content.config.ts`). So every page starts with `title:` frontmatter and no `# Heading` - Starlight renders the title itself and a heading would show it twice - and pages link to each other as files (`ci.md#runners-are-pinned`), which the site rewrites into page URLs. Build it with `pnpm build` in `docs/starlight/`; the build fails on a link between pages that does not resolve. A new page also goes into the sidebar in `astro.config.mjs` and the list in `docs/README.md`.
 
 **Link to files in the repository with relative Markdown links**, not bare paths in backticks, wherever the text is Markdown: lychee checks every such link, and the heading it points at, in CI (`docs-validation.yml`, settings in `lychee.toml`). A bare path is only checked by whoever reads it.
 

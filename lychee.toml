@@ -18,4 +18,5 @@ exclude_path = [
     "(^|/)build/",
     "(^|/)\\.agents/",
     "(^|/)\\.claude/skills/",
+    "^\\./docs/starlight/(dist|\\.astro)/",
 ]

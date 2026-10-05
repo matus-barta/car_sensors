@@ -49,3 +49,8 @@ www/src/lib/server/db/generated/*.sql
 
 # Per-user Claude Code settings
 .claude/settings.local.json
+
+# Documentation site dependencies and build output
+docs/starlight/node_modules/
+docs/starlight/dist/
+docs/starlight/.astro/

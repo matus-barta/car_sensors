@@ -1,0 +1,33 @@
+{
+	"name": "starlight",
+	"version": "0.0.1",
+	"private": true,
+	"packageManager": "pnpm@12.8.1",
+	"engines": {
+		"node": ">=24",
+		"pnpm": ">=11"
+	},
+	"license": "AGPL-3.0-only",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/matus-barta/car_sensors.git",
+		"directory": "docs/starlight"
+	},
+	"type": "module",
+	"scripts": {
+		"dev": "astro dev",
+		"build": "astro build",
+		"preview": "astro preview"
+	},
+	"dependencies": {
+		"@astrojs/markdown-remark": "^7.3.1",
+		"@astrojs/markdown-satteri": "^0.4.2",
+		"@astrojs/starlight": "^0.42.5",
+		"astro": "^7.3.5",
+		"astro-mermaid": "^2.1.0",
+		"mermaid": "^11.17.2",
+		"sharp": "^0.35.5",
+		"starlight-links-validator": "^0.26.0",
+		"starlight-openapi": "^0.26.3"
+	}
+}

@@ -114,7 +114,34 @@
         "minor",
         "patch"
       ],
-      "groupName": "www dependencies"
+      "groupName": "www dependencies",
+      "matchFileNames": [
+        "www/package.json"
+      ]
+    },
+    {
+      "description": "The documentation site's dependencies move together, apart from the web application's.",
+      "matchManagers": [
+        "npm"
+      ],
+      "matchFileNames": [
+        "docs/starlight/package.json"
+      ],
+      "matchUpdateTypes": [
+        "minor",
+        "patch"
+      ],
+      "groupName": "docs site dependencies"
+    },
+    {
+      "description": "Mermaid stays on 11: astro-mermaid supports only 10 and 11, and GitHub renders the same Markdown with 11, so 12's new default layout and look would make the site disagree with GitHub. See tasks/move-the-docs-site-to-mermaid-12.md for when that changes.",
+      "matchFileNames": [
+        "docs/starlight/package.json"
+      ],
+      "matchPackageNames": [
+        "mermaid"
+      ],
+      "allowedVersions": "<12"
     },
     {
       "description": "A floating tag is already whatever it is; a pull request saying so tells nobody anything.",
