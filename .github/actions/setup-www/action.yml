@@ -30,23 +30,12 @@ runs:
       # The version lives in that action, shared with the docs workflow.
       uses: ./.github/actions/setup-sqlx
 
-    - name: Set up pnpm
-      uses: pnpm/action-setup@v6
+    - name: Set up pnpm and install WWW dependencies
+      uses: ./.github/actions/setup-pnpm
       with:
-        version: ${{ inputs.pnpm-version }}
-        run_install: false
-
-    - name: Set up Node.js
-      uses: actions/setup-node@v7
-      with:
+        working-directory: www
         node-version: ${{ inputs.node-version }}
-        cache: pnpm
-        cache-dependency-path: www/pnpm-lock.yaml
-
-    - name: Install WWW dependencies
-      shell: bash
-      working-directory: www
-      run: pnpm install --frozen-lockfile
+        pnpm-version: ${{ inputs.pnpm-version }}
 
     - name: Install Playwright Chromium
       if: inputs.install-playwright == 'true'

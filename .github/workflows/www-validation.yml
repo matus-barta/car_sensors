@@ -9,6 +9,7 @@ on:
       - "tools/scripts/cleanup-drizzle-output.js"
       - ".github/actions/setup-www/**"
       - ".github/actions/setup-sqlx/**"
+      - ".github/actions/setup-pnpm/**"
       - ".github/workflows/www-validation.yml"
       - "!www/**/*.md"
 
@@ -23,6 +24,7 @@ on:
       - "tools/scripts/cleanup-drizzle-output.js"
       - ".github/actions/setup-www/**"
       - ".github/actions/setup-sqlx/**"
+      - ".github/actions/setup-pnpm/**"
       - ".github/workflows/www-validation.yml"
       - "!www/**/*.md"
 
