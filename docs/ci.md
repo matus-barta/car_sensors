@@ -24,13 +24,16 @@ Each piece of the project has a `<Piece> - validation` workflow that runs on pul
 
 ## Generated output is checked where it belongs
 
-Anything generated and committed is regenerated in CI and compared with the committed copy, so it cannot drift from its source. The check lives with whoever owns the output:
+Generated output that is committed is regenerated in CI and compared with the committed copy, so it cannot drift from its source - with one exception, below. The check lives with whoever owns the output:
 
 | Output | Generated from | Checked by |
 | --- | --- | --- |
 | `www/src/lib/server/db/generated/` | the migrated database, by Drizzle | `www-validation.yml` |
 | `docs/schema/` | the migrated database, by tbls | `docs-validation.yml` |
 | `docs/api/openapi.json` | the `ingest` source, by utoipa | `cargo test`, in `ingest-validation.yml` |
+| `android/app/schemas/` | the Room entities, by Room's compiler, on every Android build | `android-validation.yml` |
+
+The exception is `www/src/lib/map/generated/timezone-centers.json`, the coordinates the empty vehicle map opens on. It is generated from the latest IANA tzdata release, so regenerating it on every build would make builds change whenever IANA publishes, for reasons unrelated to the change being built. It is refreshed by hand instead, and checked at release once `www` has one - see [Refresh the time zone centres at release](tasks/refresh-the-time-zone-centres-at-release.md).
 
 A generator whose output is compared byte for byte is pinned to an exact version, because a newer one may lay out the same input differently and fail the check on formatting rather than on a change.
 

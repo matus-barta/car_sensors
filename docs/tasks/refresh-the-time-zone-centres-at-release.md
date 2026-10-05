@@ -36,6 +36,5 @@ and, if they differ, regenerating the file and opening a pull request with it -
 would make the refresh one click instead of something to remember the command
 for.
 
-When this lands, `docs/ci.md` should list the file among the generated output
-and say how it is checked, since it currently claims everything generated is
-compared in CI, which this file is not.
+When this lands, update [`docs/ci.md`](../ci.md#generated-output-is-checked-where-it-belongs),
+which names this file as the one generated output not compared in CI.
