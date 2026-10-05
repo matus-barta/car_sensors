@@ -2,7 +2,8 @@
 title: "Meet the Nominatim usage policy in one place"
 status: backlog
 area: geocoding
-depends_on: []
+depends_on:
+  - put-reverse-geocoding-behind-a-service-of-its-own
 ---
 
 Concentrating this in the geocoding service is most of the reason to have one -

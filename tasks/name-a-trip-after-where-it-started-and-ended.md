@@ -2,7 +2,9 @@
 title: "Name a trip after where it started and ended"
 status: backlog
 area: trips
-depends_on: []
+depends_on:
+  - derive-trips-on-the-server-from-the-uploaded-track
+  - put-reverse-geocoding-behind-a-service-of-its-own
 ---
 
 A trip named by its endpoints is far easier to find than one named by a

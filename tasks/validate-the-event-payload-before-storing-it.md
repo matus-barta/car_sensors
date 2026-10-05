@@ -2,7 +2,8 @@
 title: "Validate the event payload before storing it"
 status: backlog
 area: protocol
-depends_on: []
+depends_on:
+  - declare-a-schema-for-every-event-payload
 ---
 
 **After the documentation work.** `payload` arrives as a string holding JSON
@@ -10,9 +11,10 @@ whose shape depends on `event`, and `ingest` stores it in a `TEXT` column
 without parsing it. Whatever a device sends ends up in the database verbatim,
 and that is the wrong default for data that came from outside.
 
-The per-event payload schemas will exist by then: they are being declared in
-`ingest` for the OpenAPI document, as documentation only, with the Android
-tests validating what the app produces against them. This is the step that makes
+The per-event payload schemas will exist by then - [Declare a schema for every
+event payload](declare-a-schema-for-every-event-payload.md) puts them in
+`ingest` for the OpenAPI document, as documentation only, with the Android tests
+validating what the app produces against them. This is the step that makes
 `ingest` use them too.
 
 The constraint is the one the whole upload path is under: the payload is
