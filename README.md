@@ -117,7 +117,13 @@ www/        SvelteKit web application
 - SQLx CLI
 - Node.js LTS
 - pnpm
+- [tbls](https://github.com/k1LoW/tbls), to regenerate the schema documentation in `docs/schema/` after a migration (`brew install tbls`, or see its README for other platforms)
+- [actionlint](https://github.com/rhysd/actionlint), to check the workflows in `.github/` after editing them (`brew install actionlint`, or see its README for other platforms)
 - Android Studio and JDK 21, when developing the Android application
+
+The schema documentation is compared against CI's output byte for byte, and a
+different tbls version may lay the same schema out differently, so use the
+version pinned in `.github/workflows/www-validation.yml`.
 
 ### Install SQLx CLI
 

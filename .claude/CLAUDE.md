@@ -83,6 +83,8 @@ cd tools && docker compose up
 
 The root `docker-compose.yml` is the *deployment* file (Postgres, Valkey, pgAdmin, `ingest`). It has **no `www` service** and there is no image for it — the web app is built and run separately.
 
+**Every tool a script or check needs on a developer machine is listed under "Dev Requirements" in the root `README.md`.** When a change makes a new tool necessary, add it there in the same change. Never install tools on the developer's machine yourself - name what is needed and ask.
+
 ## Environment
 
 `ingest` reads `DATABASE_URL`, `REDIS_URL`, `SERVER_IP_PORT`.
