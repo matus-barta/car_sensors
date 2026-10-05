@@ -160,9 +160,12 @@ android {
         warningsAsErrors = true
         abortOnError = true
 
-        // Reports what has been published since, not anything about this code,
-        // so it would turn a passing build red without a commit being made.
-        disable += "NewerVersionAvailable"
+        // Both report what has been published since, not anything about this
+        // code, so they turn a passing build red without a commit being made -
+        // GradleDependency only once lint's cached result is invalidated, which
+        // any change to the version catalog does. Renovate proposes the same
+        // updates as pull requests.
+        disable += listOf("NewerVersionAvailable", "GradleDependency")
     }
 
     buildFeatures {
@@ -197,17 +200,26 @@ kotlin {
 }
 
 /*
- * room-testing parses the exported schemas with kotlinx-serialization. The
- * lifecycle libraries pin serialization-core to 1.7.3 while the json artefact
- * resolves to 1.8.1, and that pairing throws AbstractMethodError the moment a
- * schema is read. Aligning them is scoped to the instrumented test classpath so
- * the app itself keeps exactly the versions its own dependencies asked for.
+ * room-testing parses the exported schemas with kotlinx-serialization. Its json
+ * artefact comes from Room, while core comes from the lifecycle libraries the
+ * app ships - at an older version, which the test classpath is then held to
+ * strictly. A core older than json throws AbstractMethodError the moment a
+ * schema is read.
+ *
+ * Only a force overrides that strict version; an enforced platform fails to
+ * resolve instead. All four artefacts are forced to one version so core and
+ * json cannot drift apart again, and only on the instrumented test classpath,
+ * so the app itself keeps exactly the versions its own dependencies asked for.
+ * MigrationTest is what notices if this is wrong.
  */
+val serialization = libs.versions.kotlinxSerialization.get()
 configurations.matching { it.name.contains("AndroidTest") }.configureEach {
-    resolutionStrategy {
-        force("org.jetbrains.kotlinx:kotlinx-serialization-core:1.8.1")
-        force("org.jetbrains.kotlinx:kotlinx-serialization-core-jvm:1.8.1")
-    }
+    resolutionStrategy.force(
+        "org.jetbrains.kotlinx:kotlinx-serialization-core:$serialization",
+        "org.jetbrains.kotlinx:kotlinx-serialization-core-jvm:$serialization",
+        "org.jetbrains.kotlinx:kotlinx-serialization-json:$serialization",
+        "org.jetbrains.kotlinx:kotlinx-serialization-json-jvm:$serialization",
+    )
 }
 
 dependencies {

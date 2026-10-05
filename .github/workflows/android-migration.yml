@@ -5,11 +5,18 @@ on:
   # than seconds, and a Room migration is the one thing here that cannot be
   # decided without one - everything else is tested on the JVM by
   # "Android - validation".
+  #
+  # That includes the dependencies: room-testing reads the schemas through
+  # kotlinx-serialization, whose versions the build file pins for the test
+  # classpath, and a mismatch there fails only on a device. Without these two
+  # paths a dependency update would merge before anything ran MigrationTest.
   pull_request:
     paths:
       - "android/app/schemas/**"
       - "android/app/src/main/java/com/anonymus09/carsensors/data/AppDatabase.kt"
       - "android/app/src/androidTest/**"
+      - "android/gradle/libs.versions.toml"
+      - "android/app/build.gradle.kts"
       - ".github/workflows/android-migration.yml"
 
   # After a merge, on anything under android/. This is where the other devices
