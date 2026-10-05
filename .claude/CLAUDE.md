@@ -85,6 +85,8 @@ cd tools && docker compose up
 
 The root `docker-compose.yml` is the *deployment* file (Postgres, Valkey, pgAdmin, `ingest`). It has **no `www` service** and there is no image for it — the web app is built and run separately.
 
+**Workflows follow [`docs/ci.md`](../docs/ci.md)**: a validation workflow per piece that the build workflow calls, generated output checked where it belongs, runners and byte-compared generators pinned, and shared setup in single-purpose composite actions. Read it before adding a workflow or a `.github/actions/` action, and run `actionlint` after editing either.
+
 **Every tool a script or check needs on a developer machine is listed under "Dev Requirements" in the root `README.md`.** When a change makes a new tool necessary, add it there in the same change. Never install tools on the developer's machine yourself - name what is needed and ask.
 
 ## Environment

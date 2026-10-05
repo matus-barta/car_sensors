@@ -12,11 +12,10 @@ a composite action would be indirection for its own sake.
 The moment a second Rust job appears - splitting formatting, clippy and tests to
 run in parallel, adding `cargo audit`, or a coverage job - those two steps become
 worth extracting into `.github/actions/setup-rust`, the same trade
-`.github/actions/setup-www` already makes for four job references.
+`.github/actions/setup-www` already makes for the two `www` validation jobs.
 
-Two constraints to remember when that day comes. Service containers cannot live
-in a composite action, because `services` is a job-level key; sharing the
-Postgres and Valkey setup is what the reusable workflow is for. And the Rust
-setup inside `setup-www` should stay where it is: it exists to install the SQLx
-CLI and wants neither the components nor the workspace cache, so merging the two
-would produce one action with flags selecting between unrelated behaviours.
+When that day comes, the constraints are the general ones for shared setup in
+[`docs/ci.md`](../docs/ci.md#shared-setup-is-a-composite-action-one-purpose-each):
+the Postgres and Valkey services cannot move into the action, and the action
+stays separate from `setup-sqlx`, which builds the SQLx CLI and wants neither
+the components nor the workspace cache.

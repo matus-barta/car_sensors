@@ -208,6 +208,7 @@ actionlint                             # the workflows in .github/
 - [`docs/database-migrations.md`](docs/database-migrations.md) - how the schema is owned and propagated
 - [`docs/schema/`](docs/schema/README.md) - every table, column and relation, generated from the migrations
 - [`docs/api/openapi.json`](docs/api/openapi.json) - the `ingest` API as OpenAPI 3.1, generated from the code
+- [`docs/ci.md`](docs/ci.md) - how the workflows are laid out, and the rules that keep them that way
 - [`docs/web-image.md`](docs/web-image.md) - why the web application image is the size it is, and what was tried
 - [`docs/ai-policy.md`](docs/ai-policy.md) - how AI-assisted changes are made here
 
