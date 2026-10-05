@@ -26,3 +26,15 @@ compiler it does not support, which defeats the point of having it.
 dependencies - `npm view <package> peerDependencies.typescript` shows it. Then
 remove the `allowedVersions` rule and let Renovate offer the update to both
 packages together.
+
+**Check from time to time** - TypeScript majors do not wait for the tools around
+them. All three answers have to admit 7:
+
+```bash
+npm view svelte-check peerDependencies.typescript       # ^5.0.0 || ^6.0.0 in October 2026
+npm view typescript-eslint peerDependencies.typescript  # >=4.8.4 <6.1.0
+npm view @astrojs/check peerDependencies.typescript     # ^5.0.0 || ^6.0.0
+```
+
+[Check the blocked tasks' conditions automatically](check-the-blocked-tasks-conditions-automatically.md)
+would do this without anyone having to remember.
