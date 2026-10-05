@@ -26,6 +26,12 @@ raising the target means asking the user to exempt it, through
 when it is not. At 28 none of this applies, which is one more thing the old
 target is quietly doing.
 
+The pairing scanner, `PortraitCaptureActivity`, is held upright in the manifest.
+Lint's Android 16 objection to locking an orientation does not apply while
+`targetSdk` is 28, so that lock is one more thing to revisit on the day the
+target is raised. The reasoning for it is in the comment on the activity in
+`AndroidManifest.xml`.
+
 None of this is work today; all of it is work on the day that number changes,
 and it is better known in advance than discovered by a service that refuses to
 start.
