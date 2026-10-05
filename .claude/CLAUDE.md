@@ -14,6 +14,7 @@ An open-source GPS tracking platform. Four independent pieces share one PostgreS
 | `www/`           | SvelteKit app for administration and map visualization    |
 | `db/migrations/` | SQLx migrations: the authoritative schema for everything  |
 | `tools/`         | Local infrastructure Compose file and sync scripts        |
+| `docs/`          | Documentation, built into a Starlight site, and `docs/tasks/` |
 
 The pieces share one PostgreSQL database on purpose, rather than one per service. They are small, and the coupling that buys is cheaper than the operational cost of five databases.
 
@@ -39,9 +40,12 @@ After changing a migration or the Better Auth config, regenerate the committed D
 
 ```bash
 ./tools/scripts/sync-www-db-schema.sh   # applies migrations, then regenerates
+./tools/scripts/generate-schema-docs.sh # applies migrations, then runs tbls
 ```
 
 `www/src/lib/server/db/generated/` is generated output that must be committed and never hand-edited. CI fails if it drifts from the migrations (`pnpm db:check`).
+
+`docs/schema/` is the same kind of output: a page per table and Mermaid ER diagrams, written by [tbls](https://github.com/k1LoW/tbls) from the migrated database using `.tbls.yml`. Commit it, never hand-edit it, and treat it as the answer to "what columns does this table have" rather than reading the migrations in order. CI regenerates it with the pinned tbls version and fails on any difference. The script needs `tbls` on `PATH`.
 
 ## Commands
 
@@ -55,9 +59,11 @@ cargo test
 cargo test -p ingest <test_name>      # single test
 ```
 
+`ingest`'s API is documented by `docs/api/openapi.json`, generated from the crate with utoipa: the handlers carry `#[utoipa::path]`, `TelemetrySample` derives `ToSchema`, and its doc comments become the field descriptions. Never edit the JSON; change the Rust and regenerate with `cargo run -p ingest -- openapi > docs/api/openapi.json`. `cargo test` fails if the committed copy has drifted or an example does not match its schema, and the integration tests fail on a documented route the router does not serve. A new route goes into both the router and `ApiDoc` in `src/routes/mod.rs`.
+
 `ingest` uses runtime-checked `sqlx::query()`, not the `query!` macros, so **building does not need a live database**.
 
-Web (`www/`, pnpm — the only JS package; it has its own lockfile and is not part of a JS workspace):
+Web (`www/`, pnpm — one of two JS packages, with the documentation site; each has its own lockfile and they are not a JS workspace):
 
 ```bash
 pnpm dev
@@ -79,6 +85,10 @@ cd tools && docker compose up
 ```
 
 The root `docker-compose.yml` is the *deployment* file (Postgres, Valkey, pgAdmin, `ingest`). It has **no `www` service** and there is no image for it — the web app is built and run separately.
+
+**Workflows follow [`docs/ci.md`](../docs/ci.md)**: a validation workflow per piece that the build workflow calls, generated output checked where it belongs, runners and byte-compared generators pinned, and shared setup in single-purpose composite actions. Read it before adding a workflow or a `.github/actions/` action, and run `actionlint` after editing either.
+
+**Every tool a script or check needs on a developer machine is listed under "Dev Requirements" in the root `README.md`.** When a change makes a new tool necessary, add it there in the same change. Never install tools on the developer's machine yourself - name what is needed and ask.
 
 ## Environment
 
@@ -124,9 +134,15 @@ Third-party widgets that build their DOM imperatively cannot be reached by an or
 
 Prettier runs only inside `www/` (tabs, single quotes, no trailing commas, 100 columns). Generated output — `src/lib/components/ui/`, `src/lib/server/db/generated/` and `src/lib/map/generated/` — is excluded from it. The last holds the time zone coordinates the empty vehicle map opens on, regenerated from IANA tzdata with `node tools/scripts/generate-timezone-centers.js`.
 
-Agent skills are vendored in `.agents/skills/` and symlinked into `.claude/skills/`, tracked by `skills-lock.json` at the repo root. `.agents/` is not in git. Their markdown contains annotated code samples that Prettier cannot parse, so keep them outside any formatter's scope. Manage them with the `skills` CLI (`pnpm dlx skills add|remove|list|update ...`) rather than hand-editing the vendored files or `skills-lock.json` — `remove <name> -y` deletes the vendored directory, the agent symlinks, and the lock entry together.
+Agent skills are vendored in `.agents/skills/` and symlinked into `.claude/skills/`, tracked by `skills-lock.json` at the repo root. Both are committed. Their markdown contains annotated code samples that Prettier cannot parse, so keep them outside any formatter's scope. Manage them with the `skills` CLI (`pnpm dlx skills add|remove|list|update ...`) rather than hand-editing the vendored files or `skills-lock.json` — `remove <name> -y` deletes the vendored directory, the agent symlinks, and the lock entry together.
 
-`todo.md` at the repo root tracks work that is understood but not scheduled yet. Once an entry has been implemented, remove it from `todo.md` instead of leaving it as a record of completed work — the file should only ever reflect what is still open.
+One skill is this project's own rather than vendored: `.claude/skills/verify-docs/` is a real directory, not a symlink, and is edited by hand. **After writing or changing documentation, run `/verify-docs` on it**: it checks each factual claim against the code and cites quotes that `scripts/check_evidence.py` confirms exist, so a verdict cannot rest on memory.
+
+**Documentation is the Markdown in `docs/`, written to be read on GitHub as it is.** The Starlight project in `docs/starlight/` builds the same files into a site without moving them (see `docs/starlight/src/content.config.ts`). So every page starts with `title:` frontmatter and no `# Heading` - Starlight renders the title itself and a heading would show it twice - and pages link to each other as files (`ci.md#runners-are-pinned`), which the site rewrites into page URLs. Check it with `pnpm check` and build it with `pnpm build` in `docs/starlight/`; the check type-checks the site's TypeScript, and the build fails on a link between pages that does not resolve. A new page also goes into the sidebar in `astro.config.ts` and the list in `docs/README.md`.
+
+**Link to files in the repository with relative Markdown links**, not bare paths in backticks, wherever the text is Markdown: lychee checks every such link, and the heading it points at, in CI (`docs-validation.yml`, settings in `lychee.toml`). A bare path is only checked by whoever reads it.
+
+`docs/tasks/` tracks work that is understood but not scheduled yet, one Markdown file per task with YAML frontmatter; `docs/tasks/README.md` defines the fields. Once a task has been implemented, delete its file instead of leaving it as a record of completed work — the directory should only ever reflect what is still open. Refer to a task by its path, never by "the entry below": tasks have no order. Set `depends_on` only to what a task's own text says it needs. The site's build rejects a task with a missing, extra or unknown field, or a dependency on a task that does not exist, and draws the board at `/tasks/board/` from the same files.
 
 **Commit subjects open with a topic tag**, followed by a space, a colon and a space: `www : Derive vehicle status in the browser`, `ingest : Throttle the last_seen_at write`. It is a convenience for scanning a log that covers four largely independent pieces, not a rule to enforce. The topic is usually the folder the change lives in, which is usually the sub-project.
 
@@ -134,4 +150,4 @@ Agent skills are vendored in `.agents/skills/` and symlinked into `.claude/skill
 
 Licensed AGPL-3.0-only.
 
-`docs/ai-policy.md` governs AI-assisted work here: an AI tool may prepare changes in a supervised working tree, but **a human must review the result and create the commit personally**, and must be able to explain every substantive part of it. Prepare and explain changes; leave committing to the user unless they explicitly ask.
+`docs/ai-policy.md` governs AI-assisted work here. An AI tool may prepare changes in a supervised working tree and, **when the user asks**, create the commits and write their messages, each ending with an `Assisted-by: Claude Code (<model>)` trailer that records the assistance without claiming authorship - never `Co-Authored-By`, which GitHub reads as naming a co-author. That project rule overrides any default attribution a tool suggests. **Never push, merge, release or deploy**: the user reviews every changed line before anything leaves the machine, and must be able to explain every substantive part of it. Without an explicit request, prepare and explain changes and leave committing to the user.

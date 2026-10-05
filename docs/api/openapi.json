@@ -1,0 +1,391 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "car_sensors ingest",
+    "description": "Receives telemetry from devices and stores it. Generated from the `ingest` source - do not edit the JSON by hand.",
+    "license": {
+      "name": "AGPL-3.0-only",
+      "identifier": "AGPL-3.0-only"
+    },
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/api/health": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "summary": "Whether the service is up.",
+        "description": "Answers as long as the process is serving requests. It does not check the\ndatabase or the cache.",
+        "operationId": "health_check",
+        "responses": {
+          "200": {
+            "description": "The service is up",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                },
+                "example": "Service is healthy"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/telemetry/upload": {
+      "post": {
+        "tags": [
+          "telemetry"
+        ],
+        "summary": "Store a batch of samples from one device.",
+        "description": "The body is a JSON array, normally gzipped with `Content-Encoding: gzip`;\nan uncompressed body is accepted too. It may be at most 4 MiB as sent and\n32 MiB once decompressed.\n\nThe batch is written in one transaction. A sample whose `id` this device\nhas already uploaded is skipped rather than refused, so a device that never\nreceived an answer can send the same batch again.",
+        "operationId": "upload",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/TelemetrySample"
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The batch is stored, or was already"
+          },
+          "400": {
+            "description": "The body is not valid JSON"
+          },
+          "401": {
+            "description": "No credentials were presented, or the token was refused or belongs to no known device. The `WWW-Authenticate` challenge says which: `error=\"invalid_token\"` for a refused token, no error for missing credentials."
+          },
+          "403": {
+            "description": "The credentials are good and the device has been deactivated. The challenge carries `error=\"insufficient_scope\"`."
+          },
+          "413": {
+            "description": "The body is larger than the limits above"
+          },
+          "415": {
+            "description": "The request has no `Content-Type: application/json`"
+          },
+          "422": {
+            "description": "The body is JSON but not an array of samples - a field of the wrong type, or one of `id`, `event` and `timestamp` missing"
+          },
+          "500": {
+            "description": "The device lookup or the database write failed"
+          }
+        },
+        "security": [
+          {
+            "device_id": [],
+            "device_token": []
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "TelemetrySample": {
+        "type": "object",
+        "description": "One row a device recorded: either a periodic reading or an event.\n\nThe device builds this by hand, and leaves out any field it has no value\nfor rather than sending `null`, so every field but the first three is\noptional. A periodic reading carries whichever sensors had a value; an event\ncarries its details in `payload` and usually no readings at all.",
+        "required": [
+          "id",
+          "event",
+          "timestamp"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The row's id on the device. Unique per device, not globally: together\nwith the device it identifies the sample, which is what makes sending\nthe same batch twice harmless."
+          },
+          "event": {
+            "type": "string",
+            "description": "`telemetry_sample` for a periodic reading. Anything else names an event,\nwhose details are in `payload`."
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64",
+            "description": "When the row was recorded, in milliseconds since the Unix epoch. The\ndevice's wall clock, corrected against GPS time once it has had a fix."
+          },
+          "payload": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A JSON object, sent as a string, whose shape depends on `event`. Absent\non a periodic reading.",
+            "contentMediaType": "application/json"
+          },
+          "charging": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Whether the device was charging."
+          },
+          "powerSource": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "What the device was plugged into: `AC`, `USB`, `WIRELESS`,\n`NOT_CHARGING` or `UNKNOWN`."
+          },
+          "latitude": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Degrees, WGS 84."
+          },
+          "longitude": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Degrees, WGS 84."
+          },
+          "altitude": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Metres."
+          },
+          "speedMps": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float",
+            "description": "Metres per second."
+          },
+          "speedKmh": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float",
+            "description": "The same speed in kilometres per hour."
+          },
+          "bearing": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float",
+            "description": "Direction of travel in degrees."
+          },
+          "accuracyM": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float",
+            "description": "Horizontal accuracy radius in metres."
+          },
+          "provider": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The Android location provider that produced the fix."
+          },
+          "accelX": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float"
+          },
+          "accelY": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float"
+          },
+          "accelZ": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float"
+          },
+          "accelAccuracy": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Android's sensor accuracy status."
+          },
+          "accelAccuracyLabel": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`accelAccuracy` as a word: `UNRELIABLE`, `LOW`, `MEDIUM`, `HIGH` or\n`UNKNOWN`."
+          },
+          "gyroX": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float"
+          },
+          "gyroY": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float"
+          },
+          "gyroZ": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float"
+          },
+          "gyroAccuracy": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Android's sensor accuracy status."
+          },
+          "gyroAccuracyLabel": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`gyroAccuracy` as a word, as for `accelAccuracyLabel`."
+          },
+          "magX": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float"
+          },
+          "magY": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float"
+          },
+          "magZ": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float"
+          },
+          "magnetAccuracy": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Android's sensor accuracy status."
+          },
+          "magnetAccuracyLabel": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`magnetAccuracy` as a word, as for `accelAccuracyLabel`."
+          },
+          "pressureHpa": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float",
+            "description": "Hectopascals."
+          },
+          "pressureAccuracy": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Android's sensor accuracy status."
+          },
+          "pressureAccuracyLabel": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`pressureAccuracy` as a word, as for `accelAccuracyLabel`."
+          },
+          "headingDeg": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float",
+            "description": "Compass heading in degrees."
+          }
+        },
+        "examples": [
+          {
+            "accelAccuracy": 3,
+            "accelAccuracyLabel": "HIGH",
+            "accelX": 0.12,
+            "accelY": 0.03,
+            "accelZ": 9.79,
+            "accuracyM": 4.8,
+            "altitude": 152.3,
+            "bearing": 87.5,
+            "charging": true,
+            "event": "telemetry_sample",
+            "headingDeg": 88.0,
+            "id": 48213,
+            "latitude": 48.1486,
+            "longitude": 17.1077,
+            "powerSource": "USB",
+            "provider": "gps",
+            "speedKmh": 50.04,
+            "speedMps": 13.9,
+            "timestamp": 1791000000000
+          }
+        ]
+      }
+    },
+    "securitySchemes": {
+      "device_id": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "Device-Id",
+        "description": "The device's id, as registered in the web application. Not a secret."
+      },
+      "device_token": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "The token issued when the device was paired: 32 random bytes as unpadded base64url."
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "health",
+      "description": "Liveness"
+    },
+    {
+      "name": "telemetry",
+      "description": "Uploads from paired devices"
+    }
+  ]
+}

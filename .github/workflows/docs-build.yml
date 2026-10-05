@@ -1,0 +1,73 @@
+name: Docs - build
+
+# Publishes the documentation site to GitHub Pages once "Docs - validation"
+# has passed. Runs on every push to main, without a path filter, because that
+# validation is also what notices a link broken by a change somewhere else.
+#
+# Needs Pages enabled with "GitHub Actions" as the source, under the
+# repository's Settings > Pages.
+
+on:
+  push:
+    branches:
+      - main
+      - master
+
+permissions:
+  contents: read
+
+# One deployment at a time, and an in-progress one is allowed to finish rather
+# than being cancelled halfway through publishing.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate before publishing
+    uses: ./.github/workflows/docs-validation.yml
+
+  build:
+    name: Build the documentation site
+    needs: validate
+    # Pinned rather than ubuntu-latest, which becomes 26.04 on 2026-10-19 - see
+    # docs/tasks/move-the-workflows-to-ubuntu-26-04.md.
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up pnpm and install the site's dependencies
+        uses: ./.github/actions/setup-pnpm
+        with:
+          working-directory: docs/starlight
+
+      - name: Build the site
+        working-directory: docs/starlight
+        run: pnpm build
+
+      - name: Upload the site
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: docs/starlight/dist
+
+  deploy:
+    name: Publish to GitHub Pages
+    needs: build
+    # Pinned rather than ubuntu-latest, which becomes 26.04 on 2026-10-19 - see
+    # docs/tasks/move-the-workflows-to-ubuntu-26-04.md.
+    runs-on: ubuntu-24.04
+
+    permissions:
+      pages: write
+      id-token: write
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v5

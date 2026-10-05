@@ -1,11 +1,16 @@
-# How the pieces fit together
+---
+title: How the pieces fit together
+---
 
 Four independent pieces share one PostgreSQL database.
 
-```text
-Android app  ──uploads──▶  ingest  ──writes──▶  PostgreSQL  ◀──reads──  www
-                              │                                          ▲
-                              └──────publishes latest position──▶ Valkey ┘
+```mermaid
+flowchart LR
+    android[Android app] -- uploads --> ingest
+    ingest -- writes --> postgres[(PostgreSQL)]
+    www -- reads --> postgres
+    ingest -- publishes latest position --> valkey[(Valkey)]
+    valkey --> www
 ```
 
 ## One database, not one per service
@@ -24,9 +29,9 @@ The test for whether such a call is acceptable is what happens when it fails. **
 
 ## What each piece is responsible for
 
-**The Android app** collects location and sensor data, stores it locally in Room, and uploads it in batches. It is store-and-forward by design: it records whether or not a server is reachable, and a backlog can be days deep. When live upload is enabled it also pushes each new position as it changes.
+**The Android app** collects location and sensor data, stores it locally in Room, and uploads it in batches. It is store-and-forward by design: it records whether or not a server is reachable, and a backlog can be days deep. When live upload is enabled it also pushes its newest position as it moves, at most every two seconds - but only while the phone is on power, and only over an unmetered network when uploads are set to Wi-Fi only, since a live push keeps the radio awake for the whole drive.
 
-**`ingest`** accepts those uploads, authenticates the device, and writes the batch to PostgreSQL. It also publishes the newest position of each device to Valkey, which is the only thing it does that is not durable.
+**`ingest`** accepts those uploads, authenticates the device, and writes the batch to PostgreSQL. It also publishes the newest position of each device to Valkey, which is the only thing it does with telemetry that is not durable.
 
 **PostgreSQL** is the record. Everything that matters ends up here, and `db/migrations` is the only thing permitted to change its shape.
 

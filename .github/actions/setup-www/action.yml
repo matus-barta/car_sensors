@@ -12,11 +12,6 @@ inputs:
     required: false
     default: "true"
 
-  sqlx-version:
-    description: SQLx CLI version
-    required: false
-    default: "0.9.0"
-
   node-version:
     description: Node.js version
     required: false
@@ -30,61 +25,17 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: Set up Rust
+    - name: Set up SQLx CLI
       if: inputs.install-sqlx == 'true'
-      uses: dtolnay/rust-toolchain@stable
+      # The version lives in that action, shared with the docs workflow.
+      uses: ./.github/actions/setup-sqlx
 
-    - name: Cache SQLx CLI
-      if: inputs.install-sqlx == 'true'
-      uses: actions/cache@v6
+    - name: Set up pnpm and install WWW dependencies
+      uses: ./.github/actions/setup-pnpm
       with:
-        path: |
-          ~/.cargo/bin
-          ~/.cargo/registry
-          ~/.cargo/git
-        key: ${{ runner.os }}-sqlx-cli-${{ inputs.sqlx-version }}
-        restore-keys: |
-          ${{ runner.os }}-sqlx-cli-
-
-    - name: Install SQLx CLI
-      if: inputs.install-sqlx == 'true'
-      shell: bash
-      env:
-        SQLX_VERSION: ${{ inputs.sqlx-version }}
-      run: |
-        if ! command -v sqlx >/dev/null 2>&1; then
-          cargo install sqlx-cli \
-            --version "$SQLX_VERSION" \
-            --locked \
-            --no-default-features \
-            --features rustls,postgres
-        fi
-
-        installed_version="$(sqlx --version)"
-        echo "Using $installed_version"
-
-        if [[ "$installed_version" != *"$SQLX_VERSION"* ]]; then
-          echo "ERROR: Expected SQLx CLI version $SQLX_VERSION."
-          exit 1
-        fi
-
-    - name: Set up pnpm
-      uses: pnpm/action-setup@v6
-      with:
-        version: ${{ inputs.pnpm-version }}
-        run_install: false
-
-    - name: Set up Node.js
-      uses: actions/setup-node@v7
-      with:
+        working-directory: www
         node-version: ${{ inputs.node-version }}
-        cache: pnpm
-        cache-dependency-path: www/pnpm-lock.yaml
-
-    - name: Install WWW dependencies
-      shell: bash
-      working-directory: www
-      run: pnpm install --frozen-lockfile
+        pnpm-version: ${{ inputs.pnpm-version }}
 
     - name: Install Playwright Chromium
       if: inputs.install-playwright == 'true'

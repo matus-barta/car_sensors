@@ -1,0 +1,188 @@
+---
+import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro';
+import { loadTasks, type BoardTask } from '../../board.ts';
+import { taskAreas, taskStatuses, taskStatusLabels } from '../../tasks.ts';
+
+const tasks = await loadTasks();
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+const href = (id: string) => `${base}/tasks/${id}/`;
+
+const areasInUse = taskAreas.filter((area) => tasks.some((task) => task.area === area));
+
+/*
+ * Only the tasks that take part in a dependency, so the graph shows the chains
+ * rather than every task as an island. Nodes are numbered rather than named
+ * after their ids, and titles quoted, so no title can break the syntax.
+ */
+const linked = tasks.filter((task) => task.dependsOn.length > 0 || task.unblocks.length > 0);
+const node = new Map(linked.map((task, index) => [task.id, `t${index}`]));
+const label = (task: BoardTask) => task.title.replaceAll('"', '#quot;');
+const graph = [
+	'flowchart LR',
+	...linked.map((task) => `    ${node.get(task.id)}["${label(task)}"]`),
+	...linked.flatMap((task) =>
+		task.dependsOn.map((dependency) => `    ${node.get(dependency.id)} --> ${node.get(task.id)}`)
+	)
+].join('\n');
+---
+
+<StarlightPage
+	frontmatter={{
+		title: 'Board',
+		description: 'Every open task by status, generated from docs/tasks/.',
+		tableOfContents: false
+	}}
+>
+	<p>
+		Every open task, by status, read from the files in <code>docs/tasks/</code> - see the
+		<a href={`${base}/tasks/`}>task format</a>. A task that is done is deleted rather than moved
+		to a column, so there is none for finished work.
+	</p>
+
+	<label class="filter">
+		Area
+		<select id="board-area">
+			<option value="">All</option>
+			{areasInUse.map((area) => <option value={area}>{area}</option>)}
+		</select>
+	</label>
+
+	<div class="board not-content">
+		{
+			taskStatuses.map((status) => {
+				const column = tasks.filter((task) => task.status === status);
+				return (
+					<section class="column" data-status={status}>
+						<h2>
+							{taskStatusLabels[status]} <span class="count">{column.length}</span>
+						</h2>
+						<ul>
+							{column.map((task) => (
+								<li class="card" data-area={task.area}>
+									<a href={href(task.id)}>{task.title}</a>
+									<span class="area">{task.area}</span>
+									{task.dependsOn.length > 0 && (
+										<p>
+											Waits for{' '}
+											{task.dependsOn.map((dependency, index) => (
+												<>
+													{index > 0 && ', '}
+													<a href={href(dependency.id)}>{dependency.title}</a>
+												</>
+											))}
+										</p>
+									)}
+									{task.unblocks.length > 0 && (
+										<p>
+											Unblocks{' '}
+											{task.unblocks.map((dependent, index) => (
+												<>
+													{index > 0 && ', '}
+													<a href={href(dependent.id)}>{dependent.title}</a>
+												</>
+											))}
+										</p>
+									)}
+								</li>
+							))}
+						</ul>
+					</section>
+				);
+			})
+		}
+	</div>
+
+	{
+		linked.length > 0 && (
+			<>
+				<h2>Dependencies</h2>
+				<p>An arrow runs from a task to the tasks that wait for it.</p>
+				<pre class="mermaid">{graph}</pre>
+			</>
+		)
+	}
+</StarlightPage>
+
+<script>
+	const select = document.querySelector<HTMLSelectElement>('#board-area');
+
+	select?.addEventListener('change', () => {
+		for (const column of document.querySelectorAll<HTMLElement>('.board .column')) {
+			let shown = 0;
+
+			for (const card of column.querySelectorAll<HTMLElement>('.card')) {
+				const visible = select.value === '' || card.dataset.area === select.value;
+				card.hidden = !visible;
+				if (visible) shown += 1;
+			}
+
+			const count = column.querySelector('.count');
+			if (count) count.textContent = String(shown);
+		}
+	});
+</script>
+
+<style>
+	.filter {
+		display: inline-flex;
+		gap: 0.5rem;
+		align-items: center;
+	}
+
+	.board {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+		gap: 1rem;
+		margin-top: 1.5rem;
+	}
+
+	.column h2 {
+		font-size: var(--sl-text-lg);
+		margin-bottom: 0.75rem;
+	}
+
+	.count {
+		color: var(--sl-color-gray-3);
+		font-weight: normal;
+	}
+
+	.column ul {
+		list-style: none;
+		padding: 0;
+		margin: 0;
+		display: grid;
+		gap: 0.5rem;
+	}
+
+	.card {
+		border: 1px solid var(--sl-color-hairline);
+		border-radius: 0.5rem;
+		padding: 0.6rem 0.75rem;
+		background: var(--sl-color-bg-nav);
+		font-size: var(--sl-text-sm);
+	}
+
+	.card[hidden] {
+		display: none;
+	}
+
+	.card > a {
+		display: block;
+		font-weight: 600;
+	}
+
+	.card p {
+		margin: 0.4rem 0 0;
+		color: var(--sl-color-gray-2);
+	}
+
+	.area {
+		display: inline-block;
+		margin-top: 0.35rem;
+		padding: 0 0.4rem;
+		border-radius: 0.25rem;
+		background: var(--sl-color-gray-6);
+		color: var(--sl-color-gray-2);
+		font-size: var(--sl-text-xs);
+	}
+</style>

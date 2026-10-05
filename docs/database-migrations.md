@@ -1,4 +1,6 @@
-# Database migrations and schema synchronization
+---
+title: "Database migrations and schema synchronization"
+---
 
 This document describes how the Car Sensors database schema is managed and how changes are propagated to the SvelteKit web application.
 
@@ -91,23 +93,15 @@ pnpm install
 
 ## Environment configuration
 
-The migration and synchronization commands require `DATABASE_URL`.
+The migration and synchronization commands require `DATABASE_URL`. There is one environment file, `.env` at the repository root - copy `.env.example` to start one. Both halves read it without being told: `sqlx` finds it by walking up from the working directory, and `www/drizzle.config.ts` loads it explicitly. A variable exported in the shell still wins over the file, which is how CI supplies its database.
 
 For the default local PostgreSQL deployment:
 
 ```bash
-export DATABASE_URL="postgres://postgres:postgres@localhost:5432/postgres"
+DATABASE_URL="postgres://postgres:postgres@localhost:5432/postgres"
 ```
 
-If the environment variables are stored in `www/.env`, export them from the repository root:
-
-```bash
-set -a
-. ./www/.env
-set +a
-```
-
-The local environment file contains secrets and must not be committed.
+The environment file contains secrets and must not be committed.
 
 ## Creating a migration
 
@@ -165,20 +159,25 @@ The `_sqlx_migrations` table contains internal SQLx state. It is excluded from t
 
 ## Synchronizing the web schema
 
-After adding or changing a migration, regenerate the Drizzle schema used by the web application:
+After adding or changing a migration, regenerate the Drizzle schema used by the web application, from the repository root:
 
 ```bash
-./tools/sync-ww-db-schema.sh
+./tools/scripts/sync-www-db-schema.sh
 ```
 
 The synchronization script:
 
-1. Verifies that `DATABASE_URL` is configured.
-2. Applies all SQLx migrations from `db/migrations/`.
-3. Introspects the resulting PostgreSQL schema.
-4. Regenerates the Drizzle TypeScript files.
-5. Formats the generated TypeScript files.
-6. Checks the SvelteKit project.
+1. Applies all SQLx migrations from `db/migrations/` to the database in `DATABASE_URL`.
+2. Runs `pnpm db:sync` in `www/`, which introspects the resulting schema, regenerates the Drizzle and Better Auth TypeScript files, and formats them.
+3. Checks the SvelteKit project.
+
+Then regenerate the schema documentation:
+
+```bash
+./tools/scripts/generate-schema-docs.sh
+```
+
+That script applies the migrations the same way, then runs [tbls](https://github.com/k1LoW/tbls) with the settings in `.tbls.yml`, writing a Markdown page per table and Mermaid ER diagrams to `docs/schema/`. The page templates in `tools/tbls/` are tbls's own defaults, changed only to give each page the `title` frontmatter the documentation site needs. It needs the `tbls` binary on `PATH`.
 
 The complete local workflow is:
 
@@ -189,7 +188,8 @@ sqlx migrate add migration-name --source db/migrations
 
 # Edit the generated SQL migration.
 
-./tools/sync-ww-db-schema.sh
+./tools/scripts/sync-www-db-schema.sh
+./tools/scripts/generate-schema-docs.sh
 ```
 
 ## Manual schema synchronization
@@ -207,24 +207,25 @@ This command assumes that:
 - `DATABASE_URL` is configured.
 - All SQLx migrations have already been applied to the selected database.
 
-Running `pnpm db:sync` does not apply SQLx migrations unless the project script explicitly performs that step. It introspects the current database state.
+`pnpm db:sync` does not apply SQLx migrations. It introspects the current database state.
 
 For the complete migration and synchronization workflow, prefer:
 
 ```bash
-./tools/sync-ww-db-schema.sh
+./tools/scripts/sync-www-db-schema.sh
 ```
 
-## Generated Drizzle files
+## Generated files
 
-The following generated files are application build inputs and must be committed when they change:
+The following generated files must be committed when they change:
 
 ```text
 www/src/lib/server/db/generated/schema.ts
-www/src/lib/server/db/generated/relations.ts
+www/src/lib/server/db/generated/auth.schema.ts
+docs/schema/
 ```
 
-These files are generated from the PostgreSQL database and must not be edited manually.
+They are generated from the PostgreSQL database and must not be edited manually. CI regenerates all of them from the migrations and fails if the committed copies differ.
 
 The following Drizzle migration artifacts are not used by the project and should remain ignored:
 
@@ -240,7 +241,8 @@ A normal database change should therefore include:
 ```text
 db/migrations/<timestamp>_<migration-name>.sql
 www/src/lib/server/db/generated/schema.ts
-www/src/lib/server/db/generated/relations.ts
+www/src/lib/server/db/generated/auth.schema.ts
+docs/schema/
 ```
 
 Review the generated changes before committing them:
@@ -248,14 +250,6 @@ Review the generated changes before committing them:
 ```bash
 git diff -- \
     db/migrations \
-    www/src/lib/server/db/generated/schema.ts \
-    www/src/lib/server/db/generated/relations.ts
-```
-
-Stage the migration and generated schema:
-
-```bash
-git add db/migrations
-git add www/src/lib/server/db/generated/schema.ts
-git add www/src/lib/server/db/generated/relations.ts
+    www/src/lib/server/db/generated \
+    docs/schema
 ```

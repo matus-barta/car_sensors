@@ -8,6 +8,8 @@ on:
       - "tools/scripts/sync-www-db-schema.sh"
       - "tools/scripts/cleanup-drizzle-output.js"
       - ".github/actions/setup-www/**"
+      - ".github/actions/setup-sqlx/**"
+      - ".github/actions/setup-pnpm/**"
       - ".github/workflows/www-validation.yml"
       - "!www/**/*.md"
 
@@ -21,6 +23,8 @@ on:
       - "tools/scripts/sync-www-db-schema.sh"
       - "tools/scripts/cleanup-drizzle-output.js"
       - ".github/actions/setup-www/**"
+      - ".github/actions/setup-sqlx/**"
+      - ".github/actions/setup-pnpm/**"
       - ".github/workflows/www-validation.yml"
       - "!www/**/*.md"
 
@@ -39,7 +43,7 @@ jobs:
   validate:
     name: Validate WWW project and database schemas
     # Pinned rather than ubuntu-latest, which becomes 26.04 on 2026-10-19 - see
-    # "Move the workflows to Ubuntu 26.04" in todo.md.
+    # docs/tasks/move-the-workflows-to-ubuntu-26-04.md.
     runs-on: ubuntu-24.04
 
     services:
@@ -158,7 +162,7 @@ jobs:
   e2e:
     name: Run end-to-end tests
     # Pinned rather than ubuntu-latest, which becomes 26.04 on 2026-10-19 - see
-    # "Move the workflows to Ubuntu 26.04" in todo.md.
+    # docs/tasks/move-the-workflows-to-ubuntu-26-04.md.
     runs-on: ubuntu-24.04
 
     services:

@@ -3,8 +3,10 @@
  * Uploads synthetic telemetry to a running `ingest` instance, so live vehicle
  * tracking in `www` can be observed without a real device.
  *
- * `X-Device-ID` is both the device's name and its credential (see
- * `todo.md`'s "Device authentication" note): `ingest` only accepts uploads
+ * Out of date: this predates device tokens, and `ingest` refuses every upload it
+ * makes - see `docs/tasks/update-the-telemetry-simulator-for-token-authentication.md`.
+ *
+ * `X-Device-ID` is both the device's name and its credential: `ingest` only accepts uploads
  * from a device already present in `known_devices`, and there is no endpoint
  * to register one. Add a vehicle from the web app's "Add vehicle" dialog
  * first, copy the device ID it shows, and pass it here with `--device-id`.

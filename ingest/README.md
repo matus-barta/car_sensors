@@ -16,6 +16,14 @@ The first two are fatal if missing rather than defaulted, because a silent fallb
 
 ## API
 
+The contract is [`docs/api/openapi.json`](../docs/api/openapi.json), an OpenAPI 3.1 document generated from this crate - the routes, the request body, every field and every status. It is committed so it can be read without building anything, and a test fails when it no longer matches the code. After changing a route or `TelemetrySample`, regenerate it from the repository root:
+
+```bash
+cargo run -p ingest -- openapi > docs/api/openapi.json
+```
+
+A route has to be listed in `ApiDoc` in `src/routes/mod.rs` as well as in the router; the integration tests fail on a documented path the router does not serve. What follows is the reasoning the document has no room for.
+
 Everything is served under `/api`. The prefix is not stripped and not optional: a device configured without it gets 404 on every upload, which is a failure that looks exactly like success until somebody notices the backlog growing.
 
 | Route | Auth | |
@@ -45,8 +53,10 @@ Refusals follow [RFC 6750](https://datatracker.ietf.org/doc/html/rfc6750#section
 | **401** | *(none)* | Nothing was presented - no identity, or no bearer token |
 | **401** | `invalid_token` | A token was presented and refused, or the identity is unknown |
 | **403** | `insufficient_scope` | The token is good and the device is deactivated |
-| **400** | | A body it could not parse |
+| **400** | | A body that is not valid JSON |
 | **413** | | A body larger than the limits below |
+| **415** | | A body without `Content-Type: application/json` |
+| **422** | | JSON that is not an array of samples - a field of the wrong type, or a required one missing |
 | **500** | | The database refused the batch |
 
 An unknown identity is answered exactly as a bad token is, on purpose: distinguishing them would turn the endpoint into a way of discovering which devices exist.
@@ -65,7 +75,7 @@ The batch is written to `telemetry_samples` in one transaction, in chunks that s
 
 `known_devices.last_seen_at` is written at most once per device per **30 seconds**, tracked through Valkey. A device uploading every few seconds does not need to write that column every time.
 
-This limits a column write and nothing else. No request is rejected, delayed or shed by it, and `ingest` has no rate limiting of any kind - see `todo.md`.
+This limits a column write and nothing else. No request is rejected, delayed or shed by it, and `ingest` has no rate limiting of any kind - see [`docs/tasks/rate-limit-the-upload-endpoint.md`](../docs/tasks/rate-limit-the-upload-endpoint.md).
 
 If the batch stored anything, the newest sample carrying a position is published to Valkey as the device's live location, under a **15 minute** expiry. That step is best effort: the durable copy is already committed, and a failure to announce leaves the upload successful. It is guarded against a device clock running ahead, and against an older batch arriving after a newer one and dragging a map marker backwards.
 

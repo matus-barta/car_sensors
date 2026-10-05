@@ -66,7 +66,8 @@
             turning the phone sideways to read a code from a monitor. The
             Android 16 note does not apply while `targetSdk` is 28, and if that
             number is ever raised this activity is on the list of things to
-            revisit - see `todo.md`.
+            revisit - see
+            `docs/tasks/declare-a-foreground-service-type-before-raising-the-target-sdk.md`.
         -->
         <activity
             android:name=".PortraitCaptureActivity"

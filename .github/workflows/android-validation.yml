@@ -39,7 +39,7 @@ jobs:
   validate:
     name: Validate the Android app
     # Pinned rather than ubuntu-latest, which becomes 26.04 on 2026-10-19 - see
-    # "Move the workflows to Ubuntu 26.04" in todo.md.
+    # docs/tasks/move-the-workflows-to-ubuntu-26-04.md.
     runs-on: ubuntu-24.04
 
     defaults:
@@ -95,6 +95,36 @@ jobs:
       # hold what they need.
       - name: Assemble both variants and the instrumented tests
         run: ./gradlew assembleDebug assembleRelease assembleDebugAndroidTest
+
+      # Room writes the database schema to app/schemas/ whenever it compiles
+      # (room.schemaLocation in app/build.gradle.kts), and the migration tests
+      # read those files to build each old version of the database. A schema
+      # change that was never committed would leave them testing migrations
+      # against a schema the app no longer has, so the build above must not
+      # have changed or added any.
+      - name: Check the exported Room schema
+        shell: bash
+        run: |
+          untracked_files="$(git ls-files --others --exclude-standard -- app/schemas)"
+
+          if ! git diff --exit-code -- app/schemas || [ -n "$untracked_files" ]; then
+            if [ -n "$untracked_files" ]; then
+              echo
+              echo "New schema files that are not committed:"
+              echo
+              echo "$untracked_files"
+            fi
+
+            echo
+            echo "ERROR: Room's exported schema is out of date."
+            echo
+            echo "android/app/schemas/ no longer matches the entities the app"
+            echo "compiles. Build the app locally, then review and commit"
+            echo "android/app/schemas/."
+            echo
+
+            exit 1
+          fi
 
       - name: Upload the test report
         if: failure()

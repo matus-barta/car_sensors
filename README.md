@@ -102,7 +102,7 @@ table before the migration that changed it had run.
 ```text
 android/    Android application
 db/         Authoritative PostgreSQL migrations
-docs/       Topic documentation
+docs/       Documentation, its site, and open work in docs/tasks/
 ingest/     Rust telemetry ingestion service (see ingest/README.md)
 shared/     Shared Rust crate
 tools/      Development and synchronization utilities
@@ -117,7 +117,14 @@ www/        SvelteKit web application
 - SQLx CLI
 - Node.js LTS
 - pnpm
+- [tbls](https://github.com/k1LoW/tbls), to regenerate the schema documentation in `docs/schema/` after a migration (`brew install tbls`, or see its README for other platforms)
+- [actionlint](https://github.com/rhysd/actionlint), to check the workflows in `.github/` after editing them (`brew install actionlint`, or see its README for other platforms)
+- [lychee](https://lychee.cli.rs), to check the links between Markdown files (`brew install lychee`, or see its README for other platforms)
 - Android Studio and JDK 21, when developing the Android application
+
+The schema documentation is compared against CI's output byte for byte, and a
+different tbls version may lay the same schema out differently, so use the
+version pinned in `.github/workflows/docs-validation.yml`.
 
 ### Install SQLx CLI
 
@@ -186,23 +193,44 @@ on the JVM and need no device. The instrumented tests do need one:
 Android Studio has the first of these as a shared run configuration, so neither
 needs typing. See [`docs/android-app.md`](docs/android-app.md).
 
+Documentation, from the repository root:
+
+```bash
+lychee './**/*.md' .claude/CLAUDE.md   # links between files, settings in lychee.toml
+actionlint                             # the workflows in .github/
+```
+
+The documentation site, built from the same Markdown:
+
+```bash
+cd docs/starlight
+pnpm install
+pnpm dev       # a local preview that reloads as pages change
+pnpm check     # type-checks the site's TypeScript
+pnpm build     # what CI runs; fails on a link between pages that does not resolve
+```
+
 ## Documentation
 
+- [`docs/README.md`](docs/README.md) - the index of everything below, and the home page of the documentation site
 - [`docs/architecture.md`](docs/architecture.md) - how the four pieces fit together and why they share one database
 - [`docs/android-app.md`](docs/android-app.md) - what the Android logger does, and the platform limitations worth knowing
 - [`docs/database-migrations.md`](docs/database-migrations.md) - how the schema is owned and propagated
+- [`docs/schema/`](docs/schema/README.md) - every table, column and relation, generated from the migrations
+- [`docs/api/openapi.json`](docs/api/openapi.json) - the `ingest` API as OpenAPI 3.1, generated from the code
+- [`docs/ci.md`](docs/ci.md) - how the workflows are laid out, and the rules that keep them that way
 - [`docs/web-image.md`](docs/web-image.md) - why the web application image is the size it is, and what was tried
 - [`docs/ai-policy.md`](docs/ai-policy.md) - how AI-assisted changes are made here
 
 ## AI-assisted development
 
-AI tools may be used to assist with research, documentation, analysis, and code suggestions. They are not autonomous contributors or decision-makers for this project.
+AI tools may be used to assist with research, documentation, analysis, code, and preparing commits. They are not autonomous contributors or decision-makers for this project.
 
-All AI-assisted changes must be understood, reviewed, and validated by a human before being committed. AI agents must not create commits, push changes, merge pull requests, deploy releases, apply production migrations, access project secrets, or modify repository settings.
+An AI tool works in a supervised local working tree, and may create commits and write their messages when the developer asks. Every changed line is reviewed by the developer before anything is pushed. AI agents must not push changes, merge pull requests, deploy releases, apply production migrations, access project secrets, or modify repository settings.
 
-The human contributor remains fully responsible for the correctness, security, licensing, and maintainability of every submitted change.
+The developer remains fully responsible for the correctness, security, licensing, and maintainability of every submitted change. An `Assisted-by:` trailer records AI assistance without making the tool an author.
 
-See docs/ai-policy.md for the complete policy.
+See [`docs/ai-policy.md`](docs/ai-policy.md) for the complete policy.
 
 ## License
 

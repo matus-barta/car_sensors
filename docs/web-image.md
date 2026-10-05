@@ -1,4 +1,6 @@
-# Why the web application image is the size it is
+---
+title: "Why the web application image is the size it is"
+---
 
 A decision rather than an open question, written down so it is not reopened by
 accident. The image is about 355 MB, of which roughly 206 MB is `node_modules`
@@ -9,12 +11,13 @@ Postgres, Valkey, pgAdmin and `ingest`, and some registry storage. That is the
 whole bill. There is no scale here at which those megabytes matter.
 
 What was tried, so it is not tried again. `pnpm install --prod` in place of
-pruning a build stage did help and is what the Dockerfile does. Disabling
-pnpm's automatic peer installation is refused outright, because pnpm records
-the setting in the lockfile and rejects a frozen install that disagrees -
-getting past it means regenerating the lockfile for development and CI too.
-`pnpm deploy --prod` needs a workspace with named projects, and
-`www/pnpm-workspace.yaml` exists only to carry `allowBuilds`.
+pruning a build stage did help and is what the Dockerfile does. Disabling pnpm's
+automatic peer installation is refused outright, because pnpm records the
+setting in the lockfile and rejects a frozen install that disagrees - getting
+past it means regenerating the lockfile for development and CI too. `pnpm deploy
+--prod` needs a workspace with named projects, and `www/pnpm-workspace.yaml`
+exists only to carry pnpm settings - `engineStrict` and `allowBuilds` - not to
+declare a workspace.
 
 Most of what is left is not ours to remove. `better-auth` is a runtime
 dependency declaring `@sveltejs/kit`, `vite` and `vitest` as peers, and pnpm

@@ -49,6 +49,15 @@ pub struct AppState {
     pub redis: ConnectionManager,
 }
 
+/// The OpenAPI document describing the routes [`build_app`] serves.
+///
+/// Committed as `docs/api/openapi.json` and regenerated with
+/// `cargo run -p ingest -- openapi > docs/api/openapi.json`; a test fails when
+/// the committed copy no longer matches this.
+pub fn openapi() -> utoipa::openapi::OpenApi {
+    <routes::ApiDoc as utoipa::OpenApi>::openapi()
+}
+
 /// Assembles the routes and the middleware stack.
 ///
 /// Each layer wraps the ones added before it, so a request meets them from the

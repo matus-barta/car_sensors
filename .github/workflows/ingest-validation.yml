@@ -6,6 +6,8 @@ on:
       - "ingest/**"
       - "shared/**"
       - "db/migrations/**"
+      # Generated from ingest and checked by its tests.
+      - "docs/api/openapi.json"
       - "Cargo.toml"
       - "Cargo.lock"
       - ".github/workflows/ingest-validation.yml"
@@ -26,7 +28,7 @@ jobs:
   validate:
     name: Validate ingest and shared crates
     # Pinned rather than ubuntu-latest, which becomes 26.04 on 2026-10-19 - see
-    # "Move the workflows to Ubuntu 26.04" in todo.md.
+    # docs/tasks/move-the-workflows-to-ubuntu-26-04.md.
     runs-on: ubuntu-24.04
 
     services:
