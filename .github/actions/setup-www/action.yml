@@ -1,14 +1,14 @@
 name: Set up WWW
 description: Set up Node.js, pnpm, SQLx CLI, and WWW dependencies
 
+# No browsers: a step that needs one runs inside Playwright's own image through
+# run-in-playwright, which brings the browsers and the system libraries they
+# need. Installing them here meant apt on every run, and apt once took five
+# minutes over a slow mirror.
+
 inputs:
   install-sqlx:
     description: Install SQLx CLI
-    required: false
-    default: "true"
-
-  install-playwright:
-    description: Install Playwright Chromium and system dependencies
     required: false
     default: "true"
 
@@ -36,9 +36,3 @@ runs:
         working-directory: www
         node-version: ${{ inputs.node-version }}
         pnpm-version: ${{ inputs.pnpm-version }}
-
-    - name: Install Playwright Chromium
-      if: inputs.install-playwright == 'true'
-      shell: bash
-      working-directory: www
-      run: pnpm exec playwright install --with-deps chromium
