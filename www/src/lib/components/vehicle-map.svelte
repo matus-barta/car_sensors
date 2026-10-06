@@ -49,6 +49,13 @@
 	let mapError = $state<string | null>(null);
 
 	/*
+	 * Whether the camera is in the middle of a move, exposed as `data-camera`
+	 * so a test can wait for an ease or a fit to finish rather than guess how
+	 * long it takes.
+	 */
+	let cameraMoving = $state(false);
+
+	/*
 	 * Whether the camera is engaged: following the selected vehicle, or, with
 	 * nothing selected, keeping every located vehicle in view. Selecting a
 	 * vehicle - or going back to all of them - is a request to look at it, so
@@ -480,6 +487,10 @@
 				map.on('rotatestart', handleCameraMoveStart);
 				map.on('pitchstart', handleCameraMoveStart);
 
+				// Every move, programmatic or by hand, for `data-camera`.
+				map.on('movestart', () => (cameraMoving = true));
+				map.on('moveend', () => (cameraMoving = false));
+
 				async function markMapReady(): Promise<void> {
 					if (!map || destroyed || mapLoaded) {
 						return;
@@ -549,6 +560,7 @@
 		class="absolute inset-0 z-0 size-full"
 		data-testid="vehicle-map"
 		data-map-state={mapError ? 'error' : mapLoaded ? 'ready' : 'loading'}
+		data-camera={cameraMoving ? 'moving' : 'still'}
 		aria-label="Vehicle map"
 	></div>
 

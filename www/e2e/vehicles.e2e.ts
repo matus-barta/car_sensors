@@ -728,14 +728,20 @@ test.describe('vehicle map framing', () => {
 			longitude: 17.2
 		});
 
+		const map = page.getByTestId('vehicle-map');
+		const scale = getMapScale(page);
+		const defaultScale = await scale.getAttribute('style');
+
 		await refreshVehicleList(page);
 
-		const scale = getMapScale(page);
-
+		/*
+		 * Framed on the fleet and settled, not caught halfway through the move
+		 * onto it: the scale has left the default view, and the camera has come
+		 * to rest.
+		 */
+		await expect(scale).not.toHaveAttribute('style', defaultScale ?? '');
+		await expect(map).toHaveAttribute('data-camera', 'still');
 		await expect(scale).toHaveText(/\d\s*km$/);
-
-		// Settled, not caught halfway through the move onto the fleet.
-		await page.waitForTimeout(1_000);
 
 		const framedScale = await scale.getAttribute('style');
 
