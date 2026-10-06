@@ -41,24 +41,33 @@ Three things to settle before adopting it:
   `UpdateRelStyle` and named colours. The diagrams follow the theme for the
   same reason [the applications do](../development/conventions.md#colours-come-from-the-theme-never-from-a-literal).
 
-## Decision records - `documentation-and-adrs`
+## Decision records - `documentation-and-adrs` and `domain-modeling`
 
 Some pages here are already decisions with their reasons:
 [the `www` Docker image's size](../deployment/www-docker-image.md),
 [database schema ownership](../development/database/ownership.md), and the one
 database the system architecture page argues for. None is in an architecture
-decision record (ADR) format. Decide whether to adopt one, and if so where: the
-skill defaults to `docs/decisions/`, while `improve-codebase-architecture`
-looks for ADRs in `docs/adr/` and a domain glossary in `CONTEXT.md`. One
-location, chosen deliberately, so the two skills do not start a second.
+decision record (ADR) format. Decide whether to adopt one, and if so where.
+The skills disagree: `documentation-and-adrs` defaults to `docs/decisions/`,
+while `domain-modeling` - and `improve-codebase-architecture`, which reads what
+it writes - use `docs/adr/`, numbered `0001-slug.md`. One location, chosen
+deliberately, so they do not start two.
 
-## The two skills that cannot run yet
+Wherever they go, they are pages of this site. `domain-modeling`'s template
+opens with a `# Heading` and no frontmatter, which the build rejects: a page
+here needs `title:` frontmatter and no heading of its own, belongs to a sidebar
+group, and is listed in [`docs/README.md`](../README.md). The same skill keeps
+a domain glossary in a `GLOSSARY.md` at the repository root, created the first
+time a term is settled; whether that sits at the root or in `docs/` is part of
+the same decision.
 
-`grill-with-docs` and `improve-codebase-architecture` can only be started by
-hand, and both hand over to skills that are not vendored: `grill-with-docs` to
-`grilling` and `domain-modeling`, `improve-codebase-architecture` to
-`codebase-design`. Either add the missing skills with the `skills` CLI or
-remove the two, rather than leaving them half-installed.
+## Architecture review - `improve-codebase-architecture`
+
+Started by hand, it looks for shallow modules worth deepening and walks
+through one with `grilling`, keeping the glossary and ADRs current through
+`domain-modeling` and using `codebase-design`'s vocabulary. It is the review
+half of this task rather than the documentation half, and is best run once the
+ADR location above is settled, since it writes there.
 
 Whatever pages come out of this are checked with `/verify-docs` and the
 [one-kind rule](../development/conventions.md#documentation-one-kind-of-page-at-a-time),
