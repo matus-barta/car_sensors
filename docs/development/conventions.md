@@ -12,7 +12,7 @@ No component in `www` or the Android app may write a colour value - a hex string
 
 ## Commits
 
-**A commit's subject opens with a topic tag**, then a space, a colon and a space: `www : Derive vehicle status in the browser`, `ingest : Throttle the last_seen_at write`. The topic is usually the directory the change lives in, which is usually the piece - `docs`, `tasks`, `ci` and `skills` are common too. It is a convenience for scanning a log that covers four largely independent pieces, not a rule anything enforces.
+**A commit's subject opens with a topic tag**, then a space, a colon and a space: `www : Derive vehicle status in the browser`, `ingest : Throttle the last_seen_at write`. The topic is usually the directory the change lives in, which is usually an application - `docs`, `tasks`, `ci` and `skills` are common too - and it makes a log covering several largely independent parts of the repository quick to scan. It is strongly recommended rather than a hard rule: a commit can have a real reason to go without one, and that is worth a moment's thought when it seems to.
 
 **`wip` marks a work-in-progress commit**: a feature that is not finished, but has gathered enough work that it should not be lost. It follows the tag - `www : wip live vehicle streaming`.
 

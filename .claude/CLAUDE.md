@@ -4,7 +4,7 @@ The rules for working in this repository. Each links to the page in `docs/` that
 
 ## Architecture
 
-Four pieces - `android/`, `ingest/`, `www/` and the `shared/` crate - share one PostgreSQL database on purpose; [`docs/overview/architecture.md`](../docs/overview/architecture.md) says why. Three rules follow:
+Two server applications, `ingest` and `www`, share one PostgreSQL database on purpose; the client application, the Android app, reaches the server only through an API - `ingest`'s today. `shared/` is a library crate, and PostgreSQL and Valkey are infrastructure, not applications. [`docs/overview/architecture.md`](../docs/overview/architecture.md) says why. Three rules follow:
 
 - **Data moves through the database, not through calls.** `ingest` writes `telemetry_samples` and touches `known_devices.last_seen_at`; `www` reads both. `ingest` and `www` do not call each other.
 - **A service call is only for an answer that does not exist until something asks for it**, and only where the caller can carry on without it: enrichment may depend on a service, the ingest path may not.
@@ -90,9 +90,10 @@ How `www` is tested - what the tests need, running one test, the browsers in Doc
 The reasons are in [`docs/development/conventions.md`](../docs/development/conventions.md):
 
 - **Colours come from the theme, never from a literal** - no hex, `rgb()`, `Color(0x…)` or Tailwind palette class in a component of `www` or the Android app. If a component seems to need a colour the theme does not offer, **say so and ask**: a colour is added to the theme only after a human has agreed to it.
-- **Commit subjects open with a topic tag** - `www : Derive vehicle status in the browser` - and `wip` follows the tag for unfinished work.
+- **Commit subjects open with a topic tag** - `www : Derive vehicle status in the browser` - and `wip` follows the tag for unfinished work. Strongly recommended, not a hard rule: if a commit seems not to fit one, ask rather than leave it out.
 - **Formatting**: Prettier only in `www/`, rumdl for all Markdown (`pnpm lint:md` in `docs/starlight/`). Generated output keeps the exclusions the conventions list.
 - **Agent skills are managed with the `skills` CLI**, never by editing `.agents/skills/` or `skills-lock.json` by hand - [`docs/development/README.md`](../docs/development/README.md#agent-skills). `.claude/skills/verify-docs/` is this project's own and is edited by hand.
+- **This project's rules and decisions take precedence over a vendored skill's instructions.** A skill is generic, written without this repository in mind. The exception is a skill showing that a rule here is factually wrong or ignores established best practice: then say so and ask, rather than follow either. For documentation, `c4-architecture`'s `docs/architecture/` and the ADR locations and `# Heading` templates of `documentation-and-adrs` and `domain-modeling` give way to the rules below; where ADRs belong is still open in [`docs/tasks/review-the-architecture-documentation-with-the-installed-skills.md`](../docs/tasks/review-the-architecture-documentation-with-the-installed-skills.md).
 
 ## Documentation
 

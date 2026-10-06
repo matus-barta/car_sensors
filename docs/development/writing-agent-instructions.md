@@ -6,7 +6,7 @@ Why [`.claude/CLAUDE.md`](../../.claude/CLAUDE.md) is written the way it is, and
 
 ## Rules there, reasons here
 
-The file holds the rules an agent has to follow, each short, and each linking to the page in `docs/` that gives its reasons. Those pages are written for people, so every rule has a home a person can read, and the file points to it rather than repeating it: one source of truth, and the file stays small.
+The file holds the rules an agent has to follow, each short, and each linking to the page in `docs/` that gives its reasons. Those pages are written for people, so a rule that applies to people too has a home they can read, and the file points to it rather than repeating it: one source of truth, and the file stays small. Rules about how an agent itself behaves live in the file alone - asking before installing a tool, or this project's rules and decisions taking precedence over a vendored skill's generic instructions unless the skill shows one of them to be factually wrong or against established best practice. They concern no person reading the docs.
 
 That shape answers what Anthropic's [best practices](https://code.claude.com/docs/en/best-practices) ask of each line - *"Would removing this cause Claude to make mistakes?"* - and what they would leave out: anything an agent can work out by reading the code, standard conventions, long explanations, file-by-file descriptions, and information that changes often. What they would keep is what stays: commands an agent cannot guess, rules that differ from the defaults, testing instructions, repository etiquette, the project's own architectural decisions, and the gotchas that are not self-evident.
 

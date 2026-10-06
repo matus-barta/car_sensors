@@ -2,7 +2,7 @@
 title: "System architecture"
 ---
 
-Four independent pieces share one PostgreSQL database.
+Three applications, of two kinds. The server applications - `ingest` and `www` - share one PostgreSQL database, with Valkey beside it. The client application, the Android app on the phone, never touches the database: it talks to the server through an API, which `ingest` provides today. `shared/` is a library `ingest` builds on, and PostgreSQL and Valkey are infrastructure rather than applications.
 
 ```mermaid
 flowchart LR
@@ -27,7 +27,7 @@ A service call is the exception, for work that cannot be precomputed into a tabl
 
 The test for whether such a call is acceptable is what happens when it fails. **Enrichment may depend on a service; the ingest path may not.** A geocoder that is down means a position shown as coordinates instead of a street name. An authentication service that is down would mean telemetry refused and data lost, which is why device authentication is a database lookup rather than a call.
 
-## What each piece is responsible for
+## What each part is responsible for
 
 **The Android app** collects location and sensor data, stores it locally in Room, and uploads it in batches. It is store-and-forward by design: it records whether or not a server is reachable, and a backlog can be days deep. When live upload is enabled it also pushes its newest position as it moves, at most every two seconds - but only while the phone is on power, and only over an unmetered network when uploads are set to Wi-Fi only, since a live push keeps the radio awake for the whole drive.
 

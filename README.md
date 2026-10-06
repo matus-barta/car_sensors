@@ -4,7 +4,11 @@
 
 [![Ingest - build](https://github.com/matus-barta/car_sensors/actions/workflows/ingest-build.yml/badge.svg)](https://github.com/matus-barta/car_sensors/actions/workflows/ingest-build.yml) [![WWW - validation](https://github.com/matus-barta/car_sensors/actions/workflows/www-validation.yml/badge.svg)](https://github.com/matus-barta/car_sensors/actions/workflows/www-validation.yml) [![Android - validation](https://github.com/matus-barta/car_sensors/actions/workflows/android-validation.yml/badge.svg)](https://github.com/matus-barta/car_sensors/actions/workflows/android-validation.yml) [![Android - migration tests](https://github.com/matus-barta/car_sensors/actions/workflows/android-migration.yml/badge.svg)](https://github.com/matus-barta/car_sensors/actions/workflows/android-migration.yml)
 
-An open-source GPS tracking platform. An Android app records where a vehicle goes and what its sensors read, a Rust service receives it, and a web application shows it on a map - all three sharing one PostgreSQL database.
+An open-source vehicle tracker built around an old Android phone left in the car. On its charger, the phone starts recording when the car moves - its position and sensor readings - and keeps everything while there is no signal, uploading it later. A web application shows the vehicles on a map where each was last seen, and follows one live when live upload is switched on in the app. Everything runs on your own server.
+
+## How it fits together
+
+Three applications. The Android app is the client: it records on the phone and uploads to the server through an API. The two server applications share one PostgreSQL database - `ingest` receives the uploads, and `www` is the web application. The full picture, and why it is built this way, is in [`docs/overview/architecture.md`](docs/overview/architecture.md).
 
 ## Repository layout
 
@@ -17,8 +21,6 @@ An open-source GPS tracking platform. An Android app records where a vehicle goe
 | [`db/migrations/`](db/migrations/) | The database schema, owned by SQLx - see [`docs/development/database/migrations.md`](docs/development/database/migrations.md) |
 | [`docs/`](docs/README.md) | The documentation, the site built from it, and open work in [`docs/tasks/`](docs/tasks/README.md) |
 | [`tools/`](tools/) | Local infrastructure and maintenance scripts |
-
-The architecture - how the pieces fit together, and why they share one database: [`docs/overview/architecture.md`](docs/overview/architecture.md).
 
 ## Deployment
 
