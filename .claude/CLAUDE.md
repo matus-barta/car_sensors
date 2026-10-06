@@ -75,7 +75,7 @@ Local infrastructure - Postgres, Valkey, pgAdmin: `cd tools && docker compose up
 The reasons are in [`docs/development/www/architecture.md`](../docs/development/www/architecture.md):
 
 - **Server-only code lives in `$lib/server/`**, the only directory SvelteKit keeps out of the browser - not in a `server/` folder inside a feature directory.
-- **Vehicle data reaches the browser through the remote functions in `$lib/vehicles/vehicle.remote.ts`.** `VehicleState` wraps the query and owns the selection plus the derived status. Do not mirror query results into separate `$state`.
+- **Vehicle data reaches the browser through the remote functions in `$lib/vehicles/vehicle.remote.ts`.** `VehicleState` wraps the query and owns the selection plus the derived status; read the query's results through it, not from a copy - a copy once went stale across sign-outs.
 - **Anything derived from a timestamp is derived in the browser, against `clock`** (`$lib/utils/clock.svelte.ts`). The server sends `lastSeenAt`, never a status.
 - **Errors from remote functions are raised with `error()`**, and read on the client with `getErrorMessage()` from `$lib/utils/error`.
 - **Auth is Better Auth, served from `hooks.server.ts`.** There is no `src/routes/api/auth/`, and there should not be; test a request with `isAuthPath()`.
