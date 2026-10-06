@@ -1,5 +1,5 @@
 ---
-title: "How the web application is put together"
+title: "www architecture"
 ---
 
 The decisions behind the `www` code, and the reasons for them, written down so they are not undone by accident.

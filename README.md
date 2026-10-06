@@ -18,7 +18,7 @@ An open-source GPS tracking platform. An Android app records where a vehicle goe
 | [`docs/`](docs/README.md) | The documentation, the site built from it, and open work in [`docs/tasks/`](docs/tasks/README.md) |
 | [`tools/`](tools/) | Local infrastructure and maintenance scripts |
 
-How the pieces fit together, and why they share one database: [`docs/overview/architecture.md`](docs/overview/architecture.md).
+The architecture - how the pieces fit together, and why they share one database: [`docs/overview/architecture.md`](docs/overview/architecture.md).
 
 ## Deployment
 

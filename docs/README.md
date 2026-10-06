@@ -15,7 +15,7 @@ directories read the same way the site's sidebar does.
 
 ## Overview
 
-- [How the pieces fit together](overview/architecture.md) - the four pieces, the one database they share, and why
+- [System architecture](overview/architecture.md) - the four pieces, the one database they share, and why
 - [The Android logger](overview/android-app.md) - what the Android logger does, and the platform limitations worth knowing
 
 ## Deployment
@@ -37,11 +37,11 @@ directories read the same way the site's sidebar does.
 
 ### ingest
 
-- [How ingest is put together](development/ingest/architecture.md) - its routes, how a device authenticates, the size limits and what an upload does
+- [ingest architecture](development/ingest/architecture.md) - its routes, how a device authenticates, the size limits and what an upload does
 
 ### www
 
-- [How the web application is put together](development/www/architecture.md) - the decisions behind the `www` code, and why
+- [www architecture](development/www/architecture.md) - the decisions behind the `www` code, and why
 
 ## Reference
 

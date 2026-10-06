@@ -1,5 +1,5 @@
 ---
-title: "How ingest is put together"
+title: "ingest architecture"
 ---
 
 The decisions behind the `ingest` code, and the reasons for them - what its OpenAPI document, [`docs/api/openapi.json`](../../api/openapi.json), has no room for. Running and checking it is in [`ingest/README.md`](../../../ingest/README.md#development).
