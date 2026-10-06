@@ -47,9 +47,9 @@ Steps that several jobs repeat live in `.github/actions/`:
 
 | Action | Sets up |
 | --- | --- |
-| [`setup-www`](../../.github/actions/setup-www/action.yml) | the `www` dependencies through `setup-pnpm`, Playwright, and the SQLx CLI through `setup-sqlx` |
+| [`setup-www`](../../.github/actions/setup-www/action.yml) | the `www` dependencies through `setup-pnpm`, and the SQLx CLI through `setup-sqlx` |
 | [`setup-pnpm`](../../.github/actions/setup-pnpm/action.yml) | Node.js and pnpm, and one package's dependencies from its lockfile - `www` or the documentation site |
-| [`setup-sqlx`](../../.github/actions/setup-sqlx/action.yml) | the SQLx CLI, the only tool allowed to apply `db/migrations` |
+| [`setup-sqlx`](../../.github/actions/setup-sqlx/action.yml) | the SQLx CLI, the only tool allowed to apply `db/migrations` - from the cache when it can, with Rust installed only to build it when it cannot |
 | [`setup-android`](../../.github/actions/setup-android/action.yml) | the JDK, Gradle and the Android SDK licences |
 | [`setup-android-device`](../../.github/actions/setup-android-device/action.yml) | the emulator, KVM and a Gradle managed device |
 

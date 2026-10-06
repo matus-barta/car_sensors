@@ -37,9 +37,28 @@ export default defineConfig({
 	fullyParallel: false,
 	workers: 1,
 
+	/*
+	 * Playwright's own defaults, plus an HTML report on CI: its default there,
+	 * dot, writes none, and the workflow uploads playwright-report/ - which
+	 * held nothing until this. Never opened, since nobody is there to see it.
+	 * https://playwright.dev/docs/test-reporters
+	 */
+	reporter: process.env.CI ? [['dot'], ['html', { open: 'never' }]] : 'list',
+
 	use: {
 		baseURL,
-		trace: 'on-first-retry',
+		/*
+		 * Browsers in Playwright's Docker image when scripts/with-browsers.ts
+		 * started them, which says so in PLAYWRIGHT_WS_ENDPOINT; installed ones
+		 * otherwise. <loopback> sends the browser's localhost back to this
+		 * machine, where the preview server is.
+		 */
+		connectOptions: process.env.PLAYWRIGHT_WS_ENDPOINT
+			? { wsEndpoint: process.env.PLAYWRIGHT_WS_ENDPOINT, exposeNetwork: '<loopback>' }
+			: undefined,
+		// Tests are not retried here, so a trace kept only on a first retry
+		// would never be kept at all.
+		trace: 'retain-on-failure',
 		screenshot: 'only-on-failure'
 	},
 

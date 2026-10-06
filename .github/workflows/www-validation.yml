@@ -90,6 +90,8 @@ jobs:
         working-directory: www
         run: pnpm lint
 
+      # The browser for the component tests runs in Docker, started by the
+      # script behind the command - see www/scripts/with-browsers.ts.
       - name: Run unit and component tests
         working-directory: www
         run: pnpm test:unit --run

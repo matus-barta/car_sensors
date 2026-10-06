@@ -10,12 +10,11 @@ inputs:
 runs:
   using: composite
   steps:
-    # Only to build the CLI: no components, and no workspace cache, which is
-    # what a Rust job proper would want and this one would never use.
-    - name: Set up Rust
-      uses: dtolnay/rust-toolchain@stable
-
+    # Before Rust, so a hit needs no toolchain at all: the cached binary runs
+    # on its own, and installing Rust only to find it was ten seconds of every
+    # job that uses this.
     - name: Cache SQLx CLI
+      id: cache
       uses: actions/cache@v6
       with:
         path: |
@@ -26,15 +25,28 @@ runs:
         restore-keys: |
           ${{ runner.os }}-sqlx-cli-
 
+    # Only to build the CLI: no components, and no workspace cache, which is
+    # what a Rust job proper would want and this one would never use. A
+    # restore-keys hit is a miss here too - it brings an older CLI back.
+    - name: Set up Rust
+      if: steps.cache.outputs.cache-hit != 'true'
+      uses: dtolnay/rust-toolchain@stable
+
     - name: Install SQLx CLI
       shell: bash
       env:
         SQLX_VERSION: ${{ inputs.sqlx-version }}
       run: |
-        if ! command -v sqlx >/dev/null 2>&1; then
+        # Set up Rust puts this on PATH when it runs; on a hit it does not.
+        echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+        export PATH="$HOME/.cargo/bin:$PATH"
+
+        # Missing, or an older version that restore-keys brought back.
+        if [[ "$(sqlx --version 2>/dev/null)" != *"$SQLX_VERSION"* ]]; then
           cargo install sqlx-cli \
             --version "$SQLX_VERSION" \
             --locked \
+            --force \
             --no-default-features \
             --features rustls,postgres
         fi

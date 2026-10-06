@@ -16,11 +16,9 @@ home at all, though they apply to anyone working here, not only to an agent:
   rather than bare paths, a primary source for any claim about the outside
   world, a new page going into the sidebar and the index, `/verify-docs` after
   a change.
-- **Running a single test** - `cargo test -p ingest <name>`,
-  `pnpm test:unit --run <file>`, `pnpm test:e2e -g "<name>"`.
-- **How `www` is tested** - the two vitest projects, `expect.requireAssertions`,
-  and the end-to-end fixture refusing any database whose name does not end in
-  `_test`.
+- **Running a single `ingest` test** - `cargo test -p ingest <name>`. The `www`
+  equivalents, and how `www` is tested, are in
+  [Testing www](../development/www/testing.md) now.
 - **Managing the vendored agent skills** with the `skills` CLI.
 
 So the first step is to decide where each of these lives for people - a

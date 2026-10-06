@@ -38,7 +38,7 @@ There is one environment file, `.env` at the repository root. `ingest`, `www` an
 
 Each service's README lists the variables it reads, which it requires and what the rest do: [`ingest`](../../ingest/README.md#environment) and [`www`](../../www/README.md#environment). A deployment sets them on the containers instead - see [`docs/deployment/README.md`](../deployment/README.md).
 
-`www/.env.test` holds E2E-only values and is committed on purpose; the Playwright config loads it and passes it to the preview server, because `vite preview` runs in production mode and would not read it otherwise.
+`www/.env.test` holds the end-to-end tests' own values, committed on purpose - [Testing www](www/testing.md#end-to-end-tests) says why.
 
 ## Checking each piece
 
@@ -71,6 +71,10 @@ pnpm check    # svelte-kit sync and svelte-check
 pnpm lint     # prettier and eslint
 pnpm test     # unit, component and end-to-end
 ```
+
+What the tests need - Docker for their browsers, and the local infrastructure
+for the end-to-end ones - and how to run one at a time are in
+[Testing www](www/testing.md).
 
 Android application:
 
