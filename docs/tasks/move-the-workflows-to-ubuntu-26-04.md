@@ -13,8 +13,10 @@ somebody decides it should.
 The emulator jobs are the ones most likely to notice. They rely on what the
 image ships - the SDK at `$ANDROID_HOME`, `sdkmanager` under `cmdline-tools`,
 readable KVM after the udev rule - and installed the emulator themselves only
-once it turned out the image did not. The Rust and web jobs install their own
-toolchains, so they should care less.
+once it turned out the image did not. The Rust jobs install their own
+toolchains, so they should care less. So should the web jobs: their browsers
+run in Playwright's own image, whatever the runner's Ubuntu - but that needs
+the runner to ship Docker, as 24.04 does.
 
 To move: change `runs-on` to `ubuntu-26.04` on a branch, start "Android -
 migration tests" there by hand from the Actions tab so the post-merge devices
