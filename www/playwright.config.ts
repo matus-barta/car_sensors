@@ -48,7 +48,9 @@ export default defineConfig({
 		connectOptions: process.env.PLAYWRIGHT_WS_ENDPOINT
 			? { wsEndpoint: process.env.PLAYWRIGHT_WS_ENDPOINT, exposeNetwork: '<loopback>' }
 			: undefined,
-		trace: 'on-first-retry',
+		// Tests are not retried here, so a trace kept only on a first retry
+		// would never be kept at all.
+		trace: 'retain-on-failure',
 		screenshot: 'only-on-failure'
 	},
 
