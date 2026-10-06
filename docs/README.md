@@ -26,14 +26,19 @@ directories read the same way the site's sidebar does.
 ## Development
 
 - [Development setup](development/README.md) - setting up a machine, the environment file, and checking each piece the way CI does
-- [Database migrations and schema synchronization](development/database-migrations.md) - how the schema is owned and propagated
 - [Continuous integration](development/ci.md) - how the workflows are laid out, and the rules that keep them that way
-- [Conventions](development/conventions.md) - rules that hold across every piece, such as where colours come from
+- [Conventions](development/conventions.md) - rules that hold across every piece: where colours come from, and keeping a page of documentation to one kind
 - [Artificial intelligence usage policy](development/ai-policy.md) - how AI-assisted changes are made here
+
+### Database
+
+- [Database schema ownership](development/database/ownership.md) - who may change the schema, and why the web application's copy of it only follows
+- [Database migrations and schema synchronization](development/database/migrations.md) - creating and applying a migration, and regenerating what is generated from it
 
 ### Android
 
-- [Working on the Android app](development/android/README.md) - its builds, checks and tests, and the parts of its build that are not what they look like
+- [Working on the Android app](development/android/README.md) - checking, testing and installing the app
+- [Android build and CI](development/android/build.md) - the SDK levels, the linters' settings, how CI runs the devices, and the parts of the build that are not what they look like
 
 ### ingest
 

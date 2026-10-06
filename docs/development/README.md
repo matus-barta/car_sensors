@@ -87,7 +87,7 @@ The instrumented tests need a device:
 ```
 
 What each of these checks, and the Android Studio run configurations that do the
-same, are in [`docs/development/android/README.md`](android/README.md#formatting-and-lint).
+same, are in [`docs/development/android/README.md`](android/README.md#checking-the-code).
 
 Documentation, from the repository root:
 

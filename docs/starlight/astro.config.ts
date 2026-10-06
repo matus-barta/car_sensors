@@ -60,12 +60,15 @@ export default defineConfig({
 					label: 'Development',
 					items: [
 						'development',
-						'development/database-migrations',
 						'development/ci',
 						'development/conventions',
 						'development/ai-policy',
+						{
+							label: 'Database',
+							items: ['development/database/ownership', 'development/database/migrations']
+						},
 						// What applies to one piece only.
-						{ label: 'Android', items: ['development/android'] },
+						{ label: 'Android', items: ['development/android', 'development/android/build'] },
 						{ label: 'ingest', items: ['development/ingest/architecture'] },
 						{ label: 'www', items: ['development/www/architecture'] }
 					]

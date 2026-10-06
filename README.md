@@ -14,7 +14,7 @@ An open-source GPS tracking platform. An Android app records where a vehicle goe
 | [`ingest/`](ingest/README.md) | The Rust service devices upload telemetry to |
 | [`shared/`](shared/) | A Rust library crate `ingest` builds on: Postgres and Valkey connections, the embedded migrations, time helpers |
 | [`www/`](www/README.md) | The SvelteKit web application: administration and the map |
-| [`db/migrations/`](db/migrations/) | The database schema, owned by SQLx - see [`docs/development/database-migrations.md`](docs/development/database-migrations.md) |
+| [`db/migrations/`](db/migrations/) | The database schema, owned by SQLx - see [`docs/development/database/migrations.md`](docs/development/database/migrations.md) |
 | [`docs/`](docs/README.md) | The documentation, the site built from it, and open work in [`docs/tasks/`](docs/tasks/README.md) |
 | [`tools/`](tools/) | Local infrastructure and maintenance scripts |
 

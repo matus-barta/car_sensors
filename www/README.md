@@ -74,7 +74,7 @@ Drizzle only reads it, and never creates or applies a migration. The generated
 schemas in `src/lib/server/db/generated/` are committed and never edited by
 hand. After changing a migration or the Better Auth configuration, run
 `./tools/scripts/sync-www-db-schema.sh` from the repository root.
-[`docs/development/database-migrations.md`](../docs/development/database-migrations.md) has the rules and
+[`docs/development/database/migrations.md`](../docs/development/database/migrations.md) has the rules and
 the whole workflow.
 
 ## Authentication

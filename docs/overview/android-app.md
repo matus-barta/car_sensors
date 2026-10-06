@@ -30,7 +30,7 @@ The app installs on Android 9 and later and declares itself an Android 9 app, so
 
 The cost is Google Play, which does not accept apps or updates that target a level this old. The app is distributed through GitHub instead: the plan is for CI to publish signed APKs to GitHub Releases, for Obtainium to pick up on the phone, and [`docs/tasks/publish-signed-builds-to-github-releases-for-obtainium.md`](../tasks/publish-signed-builds-to-github-releases-for-obtainium.md) describes it. Until that exists, builds are installed with `adb install`.
 
-The exact API levels, and what raising them would take, are in [`docs/development/android/README.md`](../development/android/README.md#android-versions).
+The exact API levels, and what raising them would take, are in [`docs/development/android/build.md`](../development/android/build.md#android-versions).
 
 ## Platform limitations
 
