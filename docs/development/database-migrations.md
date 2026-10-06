@@ -61,12 +61,12 @@ drizzle-kit studio
 
 ## Requirements
 
-The tools are listed under [Dev Requirements](../README.md#dev-requirements) in
-the root README, and [`docs/development.md`](development.md#setting-up) installs
+The tools are listed under [Dev Requirements](../../README.md#dev-requirements) in
+the root README, and [`docs/development/README.md`](README.md#setting-up) installs
 the SQLx CLI with the features this project needs and the web dependencies.
 
 The commands below need `DATABASE_URL`, from the root `.env` described in
-[`docs/development.md`](development.md#environment). Both halves find it without
+[`docs/development/README.md`](README.md#environment). Both halves find it without
 being told: `sqlx` by walking up from the working directory, and
 `www/drizzle.config.ts` by loading it explicitly. A variable exported in the
 shell still wins over the file, which is how CI supplies its database. The local

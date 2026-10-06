@@ -22,7 +22,7 @@ on 3001 - and putting a reverse proxy in front of it is the expected way to
 serve it to the internet. Those two ports, and pgAdmin's 8888, are bound to
 every network interface today; only Postgres and Valkey are limited to
 loopback. Until that changes - see
-[`docs/tasks/take-pgadmin-out-of-the-deployment-compose-file.md`](tasks/take-pgadmin-out-of-the-deployment-compose-file.md) -
+[`docs/tasks/take-pgadmin-out-of-the-deployment-compose-file.md`](../tasks/take-pgadmin-out-of-the-deployment-compose-file.md) -
 keep them closed to the outside with a firewall, so the services cannot be
 reached around the proxy.
 
@@ -30,11 +30,11 @@ Two things the proxy has to get right:
 
 - **Route `/api` to `ingest`, and leave the rest to the web application.** A
   single hostname works if the proxy selects by path prefix. Do not strip the
-  prefix: [`ingest` serves everything under it](../ingest/README.md#api). The
+  prefix: [`ingest` serves everything under it](../development/ingest/architecture.md#routes). The
   device's configured base URL must include whatever prefix the deployment
   uses.
 - **Allow a request body at least as large as `ingest` accepts** - its
-  [request size limits](../ingest/README.md#request-size). A proxy with a
+  [request size limits](../development/ingest/architecture.md#request-size). A proxy with a
   smaller body limit rejects a device's backlog before the service sees it.
 
 ## What the Compose file runs

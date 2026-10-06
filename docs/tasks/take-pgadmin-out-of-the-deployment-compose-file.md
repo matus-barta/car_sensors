@@ -21,10 +21,10 @@ already has its own. What to remove from the root file:
 
 Then the places that describe the deployment as including it:
 
-- [`docs/deployment.md`](../deployment.md), which lists it among what the
+- [`docs/deployment/README.md`](../deployment/README.md), which lists it among what the
   Compose file starts and names its port as one bound to every interface;
 - `.claude/CLAUDE.md`, whose description of the deployment file lists it;
-- [`docs/www-docker-image.md`](../www-docker-image.md), which counts it among what the
+- [`docs/deployment/www-docker-image.md`](../deployment/www-docker-image.md), which counts it among what the
   server already runs.
 
 An operator who wants to inspect the database in production can still reach it
@@ -32,7 +32,7 @@ from the host or over an SSH tunnel to `127.0.0.1:5432`, without a web console
 exposed to the network.
 
 Worth checking while doing it: `ingest` and `www` are published on every
-interface too (`3000:3000` and `3001:3000`), and `docs/deployment.md` asks the
+interface too (`3000:3000` and `3001:3000`), and `docs/deployment/README.md` asks the
 operator to firewall them until that changes. Binding both to `127.0.0.1` would
 keep the services from being reached around the reverse proxy without relying on
 one, and that paragraph could then go.

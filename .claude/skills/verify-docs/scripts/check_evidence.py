@@ -12,7 +12,7 @@ usage: check_evidence.py REPORT.json
 
 REPORT.json:
 {
-  "document": "docs/ci.md",
+  "document": "docs/development/ci.md",
   "claims": [
     {
       "id": 1,

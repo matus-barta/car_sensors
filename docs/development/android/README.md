@@ -2,7 +2,7 @@
 title: "Working on the Android app"
 ---
 
-How the Android app is built, checked and tested, and the parts of its build that are not what they first look like. What the app does, and the platform limitations it lives with, are in [`docs/android-app.md`](android-app.md).
+How the Android app is built, checked and tested, and the parts of its build that are not what they first look like. What the app does, and the platform limitations it lives with, are in [`docs/overview/android-app.md`](../../overview/android-app.md).
 
 ## Android versions
 
@@ -12,9 +12,9 @@ How the Android app is built, checked and tested, and the parts of its build tha
 | `targetSdk`  | 28        | 9               |
 | `compileSdk` | 37        | -               |
 
-`minSdk` and `targetSdk` are both kept at 28 for the older phones the app is meant to run on - [`docs/android-app.md`](android-app.md#android-versions) explains what that means on a phone. `compileSdk` only decides which APIs the code can see when it is built; it does not change either of those.
+`minSdk` and `targetSdk` are both kept at 28 for the older phones the app is meant to run on - [`docs/overview/android-app.md`](../../overview/android-app.md#android-versions) explains what that means on a phone. `compileSdk` only decides which APIs the code can see when it is built; it does not change either of those.
 
-The lint warning about the old target is suppressed in `app/build.gradle.kts` for that reason. [`docs/tasks/declare-a-foreground-service-type-before-raising-the-target-sdk.md`](tasks/declare-a-foreground-service-type-before-raising-the-target-sdk.md) lists what has to change in the manifest if the target is ever raised.
+The lint warning about the old target is suppressed in `app/build.gradle.kts` for that reason. [`docs/tasks/declare-a-foreground-service-type-before-raising-the-target-sdk.md`](../../tasks/declare-a-foreground-service-type-before-raising-the-target-sdk.md) lists what has to change in the manifest if the target is ever raised.
 
 ## Debug and release side by side
 
@@ -22,7 +22,7 @@ The two builds install as separate apps: release as `com.anonymus09.carsensors`,
 
 Each is a logger of its own, though. Both left switched on means two sets of rows, uploaded under whatever each is paired as, so the debug build is best left stopped, or unpaired, on a phone that is logging for real. Its version name ends in `-debug`, which reaches the server in the User-Agent.
 
-Builds installed before this split carry the release id while being debug-signed. A debug build no longer updates them - it installs beside them - and the first signed release build cannot either; see [`docs/tasks/publish-signed-builds-to-github-releases-for-obtainium.md`](tasks/publish-signed-builds-to-github-releases-for-obtainium.md).
+Builds installed before this split carry the release id while being debug-signed. A debug build no longer updates them - it installs beside them - and the first signed release build cannot either; see [`docs/tasks/publish-signed-builds-to-github-releases-for-obtainium.md`](../../tasks/publish-signed-builds-to-github-releases-for-obtainium.md).
 
 ## Formatting and lint
 
@@ -41,7 +41,7 @@ Two run configurations are shared through `.idea/runConfigurations/` and appear 
 
 The same tasks are in the Gradle tool window under `app/` if you would rather find them there.
 
-Two details worth knowing. detekt's baseline, at `android/config/detekt/baseline.xml`, records three findings that are real rather than false: the foreground service is a large class with too many functions and one long method. They are grandfathered so that anything *new* still fails, and [`docs/tasks/split-the-foreground-service-up.md`](tasks/split-the-foreground-service-up.md) describes the split that would clear them. And `NewerVersionAvailable` and `GradleDependency` are disabled in the lint configuration, because they report what has been published since rather than anything about this code, and would turn a passing build red without a commit being made. `GradleDependency` hid that for a while: lint's result is cached, so it failed only once something invalidated the cache, and any change to the version catalog does. Renovate proposes those updates anyway.
+Two details worth knowing. detekt's baseline, at `android/config/detekt/baseline.xml`, records three findings that are real rather than false: the foreground service is a large class with too many functions and one long method. They are grandfathered so that anything *new* still fails, and [`docs/tasks/split-the-foreground-service-up.md`](../../tasks/split-the-foreground-service-up.md) describes the split that would clear them. And `NewerVersionAvailable` and `GradleDependency` are disabled in the lint configuration, because they report what has been published since rather than anything about this code, and would turn a passing build red without a commit being made. `GradleDependency` hid that for a while: lint's result is cached, so it failed only once something invalidated the cache, and any change to the version catalog does. Renovate proposes those updates anyway.
 
 ## Instrumented tests
 
@@ -55,7 +55,7 @@ CI uses those devices in two stages. A pull request waits for `api30atd` alone, 
 
 Nothing about the devices is cached. The emulator and each system image are downloaded on every run, which takes under a minute even for API 37's 2 GB image; caching them would cost more of the repository's 10 GB cache than it saves in time. A device's setup is a step of its own that is retried up to three times, since a download once arrived corrupt; the tests themselves are never retried, so a flaky test still fails. The Gradle cache is written by one job only: "Android - validation" saves it, and the emulator jobs and the dependency graph restore it read-only, the emulator jobs falling back to the newest entry because they have none of their own. The dependency graph could look like the natural writer, but it resolves metadata without compiling anything, so its cache holds a sixth of the jars the others need. That is why validation also builds the instrumented test APK - its cache then holds what the emulator jobs need, and a change that stops the instrumented tests compiling fails there, on every pull request, rather than only when the migration workflow happens to run.
 
-The steps the Android jobs share live in two composite actions, `setup-android` for every Android job and `setup-android-device` for the emulator jobs, described with the others in [`docs/ci.md`](ci.md#shared-setup-is-a-composite-action-one-purpose-each).
+The steps the Android jobs share live in two composite actions, `setup-android` for every Android job and `setup-android-device` for the emulator jobs, described with the others in [`docs/development/ci.md`](../ci.md#shared-setup-is-a-composite-action-one-purpose-each).
 
 ## Why the version catalog confuses other tools
 

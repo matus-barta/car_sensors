@@ -4,7 +4,7 @@ title: "The Android logger"
 
 The app records location and sensor data while a vehicle is moving and uploads it to `ingest`. It is written to live in a car unattended - typically an old handset wired to the car's power - rather than to be opened and driven by hand.
 
-This page is about what the app does on a phone. Building, checking and testing it is in [`docs/android-development.md`](android-development.md).
+This page is about what the app does on a phone. Building, checking and testing it is in [`docs/development/android/README.md`](../development/android/README.md).
 
 ## What it is doing at any moment
 
@@ -28,9 +28,9 @@ Nothing is given up while the phone is on power. Off power, the logger sheds wor
 
 The app installs on Android 9 and later and declares itself an Android 9 app, so a newer phone runs it under Android 9's rules rather than its own. That is kept for compatibility with older phones, which is what the app is meant to run on - a retired handset left in the car.
 
-The cost is Google Play, which does not accept apps or updates that target a level this old. The app is distributed through GitHub instead: the plan is for CI to publish signed APKs to GitHub Releases, for Obtainium to pick up on the phone, and [`docs/tasks/publish-signed-builds-to-github-releases-for-obtainium.md`](tasks/publish-signed-builds-to-github-releases-for-obtainium.md) describes it. Until that exists, builds are installed with `adb install`.
+The cost is Google Play, which does not accept apps or updates that target a level this old. The app is distributed through GitHub instead: the plan is for CI to publish signed APKs to GitHub Releases, for Obtainium to pick up on the phone, and [`docs/tasks/publish-signed-builds-to-github-releases-for-obtainium.md`](../tasks/publish-signed-builds-to-github-releases-for-obtainium.md) describes it. Until that exists, builds are installed with `adb install`.
 
-The exact API levels, and what raising them would take, are in [`docs/android-development.md`](android-development.md#android-versions).
+The exact API levels, and what raising them would take, are in [`docs/development/android/README.md`](../development/android/README.md#android-versions).
 
 ## Platform limitations
 
@@ -56,4 +56,4 @@ This is how Android treats a stopped package and there is nothing the app can do
 
 **From Android 13, notifications start switched off.** Posting one became a permission, and an app targeting an earlier level cannot ask for it - Android shows no dialog. Until it is switched on in the app's notification settings, neither the logger's own notification nor the warning that uploads have stopped is ever seen. The screen says so, and its button opens that settings page directly.
 
-**Cleartext uploads are a debug-build affordance.** Release builds do not permit plain HTTP, so a server reached over `http://` works only from a debug build. See [`docs/tasks/allow-cleartext-to-a-private-address-and-only-to-a-private-address.md`](tasks/allow-cleartext-to-a-private-address-and-only-to-a-private-address.md) for the intended relaxation, which would allow cleartext to private addresses only.
+**Cleartext uploads are a debug-build affordance.** Release builds do not permit plain HTTP, so a server reached over `http://` works only from a debug build. See [`docs/tasks/allow-cleartext-to-a-private-address-and-only-to-a-private-address.md`](../tasks/allow-cleartext-to-a-private-address-and-only-to-a-private-address.md) for the intended relaxation, which would allow cleartext to private addresses only.

@@ -36,7 +36,7 @@ rather than mounting a file again.
 
 Once the Compose file needs nothing beside it, change the deployment
 instructions in the root `README.md` and
-[`docs/deployment.md`](../deployment.md) from a shallow `git clone` to
+[`docs/deployment/README.md`](../deployment/README.md) from a shallow `git clone` to
 downloading the raw file from `main`. Say how to update at the same time: with
 no clone there is no `git pull`, so a new Compose file is fetched the same way,
 and `docker compose pull` brings newer images.
