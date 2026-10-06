@@ -70,7 +70,7 @@ export default defineConfig({
 						// What applies to one piece only.
 						{ label: 'Android', items: ['development/android', 'development/android/build'] },
 						{ label: 'ingest', items: ['development/ingest/architecture'] },
-						{ label: 'www', items: ['development/www/architecture'] }
+						{ label: 'www', items: ['development/www/architecture', 'development/www/testing'] }
 					]
 				},
 				{

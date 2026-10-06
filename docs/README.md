@@ -47,6 +47,7 @@ directories read the same way the site's sidebar does.
 ### www
 
 - [www architecture](development/www/architecture.md) - the decisions behind the `www` code, and why
+- [Testing www](development/www/testing.md) - what the tests need, running them, and the browsers they run in Docker
 
 ## Reference
 
