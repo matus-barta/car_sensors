@@ -23,6 +23,7 @@
 
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { setTimeout as sleep } from 'node:timers/promises';
 
 const container = 'car-sensors-playwright';
@@ -54,8 +55,9 @@ async function ensureBrowserServer(): Promise<void> {
 	 * version it cannot find them. Read from what was installed, so a
 	 * dependency update moves the image with it.
 	 */
+	const nodeModules = fileURLToPath(new URL('../node_modules', import.meta.url));
 	const { version } = JSON.parse(
-		readFileSync(new URL('../node_modules/playwright/package.json', import.meta.url), 'utf8')
+		readFileSync(`${nodeModules}/playwright/package.json`, 'utf8')
 	) as { version: string };
 	const image = `mcr.microsoft.com/playwright:v${version}-noble`;
 
@@ -70,7 +72,15 @@ async function ensureBrowserServer(): Promise<void> {
 
 	console.log(`Starting the browsers in ${image} - the first time, that includes pulling it.`);
 
-	// As Playwright's and Vitest's Docker guides run it.
+	/*
+	 * As Playwright's and Vitest's Docker guides run it, except for where the
+	 * server comes from. They fetch it with `npx -y playwright@<version>`; this
+	 * runs the package already installed here instead, mounted read-only. It is
+	 * the same version and plain JavaScript, and npx would only add a download
+	 * from the npm registry to every fresh container - a few seconds in each CI
+	 * job. Mounted at a fixed path: Docker Desktop leaves a container's
+	 * /Volumes/... empty, which is where a macOS checkout may live.
+	 */
 	docker([
 		'run',
 		'--detach',
@@ -84,10 +94,16 @@ async function ensureBrowserServer(): Promise<void> {
 		'/home/pwuser',
 		'--publish',
 		`127.0.0.1:${port}:${port}`,
+		'--volume',
+		`${nodeModules}:/opt/node_modules:ro`,
 		image,
-		'/bin/sh',
-		'-c',
-		`npx -y playwright@${version} run-server --port ${port} --host 0.0.0.0`
+		'node',
+		'/opt/node_modules/playwright/cli.js',
+		'run-server',
+		'--port',
+		String(port),
+		'--host',
+		'0.0.0.0'
 	]);
 
 	/*
