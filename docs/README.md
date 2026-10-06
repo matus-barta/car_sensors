@@ -27,7 +27,9 @@ directories read the same way the site's sidebar does.
 
 - [Development setup](development/README.md) - setting up a machine, the environment file, and checking each piece the way CI does
 - [Continuous integration](development/ci.md) - how the workflows are laid out, and the rules that keep them that way
-- [Conventions](development/conventions.md) - rules that hold across every piece: where colours come from, and keeping a page of documentation to one kind
+- [Conventions](development/conventions.md) - rules that hold across every piece: colours, commits and formatting
+- [Writing documentation](development/writing-documentation.md) - where a page lives, how it is written and linked, and what to check after
+- [Writing instructions for AI agents](development/writing-agent-instructions.md) - why `CLAUDE.md` holds rules and links rather than reasons, and how long it can be
 - [Artificial intelligence usage policy](development/ai-policy.md) - how AI-assisted changes are made here
 
 ### Database

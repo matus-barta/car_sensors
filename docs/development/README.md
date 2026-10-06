@@ -2,7 +2,7 @@
 title: "Development setup"
 ---
 
-How to set up a machine to work on the project and check each piece the way CI does. The tools it needs are listed under Dev Requirements in the [root README](../../README.md#dev-requirements).
+How to set up a machine to work on the project, check each piece the way CI does, and manage the agent skills. The tools it needs are listed under Dev Requirements in the [root README](../../README.md#dev-requirements).
 
 ## Setting up
 
@@ -51,6 +51,7 @@ Rust, from the repository root:
 cargo fmt --all --check
 cargo clippy --all-targets --all-features -- -D warnings
 cargo test
+cargo test -p ingest <name>   # one test, by name
 ```
 
 The `ingest` integration tests need the local infrastructure running, a
@@ -114,3 +115,30 @@ pnpm dev         # a local preview that reloads as pages change
 pnpm check       # type-checks the site's TypeScript
 pnpm build       # what CI runs; fails on a link between pages that does not resolve
 ```
+
+## Agent skills
+
+The skills AI agents use here are vendored in `.agents/skills/` and linked into
+`.claude/skills/`, where Claude Code looks for them; [`skills-lock.json`](../../skills-lock.json)
+records where each came from. All three are committed. They are managed with the
+`skills` CLI rather than edited by hand:
+
+```bash
+pnpm dlx skills list                              # what is installed
+pnpm dlx skills add <owner>/<repo> -s <skill> -y  # vendor one
+pnpm dlx skills update -p -y                      # update every one
+pnpm dlx skills remove <skill> -y                 # its directory, link and lock entry together
+```
+
+An update skips a skill whose source repository holds the same name at more
+than one path, rather than guess which to follow. Adding it again from its
+exact path - `pnpm dlx skills add https://github.com/<owner>/<repo>/tree/main/<path> -y` -
+updates it and records that path from then on.
+
+A skill runs with the agent's full permissions, so read what an added or
+updated one says before committing it. Their Markdown is left as its authors
+wrote it: rumdl skips `.agents/` and `.claude/`, and Prettier runs only in `www/`.
+
+One skill is this project's own: `.claude/skills/verify-docs/` is a real
+directory rather than a link, edited by hand - see
+[writing documentation](writing-documentation.md#after-writing).

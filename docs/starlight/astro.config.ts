@@ -62,6 +62,8 @@ export default defineConfig({
 						'development',
 						'development/ci',
 						'development/conventions',
+						'development/writing-documentation',
+						'development/writing-agent-instructions',
 						'development/ai-policy',
 						{
 							label: 'Database',
