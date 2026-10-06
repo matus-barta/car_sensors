@@ -87,7 +87,7 @@ The instrumented tests need a device:
 ```
 
 What each of these checks, and the Android Studio run configurations that do the
-same, are in [`docs/android-app.md`](android-app.md#development).
+same, are in [`docs/android-development.md`](android-development.md#formatting-and-lint).
 
 Documentation, from the repository root:
 

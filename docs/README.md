@@ -25,10 +25,17 @@ and adds search.
 ## Development
 
 - [Development setup](development.md) - setting up a machine, the environment file, and checking each piece the way CI does
-- [How the web application is put together](www-architecture.md) - the decisions behind the `www` code, and why
 - [Database migrations and schema synchronization](database-migrations.md) - how the schema is owned and propagated
 - [Continuous integration](ci.md) - how the workflows are laid out, and the rules that keep them that way
 - [Artificial intelligence usage policy](ai-policy.md) - how AI-assisted changes are made here
+
+### www
+
+- [How the web application is put together](www-architecture.md) - the decisions behind the `www` code, and why
+
+### Android
+
+- [Working on the Android app](android-development.md) - its builds, checks and tests, and the parts of its build that are not what they look like
 
 ## Reference
 

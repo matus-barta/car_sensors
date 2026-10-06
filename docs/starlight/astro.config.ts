@@ -56,7 +56,15 @@ export default defineConfig({
 				{ label: 'Deployment', items: ['deployment', 'www-docker-image'] },
 				{
 					label: 'Development',
-					items: ['development', 'www-architecture', 'database-migrations', 'ci', 'ai-policy']
+					items: [
+						'development',
+						'database-migrations',
+						'ci',
+						'ai-policy',
+						// What applies to one piece only.
+						{ label: 'www', items: ['www-architecture'] },
+						{ label: 'Android', items: ['android-development'] }
+					]
 				},
 				{
 					label: 'Reference',
