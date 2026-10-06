@@ -72,6 +72,16 @@ pnpm lint     # prettier and eslint
 pnpm test     # unit, component and end-to-end
 ```
 
+The tests' browsers run in Playwright's own Docker image, so Docker has to be
+running; the end-to-end tests also need the local infrastructure.
+[`www/scripts/with-browsers.ts`](../../www/scripts/with-browsers.ts) starts the
+image matching the installed Playwright and leaves it running for the next
+run - `pnpm test:browsers:stop` removes it. The tests themselves run on this
+machine and connect to it, the same way as in CI. A browser in a container
+cannot open a window, so for `--headed`, `--debug` or Vitest's visible
+browser, set `PLAYWRIGHT_LOCAL_BROWSERS=1` to use browsers installed here
+instead (`pnpm exec playwright install chromium`).
+
 Android application:
 
 ```bash

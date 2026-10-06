@@ -112,7 +112,7 @@ The reasons are in [`docs/development/www/architecture.md`](../docs/development/
 
 `www` unit tests run as two vitest projects: `client` (browser, Playwright-driven, for `*.svelte.spec.ts`) and `server` (node, everything else, excluding `*.svelte.spec.ts`). `expect.requireAssertions` is on.
 
-E2E tests run serially against a real Postgres database whose name must end in `_test`; the fixture refuses anything else and refuses to share a database with `POSTGRES_ADMIN_URL`. Each test truncates and reseeds. They need a running Postgres and the SQLx CLI on `PATH`.
+E2E tests run serially against a real Postgres database whose name must end in `_test`; the fixture refuses anything else and refuses to share a database with `POSTGRES_ADMIN_URL`. Each test truncates and reseeds. They need a running Postgres and the SQLx CLI on `PATH`. Both test commands run their browsers in Playwright's Docker image through `www/scripts/with-browsers.ts`, so Docker must be running; `PLAYWRIGHT_LOCAL_BROWSERS=1` uses locally installed browsers instead, for headed debugging.
 
 `www/.env.test` is committed on purpose and loaded by the Playwright config itself - see [`docs/development/README.md`](../docs/development/README.md#environment).
 

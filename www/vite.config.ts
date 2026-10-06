@@ -66,7 +66,13 @@ export default defineConfig({
 					name: 'client',
 					browser: {
 						enabled: true,
-						provider: playwright(),
+						// As in playwright.config.ts: the Docker browsers when
+						// scripts/with-browsers.ts started them, installed ones otherwise.
+						provider: playwright({
+							connectOptions: process.env.PLAYWRIGHT_WS_ENDPOINT
+								? { wsEndpoint: process.env.PLAYWRIGHT_WS_ENDPOINT, exposeNetwork: '<loopback>' }
+								: undefined
+						}),
 						instances: [{ browser: 'chromium', headless: true }]
 					},
 					include: ['src/**/*.svelte.{test,spec}.{js,ts}'],

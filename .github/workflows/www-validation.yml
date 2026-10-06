@@ -10,7 +10,6 @@ on:
       - ".github/actions/setup-www/**"
       - ".github/actions/setup-sqlx/**"
       - ".github/actions/setup-pnpm/**"
-      - ".github/actions/run-in-playwright/**"
       - ".github/workflows/www-validation.yml"
       - "!www/**/*.md"
 
@@ -26,7 +25,6 @@ on:
       - ".github/actions/setup-www/**"
       - ".github/actions/setup-sqlx/**"
       - ".github/actions/setup-pnpm/**"
-      - ".github/actions/run-in-playwright/**"
       - ".github/workflows/www-validation.yml"
       - "!www/**/*.md"
 
@@ -92,17 +90,11 @@ jobs:
         working-directory: www
         run: pnpm lint
 
-      # The component tests run in a browser, so in Playwright's image.
+      # The browser for the component tests runs in Docker, started by the
+      # script behind the command - see www/scripts/with-browsers.ts.
       - name: Run unit and component tests
-        uses: ./.github/actions/run-in-playwright
-        with:
-          run: pnpm test:unit --run
-          env: |
-            DATABASE_URL
-            ORIGIN
-            BETTER_AUTH_SECRET
-            PUBLIC_OSM_VECTOR_TILE_URL
-            PUBLIC_OSM_STYLE_URL
+        working-directory: www
+        run: pnpm test:unit --run
 
       - name: Verify required generated schema files
         shell: bash
@@ -212,14 +204,8 @@ jobs:
         uses: ./.github/actions/setup-www
 
       - name: Run end-to-end tests
-        uses: ./.github/actions/run-in-playwright
-        with:
-          run: pnpm test:e2e
-          env: |
-            DATABASE_URL
-            POSTGRES_ADMIN_URL
-            ORIGIN
-            BETTER_AUTH_SECRET
+        working-directory: www
+        run: pnpm test:e2e
 
       - name: Upload Playwright report
         if: ${{ !cancelled() }}

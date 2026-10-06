@@ -39,6 +39,15 @@ export default defineConfig({
 
 	use: {
 		baseURL,
+		/*
+		 * Browsers in Playwright's Docker image when scripts/with-browsers.ts
+		 * started them, which says so in PLAYWRIGHT_WS_ENDPOINT; installed ones
+		 * otherwise. <loopback> sends the browser's localhost back to this
+		 * machine, where the preview server is.
+		 */
+		connectOptions: process.env.PLAYWRIGHT_WS_ENDPOINT
+			? { wsEndpoint: process.env.PLAYWRIGHT_WS_ENDPOINT, exposeNetwork: '<loopback>' }
+			: undefined,
 		trace: 'on-first-retry',
 		screenshot: 'only-on-failure'
 	},

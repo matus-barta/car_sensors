@@ -1,10 +1,10 @@
 name: Set up WWW
 description: Set up Node.js, pnpm, SQLx CLI, and WWW dependencies
 
-# No browsers: a step that needs one runs inside Playwright's own image through
-# run-in-playwright, which brings the browsers and the system libraries they
-# need. Installing them here meant apt on every run, and apt once took five
-# minutes over a slow mirror.
+# No browsers: the test commands run them in Playwright's own Docker image,
+# which brings the system libraries they need - see www/scripts/with-browsers.ts.
+# Installing them here meant apt on every run, and apt once took five minutes
+# over a slow mirror.
 
 inputs:
   install-sqlx:
