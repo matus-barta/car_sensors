@@ -1,5 +1,5 @@
 ---
-title: How the pieces fit together
+title: "System architecture"
 ---
 
 Four independent pieces share one PostgreSQL database.

@@ -52,11 +52,26 @@ export default defineConfig({
 			],
 			// The same groups as the landing page, docs/README.md.
 			sidebar: [
-				{ label: 'Overview', items: ['architecture', 'android-app'] },
-				{ label: 'Deployment', items: ['deployment', 'www-docker-image'] },
+				// One folder of docs/ per group, so the sidebar and the directory read
+				// the same; a folder's README is the group's first page.
+				{ label: 'Overview', items: ['overview/architecture', 'overview/android-app'] },
+				{ label: 'Deployment', items: ['deployment', 'deployment/www-docker-image'] },
 				{
 					label: 'Development',
-					items: ['development', 'www-architecture', 'database-migrations', 'ci', 'ai-policy']
+					items: [
+						'development',
+						'development/ci',
+						'development/conventions',
+						'development/ai-policy',
+						{
+							label: 'Database',
+							items: ['development/database/ownership', 'development/database/migrations']
+						},
+						// What applies to one piece only.
+						{ label: 'Android', items: ['development/android', 'development/android/build'] },
+						{ label: 'ingest', items: ['development/ingest/architecture'] },
+						{ label: 'www', items: ['development/www/architecture'] }
+					]
 				},
 				{
 					label: 'Reference',

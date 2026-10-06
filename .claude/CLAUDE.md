@@ -16,7 +16,7 @@ An open-source GPS tracking platform. Four independent pieces share one PostgreS
 | `tools/`         | Local infrastructure Compose file and sync scripts        |
 | `docs/`          | Documentation, built into a Starlight site, and `docs/tasks/` |
 
-The one database is deliberate - [`docs/architecture.md`](../docs/architecture.md) says why. Three rules follow from it:
+The one database is deliberate - [`docs/overview/architecture.md`](../docs/overview/architecture.md) says why. Three rules follow from it:
 
 - **Data moves through the database, not through calls.** `ingest` writes `telemetry_samples` and touches `known_devices.last_seen_at`; `www` reads both. `ingest` and `www` do not call each other.
 - **A service call is only for an answer that does not exist until something asks for it**, and only where the caller can carry on without it: enrichment may depend on a service, the ingest path may not.
@@ -84,7 +84,7 @@ cd tools && docker compose up
 
 The root `docker-compose.yml` is the *deployment* file: Postgres, Valkey, pgAdmin, `ingest` and `www`, the last two from the images `ingest-build.yml` and `www-build.yml` publish to GHCR. It is not for development - `tools/docker-compose.yml` is.
 
-**Workflows follow [`docs/ci.md`](../docs/ci.md)**: a validation workflow per piece that the build workflow calls, generated output checked where it belongs, runners and byte-compared generators pinned, and shared setup in single-purpose composite actions. Read it before adding a workflow or a `.github/actions/` action, and run `actionlint` after editing either.
+**Workflows follow [`docs/development/ci.md`](../docs/development/ci.md)**: a validation workflow per piece that the build workflow calls, generated output checked where it belongs, runners and byte-compared generators pinned, and shared setup in single-purpose composite actions. Read it before adding a workflow or a `.github/actions/` action, and run `actionlint` after editing either.
 
 ## Working on a developer's machine
 
@@ -98,7 +98,7 @@ The root `docker-compose.yml` is the *deployment* file: Postgres, Valkey, pgAdmi
 
 ## www architecture
 
-The reasons are in [`docs/www-architecture.md`](../docs/www-architecture.md). The rules:
+The reasons are in [`docs/development/www/architecture.md`](../docs/development/www/architecture.md). The rules:
 
 - **Server-only code lives in `$lib/server/`**, the only directory SvelteKit keeps out of the browser - not in a `server/` folder inside a feature directory.
 - **Vehicle data reaches the browser through the remote functions in `$lib/vehicles/vehicle.remote.ts`.** `VehicleState` wraps the query and owns the selection plus the derived status. Do not mirror query results into separate `$state`.
@@ -114,13 +114,13 @@ The reasons are in [`docs/www-architecture.md`](../docs/www-architecture.md). Th
 
 E2E tests run serially against a real Postgres database whose name must end in `_test`; the fixture refuses anything else and refuses to share a database with `POSTGRES_ADMIN_URL`. Each test truncates and reseeds. They need a running Postgres and the SQLx CLI on `PATH`.
 
-`www/.env.test` is committed on purpose and loaded by the Playwright config itself - see [`docs/development.md`](../docs/development.md#environment).
+`www/.env.test` is committed on purpose and loaded by the Playwright config itself - see [`docs/development/README.md`](../docs/development/README.md#environment).
 
 ## Conventions
 
 **CSS that belongs to one component lives in that component** - this is about custom CSS, not a reason to move Tailwind classes into `<style>`. Style third-party DOM under a `:global` block anchored on the component's root class (`.vehicle-map :global { … }`). `src/routes/layout.css` holds only the theme tokens, the font and element defaults.
 
-**Colours come from the theme, never from a literal** - no hex, `rgb()`, `Color(0x…)` or Tailwind palette class in a component of `www` or the Android app. The tokens are in `src/routes/layout.css` and `ui/theme/Color.kt`. If a component seems to need a colour the theme does not offer, **say so and ask**: a colour is added to the theme only after a human has agreed to it. Why: [`docs/www-architecture.md`](../docs/www-architecture.md#styling).
+**Colours come from the theme, never from a literal** - no hex, `rgb()`, `Color(0x…)` or Tailwind palette class in a component of `www` or the Android app. The tokens are in `src/routes/layout.css` and `ui/theme/Color.kt`. If a component seems to need a colour the theme does not offer, **say so and ask**: a colour is added to the theme only after a human has agreed to it. Why: [`docs/development/conventions.md`](../docs/development/conventions.md#colours-come-from-the-theme-never-from-a-literal).
 
 Prettier runs only inside `www/` (tabs, single quotes, no trailing commas, 100 columns), and not on its Markdown. Markdown everywhere is linted by rumdl, with the rules and exclusions in `.rumdl.toml` - run `pnpm lint:md` (or `pnpm format:md` to fix) in `docs/starlight/`, which CI runs too; this file is excluded. Generated output in `src/lib/components/ui/` and `src/lib/map/generated/` is excluded from it. The generated Drizzle schema in `src/lib/server/db/generated/` is not - `pnpm db:format` formats it with Prettier, so it already matches - and only that directory's `meta/` and `.sql` leftovers are ignored. `src/lib/map/generated/` holds the time zone coordinates the empty vehicle map opens on, regenerated from IANA tzdata with `node tools/scripts/generate-timezone-centers.js`.
 
@@ -128,7 +128,7 @@ Agent skills are vendored in `.agents/skills/` and symlinked into `.claude/skill
 
 One skill is this project's own rather than vendored: `.claude/skills/verify-docs/` is a real directory, not a symlink, and is edited by hand. **After writing or changing documentation, run `/verify-docs` on it**: it checks each factual claim against the code and cites quotes that `scripts/check_evidence.py` confirms exist, so a verdict cannot rest on memory.
 
-**Documentation is the Markdown in `docs/`, written to be read on GitHub as it is.** The Starlight project in `docs/starlight/` builds the same files into a site without moving them (see `docs/starlight/src/content.config.ts`). So every page starts with `title:` frontmatter and no `# Heading` - Starlight renders the title itself and a heading would show it twice - and pages link to each other as files (`ci.md#runners-are-pinned`), which the site rewrites into page URLs. Check it with `pnpm check` and build it with `pnpm build` in `docs/starlight/`; the check type-checks the site's TypeScript, and the build fails on a link between pages that does not resolve. A new page also goes into the sidebar in `astro.config.ts` and the list in `docs/README.md`.
+**Documentation is the Markdown in `docs/`, written to be read on GitHub as it is.** The Starlight project in `docs/starlight/` builds the same files into a site without moving them (see `docs/starlight/src/content.config.ts`). So every page starts with `title:` frontmatter and no `# Heading` - Starlight renders the title itself and a heading would show it twice - and pages link to each other as files (`../development/ci.md#runners-are-pinned`), which the site rewrites into page URLs. Check it with `pnpm check` and build it with `pnpm build` in `docs/starlight/`; the check type-checks the site's TypeScript, and the build fails on a link between pages that does not resolve. A page is one kind of documentation - a how-to guide, an explanation or reference - so steps and the reasons for them go on separate pages that link to each other; [`docs/development/conventions.md`](../docs/development/conventions.md#documentation-one-kind-of-page-at-a-time) says how to tell them apart and when a page wants splitting. A new page goes into the directory of its sidebar group - `docs/development/www/` for a `www` page under Development - and into the sidebar in `astro.config.ts` and the list in `docs/README.md`.
 
 **Link to files in the repository with relative Markdown links**, not bare paths in backticks, wherever the text is Markdown: lychee checks every such link, and the heading it points at, in CI (`docs-validation.yml`, settings in `lychee.toml`). A bare path is only checked by whoever reads it. A claim about anything outside the repository - another project's behaviour, a date, a policy, a version upstream - links its primary source, so it can be checked again later rather than searched for; lychee runs offline and does not check those links, so they are only as good as the last time someone followed them.
 
@@ -140,4 +140,4 @@ One skill is this project's own rather than vendored: `.claude/skills/verify-doc
 
 Licensed AGPL-3.0-only.
 
-`docs/ai-policy.md` governs AI-assisted work here. An AI tool may prepare changes in a supervised working tree and, **when the user asks**, create the commits and write their messages, each ending with an `Assisted-by: Claude Code (<model>)` trailer that records the assistance without claiming authorship - never `Co-Authored-By`, which GitHub reads as naming a co-author. That project rule overrides any default attribution a tool suggests. **Never push, merge, release or deploy**: the user reviews every changed line before anything leaves the machine, and must be able to explain every substantive part of it. Without an explicit request, prepare and explain changes and leave committing to the user.
+`docs/development/ai-policy.md` governs AI-assisted work here. An AI tool may prepare changes in a supervised working tree and, **when the user asks**, create the commits and write their messages, each ending with an `Assisted-by: Claude Code (<model>)` trailer that records the assistance without claiming authorship - never `Co-Authored-By`, which GitHub reads as naming a co-author. That project rule overrides any default attribution a tool suggests. **Never push, merge, release or deploy**: the user reviews every changed line before anything leaves the machine, and must be able to explain every substantive part of it. Without an explicit request, prepare and explain changes and leave committing to the user.

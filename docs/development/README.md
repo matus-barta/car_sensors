@@ -2,7 +2,7 @@
 title: "Development setup"
 ---
 
-How to set up a machine to work on the project and check each piece the way CI does. The tools it needs are listed under Dev Requirements in the [root README](../README.md#dev-requirements).
+How to set up a machine to work on the project and check each piece the way CI does. The tools it needs are listed under Dev Requirements in the [root README](../../README.md#dev-requirements).
 
 ## Setting up
 
@@ -36,7 +36,7 @@ cd tools && docker compose up -d
 
 There is one environment file, `.env` at the repository root. `ingest`, `www` and the SQLx CLI all find it there; the Android app has none.
 
-Each service's README lists the variables it reads, which it requires and what the rest do: [`ingest`](../ingest/README.md#environment) and [`www`](../www/README.md#environment). A deployment sets them on the containers instead - see [`docs/deployment.md`](deployment.md).
+Each service's README lists the variables it reads, which it requires and what the rest do: [`ingest`](../../ingest/README.md#environment) and [`www`](../../www/README.md#environment). A deployment sets them on the containers instead - see [`docs/deployment/README.md`](../deployment/README.md).
 
 `www/.env.test` holds E2E-only values and is committed on purpose; the Playwright config loads it and passes it to the preview server, because `vite preview` runs in production mode and would not read it otherwise.
 
@@ -54,7 +54,7 @@ cargo test
 ```
 
 The `ingest` integration tests need the local infrastructure running, a
-database of their own and two variables - the [`ingest` README](../ingest/README.md#development)
+database of their own and two variables - the [`ingest` README](../../ingest/README.md#development)
 says why:
 
 ```bash
@@ -87,7 +87,7 @@ The instrumented tests need a device:
 ```
 
 What each of these checks, and the Android Studio run configurations that do the
-same, are in [`docs/android-app.md`](android-app.md#development).
+same, are in [`docs/development/android/README.md`](android/README.md#checking-the-code).
 
 Documentation, from the repository root:
 
@@ -99,7 +99,7 @@ actionlint                             # the workflows in .github/
 Markdown style and the documentation site, from `docs/starlight/` - its
 dependencies include [rumdl](https://rumdl.dev/), the Markdown linter, which
 checks every Markdown file in the repository with the rules in
-[`.rumdl.toml`](../.rumdl.toml):
+[`.rumdl.toml`](../../.rumdl.toml):
 
 ```bash
 cd docs/starlight

@@ -30,6 +30,14 @@ which GitHub links whenever someone opens a pull request or an issue, and
 as well as the root, so it could be a page of the site too - and move it there,
 so `CLAUDE.md` links to it as it already does for the rest.
 
+One such home now exists: [Conventions](../development/conventions.md), under
+Development, holds the rules that apply to every piece rather than one. It
+started with the colour rule, moved there from the `www` page, and is the
+obvious place for the commit conventions and the rules for writing
+documentation. A rule that concerns one piece belongs on that piece's page
+instead, as the `www` testing rules would on
+[`docs/development/www/architecture.md`](../development/www/architecture.md).
+
 The second is to look at `CLAUDE.md` itself against what is now known about
 these files:
 
@@ -56,7 +64,7 @@ these files:
   `CLAUDE.md`, or through an `@AGENTS.md` import from one
   ([memory documentation, AGENTS.md](https://code.claude.com/docs/en/memory#agents-md)).
   Moving the rules into `AGENTS.md`, with `CLAUDE.md` importing it, would serve
-  any tool [`docs/ai-policy.md`](../ai-policy.md) allows rather than one.
+  any tool [`docs/development/ai-policy.md`](../development/ai-policy.md) allows rather than one.
 
 Whatever moves, the result is checked the way the rest of the documentation is:
 lychee and rumdl for the files, `/verify-docs` for the claims. And whether the
