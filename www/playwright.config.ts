@@ -37,6 +37,14 @@ export default defineConfig({
 	fullyParallel: false,
 	workers: 1,
 
+	/*
+	 * Playwright's own defaults, plus an HTML report on CI: its default there,
+	 * dot, writes none, and the workflow uploads playwright-report/ - which
+	 * held nothing until this. Never opened, since nobody is there to see it.
+	 * https://playwright.dev/docs/test-reporters
+	 */
+	reporter: process.env.CI ? [['dot'], ['html', { open: 'never' }]] : 'list',
+
 	use: {
 		baseURL,
 		/*
