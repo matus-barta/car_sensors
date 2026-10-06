@@ -70,8 +70,8 @@ half of this task rather than the documentation half, and is best run once the
 ADR location above is settled, since it writes there.
 
 Whatever pages come out of this are checked with `/verify-docs` and the
-[one-kind rule](../development/conventions.md#documentation-one-kind-of-page-at-a-time),
+[one-kind rule](../development/writing-documentation.md#one-kind-of-page-at-a-time),
 like any other.
 
-**Related.** [Check the remaining pages are one kind each](check-the-remaining-pages-are-one-kind-each.md)
-reads the same pages for a different question.
+**Related.** [Move the agent instructions to AGENTS.md, with the skills](move-the-agent-instructions-to-agents-md-with-the-skills.md)
+restructures the same vendored skills this task runs.
