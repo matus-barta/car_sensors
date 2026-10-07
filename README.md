@@ -6,9 +6,47 @@
 
 An open-source vehicle tracker built around an old Android phone left in the car. On its charger, the phone starts recording when the car moves - its position and sensor readings - and keeps everything while there is no signal, uploading it later. A web application shows the vehicles on a map where each was last seen, and follows one live when live upload is switched on in the app. Everything runs on your own server.
 
+**Status:** early, and in active development. There are no releases yet: the server applications are published as container images on every merge, and the Android app is installed from a build with `adb` until signed releases exist.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset=".github/readme/map-dark.png">
+  <img alt="The web application's map of Lisbon with one vehicle, a delivery van, selected: a card shows it online, last seen under a minute ago, with its position and bearing." src=".github/readme/map-light.png">
+</picture>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset=".github/readme/app-dark.png">
+  <img width="280" alt="The Android app recording: its GPS position, charging at full battery, the server reachable and accepting the device, paired as demo-van, with wake on motion and auto-start on boot switched on." src=".github/readme/app-light.png">
+</picture>
+
+The vehicles, the account and the pairing in the screenshots are made up.
+
 ## How it fits together
 
 Three applications. The Android app is the client: it records on the phone and uploads to the server through an API. The two server applications share one PostgreSQL database - `ingest` receives the uploads, and `www` is the web application. The full picture, and why it is built this way, is in [`docs/overview/architecture.md`](docs/overview/architecture.md).
+
+```mermaid
+flowchart LR
+    subgraph phone [Phone]
+        android[Android app]
+    end
+    subgraph server [Server]
+        ingest
+        www
+        postgres[(PostgreSQL)]
+        valkey[(Valkey)]
+    end
+    android -- uploads through the API --> ingest
+    ingest -- writes --> postgres
+    www -- reads --> postgres
+    ingest -- latest position --> valkey
+    valkey --> www
+```
+
+## Privacy
+
+The Android app sends what it records only to the server you set in it, has no analytics or crash reporting, and keeps its data out of Android's backup to Google Drive - [what leaves the phone](docs/overview/android-app.md#what-leaves-the-phone). The server applications call no outside services.
+
+The one exception is the map. By default the browser loads its tiles from OpenStreetMap and its style from VersaTiles, so those services see the viewer's address and the area on screen - roughly where the vehicles are. `PUBLIC_OSM_VECTOR_TILE_URL` and `PUBLIC_OSM_STYLE_URL` point it at a tile server of your own ([deployment](docs/deployment/README.md#what-the-compose-file-runs)).
 
 ## Repository layout
 

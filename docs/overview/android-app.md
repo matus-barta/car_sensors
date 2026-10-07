@@ -24,6 +24,10 @@ Movement promotes it from waiting to recording, but GPS then has to agree: if no
 
 Nothing is given up while the phone is on power. Off power, the logger sheds work in the order of what each part costs against what it is worth - uploads first, because the radio is the most expensive thing it does and nothing is lost by waiting; then the sample rate; then the sensors that only decorate a position; and only last does recording stop. Whichever tier is in force is named on screen, so being cut back does not look like being broken.
 
+## What leaves the phone
+
+Only what it records, and only to the server address set in the app. There is no analytics or crash reporting, and the app opts out of Android's backup to Google Drive, which would otherwise copy its database of positions and its pairing credential there - end-to-end encrypted only on a phone with a screen lock ([Auto Backup](https://developer.android.com/identity/data/autobackup)). The phone holds only what it has not uploaded yet, so there is nothing a restore would save. The one link it offers to an outside site, a manufacturer's page on dontkillmyapp.com, opens in the browser only when tapped.
+
 ## Android versions
 
 The app installs on Android 9 and later and declares itself an Android 9 app, so a newer phone runs it under Android 9's rules rather than its own. That is kept for compatibility with older phones, which is what the app is meant to run on - a retired handset left in the car.
