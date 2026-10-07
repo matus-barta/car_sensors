@@ -10,9 +10,12 @@ object AppConfig {
     // it is assembled from `versionName` at build time.
     val USER_AGENT = "CarSensors/${BuildConfig.VERSION_NAME}"
 
-    // Only the starting point: the address is a setting now, so it can be
-    // corrected on the device instead of in a rebuild.
-    const val DEFAULT_SERVER_BASE_URL = "http://192.168.22.141:3000"
+    // Only the starting point: the address is a setting, entered on the device.
+    // 10.0.2.2 is the Android emulator's address for the machine running it,
+    // so a development build reaches a local ingest out of the box; on a phone
+    // it leads nowhere until the real address is set. Never a public host: a
+    // phone not yet set up would send its attempts to whoever answered there.
+    const val DEFAULT_SERVER_BASE_URL = "http://10.0.2.2:3000"
 
     // ingest nests every route under /api. Without the prefix an upload posts
     // to a path that does not exist and comes back 404, which is what had been

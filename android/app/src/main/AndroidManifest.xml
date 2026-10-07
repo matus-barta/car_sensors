@@ -30,10 +30,17 @@
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
 
+    <!--
+        No backup. Android's Auto Backup would otherwise copy the database of
+        recorded positions, the settings and the pairing credential to the
+        user's Google Drive - and encrypt it end to end only on a phone with a
+        screen lock, which one left in the car often has not. Nothing here is
+        worth restoring: the phone only holds what it has not uploaded yet, the
+        server keeps the record, and a new phone is paired afresh.
+        https://developer.android.com/identity/data/autobackup
+    -->
     <application
-        android:allowBackup="true"
-        android:dataExtractionRules="@xml/data_extraction_rules"
-        android:fullBackupContent="@xml/backup_rules"
+        android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
