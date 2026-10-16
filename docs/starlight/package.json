@@ -2,7 +2,7 @@
 	"name": "starlight",
 	"version": "0.0.1",
 	"private": true,
-	"packageManager": "pnpm@12.8.1",
+	"packageManager": "pnpm@12.11.2",
 	"engines": {
 		"node": ">=24",
 		"pnpm": ">=11"
@@ -30,8 +30,8 @@
 		"astro-mermaid": "^2.1.0",
 		"mermaid": "^11.17.2",
 		"sharp": "^0.35.5",
-		"starlight-links-validator": "^0.26.0",
-		"starlight-openapi": "^0.26.3"
+		"starlight-links-validator": "^0.27.0",
+		"starlight-openapi": "^0.27.0"
 	},
 	"devDependencies": {
 		"@astrojs/check": "^0.9.10",
