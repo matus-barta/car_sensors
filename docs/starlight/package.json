@@ -2,7 +2,7 @@
 	"name": "starlight",
 	"version": "0.0.1",
 	"private": true,
-	"packageManager": "pnpm@12.11.2",
+	"packageManager": "pnpm@12.15.0",
 	"engines": {
 		"node": ">=24",
 		"pnpm": ">=11"
@@ -35,7 +35,7 @@
 	},
 	"devDependencies": {
 		"@astrojs/check": "^0.9.10",
-		"rumdl": "^0.2.78",
+		"rumdl": "^0.3.0",
 		"typescript": "^6.0.3"
 	}
 }
